@@ -7,7 +7,9 @@ _KERR_MATCHER_PATH = "/home/ljq/code/radial_flow/spec_flow_method_Kerr/kerr_matc
 if _KERR_MATCHER_PATH not in sys.path:
     sys.path.insert(0, _KERR_MATCHER_PATH)
 
-def compute_amplitude_ratio(a, omega, l, m, lambda_sep=None, r_match=8.0, n_cheb=32):
+from .compute_lambda import compute_lambda
+
+def compute_amplitude_ratio(a, omega, l, m, r_match=8.0, n_cheb=32, s=-2):
     """
     计算Kerr黑洞引力波散射振幅比
 
@@ -16,18 +18,21 @@ def compute_amplitude_ratio(a, omega, l, m, lambda_sep=None, r_match=8.0, n_cheb
         omega: 频率
         l: 角量子数 (l >= 2)
         m: 方位角量子数 (|m| <= l)
-        lambda_sep: 球旋分离常数 (None则自动计算)
         r_match: 匹配半径
         n_cheb: Chebyshev多项式阶数
+        s: 自旋权重 (默认 -2)
 
     返回:
         dict: {
             'ratio': complex,  # B_inc/B_ref (入射/反射)
-            'lambda': complex,  # 分离常数
+            'lambda': float,  # 分离常数
             'ratio_abs': float,  # |ratio|
             'ratio_arg': float   # arg(ratio)
         }
     """
+    # 计算角向分离常数
+    lambda_sep = compute_lambda(a, omega, l, m, s)
+
     try:
         from kerr_matcher.params import SolverParams
         from kerr_matcher.solver import solve_case

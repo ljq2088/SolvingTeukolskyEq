@@ -14,12 +14,11 @@ def test_amplitude_ratio():
     omega = 0.2
     l = 2
     m = 2
-    lambda_sep = 3.601
 
-    print(f"测试参数: a={a}, ω={omega}, l={l}, m={m}, λ={lambda_sep}")
+    print(f"测试参数: a={a}, ω={omega}, l={l}, m={m}")
 
     try:
-        result = compute_amplitude_ratio(a, omega, l, m, lambda_sep)
+        result = compute_amplitude_ratio(a, omega, l, m)
         print(f"✓ 成功计算振幅比值")
         print(f"  λ = {result['lambda']}")
         print(f"  B_inc/B_ref = {result['ratio']}")
