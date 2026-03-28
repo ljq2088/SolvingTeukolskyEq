@@ -118,12 +118,13 @@ def get_ramp_and_p_from_cfg(
 
 
 from physical_ansatz.teukolsky_coeffs import coeffs_x
+from physical_ansatz.transform_y import transform_coeffs_x_to_y
 
 def residual_from_nodes(
-    x_nodes: torch.Tensor,   # (Nx,) or (Nx,1), real
-    R: torch.Tensor,         # (B,Nx) complex - this is R'(x), the regular part
-    Rx: torch.Tensor,        # (B,Nx) complex - dR'/dx
-    Rxx: torch.Tensor,       # (B,Nx) complex - d²R'/dx²
+    y_nodes: torch.Tensor,   # (Ny,) or (Ny,1), real in [-1,1]
+    f: torch.Tensor,         # (B,Ny) complex - this is f(y)
+    fy: torch.Tensor,        # (B,Ny) complex - df/dy
+    fyy: torch.Tensor,       # (B,Ny) complex - d²f/dy²
     a_batch: torch.Tensor,   # (B,) real
     omega_batch: torch.Tensor,# (B,) real or complex
     lambda_batch: torch.Tensor,# (B,) complex
@@ -132,93 +133,81 @@ def residual_from_nodes(
     cfg: Dict[str, Any],
 ) -> torch.Tensor:
     """
-    计算 residual: A2*R'_xx + A1*R'_x + A0*R' = 0
+    计算 residual: B2*f_yy + B1*f_y + B0*f = rhs
 
-    注意：这里的 R 实际上是 R'(x)，即 R(r) = R'(x)*U(r) 中的 regular 部分
+    坐标变换：x = (y+1)/2, y ∈ [-1,1] → x ∈ [0,1]
+    函数变换：R'(x) = (exp(x-1)-1)*f(x) + 1
 
-    返回 (B,Nx) complex
+    返回 (B,Ny) complex
     """
     prob = cfg["problem"]
     m = int(prob["m"])
     s = int(prob.get("s", -2))
     M = float(prob.get("M", 1.0))
 
-    # reshape for broadcast
-    if x_nodes.ndim == 1:
-        x = x_nodes[None, :, None]          # (1,Nx,1)
+    # 转换 y → x
+    if y_nodes.ndim == 1:
+        y = y_nodes[None, :, None]          # (1,Ny,1)
     else:
-        x = x_nodes[None, :, :]             # (1,Nx,1)
+        y = y_nodes[None, :, :]             # (1,Ny,1)
+
+    x = (y + 1.0) / 2.0                     # x ∈ [0,1]
 
     B = a_batch.shape[0]
-    x = x.expand(B, -1, -1)                 # (B,Nx,1)
+    x = x.expand(B, -1, -1)                 # (B,Ny,1)
+    y = y.expand(B, -1, -1)                 # (B,Ny,1)
 
     a = a_batch.reshape(B, 1, 1)
     omega = omega_batch.reshape(B, 1, 1)
     lam = lambda_batch.reshape(B, 1, 1)
     ramp = ramp_batch.reshape(B, 1, 1)
 
-    # coeffs_x 返回 (B,Nx,1) 形状（内部广播）
+    # 先计算 x 坐标下的系数 A2, A1, A0
     A2, A1, A0 = coeffs_x(x, a, omega, m, p, ramp, lam, s=s, M=M)
 
-    # R,Rx,Rxx: (B,Nx) -> (B,Nx,1)
-    R_  = R.unsqueeze(-1)
-    Rx_ = Rx.unsqueeze(-1)
-    Rxx_= Rxx.unsqueeze(-1)
+    # 变换到 y 坐标下的系数 B2, B1, B0
+    B2, B1, B0, rhs = transform_coeffs_x_to_y(A2, A1, A0, y)
 
-    res = A2*Rxx_ + A1*Rx_ + A0*R_
-    return res.squeeze(-1)   # (B,Nx)
+    # f,fy,fyy: (B,Ny) -> (B,Ny,1)
+    f_   = f.unsqueeze(-1)
+    fy_  = fy.unsqueeze(-1)
+    fyy_ = fyy.unsqueeze(-1)
+
+    res = B2*fyy_ + B1*fy_ + B0*f_ - rhs
+    return res.squeeze(-1)   # (B,Ny)
 
 def complex_mse(z: torch.Tensor) -> torch.Tensor:
     return torch.mean(z.real*z.real + z.imag*z.imag)
 
-def teukolsky_residual_loss(
-    cfg: Dict[str, Any],
-    cache: AuxCache,
-    x_nodes: torch.Tensor,     # (Nx,) or (Nx,1)
-    D: torch.Tensor,           # (Nx,Nx) real
-    D2: torch.Tensor,          # (Nx,Nx) real
-    R_nodes: torch.Tensor,     # (B,Nx) complex
-    a_batch: torch.Tensor,     # (B,) real
-    omega_batch: torch.Tensor, # (B,) real or complex
+def teukolsky_residual_loss_coeff(
+    cfg,
+    y_nodes,              # (Ny,)
+    D, D2,                # (Ny,Ny), wrt y
+    Tmat,                 # (Ny,Nc), T_k(y_j)
+    coeff_re, coeff_im,   # (B,Nc)
+    a_batch,              # (B,)
+    omega_batch,          # (B,)
+    lambda_batch,         # (B,) complex
+    ramp_batch,           # (B,) complex
+    p: int,
     exclude_endpoints: bool = True,
-) -> Tuple[torch.Tensor, Dict[str, float]]:
-    """
-    返回:
-      loss (scalar)
-      diagnostics dict
-    """
-    # 1) 先算 Rx, Rxx
-    Rx  = R_nodes @ D.T
-    Rxx = R_nodes @ D2.T
+):
+    # 1) build complex coeffs
+    coeff = torch.complex(coeff_re, coeff_im)   # (B,Nc)
 
-    # 2) 逐样本算 lambda 与 R_amp（不可导，作为常量进入）
-    B = a_batch.shape[0]
-    lam_list = []
-    p_val: Optional[int] = None
-    ramp_list = []
+    # 2) reconstruct f(y)
+    f = coeff @ Tmat.T                          # (B,Ny)
 
-    for i in range(B):
-        lam_i = get_lambda_from_cfg(cfg, cache, a_batch[i], omega_batch[i])
-        p_i, ramp_i = get_ramp_and_p_from_cfg(cfg, cache, a_batch[i], omega_batch[i])
-        lam_list.append(lam_i)
-        ramp_list.append(ramp_i)
-        if p_val is None:
-            p_val = p_i
-        else:
-            # p 必须一致（同一个训练任务）
-            if p_i != p_val:
-                raise ValueError(f"Inconsistent p across batch: {p_val} vs {p_i}")
+    # 3) spectral derivatives wrt y
+    fy  = f @ D.T
+    fyy = f @ D2.T
 
-    lambda_batch = torch.stack(lam_list).to(dtype=torch.complex128)
-    ramp_batch   = torch.stack(ramp_list).to(dtype=torch.complex128)
-    p = int(p_val or 0)
-
-    # 3) residual
+    # 4) residual in f-equation
     res = residual_from_nodes(
-        x_nodes=x_nodes,
-        R=R_nodes,
-        Rx=Rx,
-        Rxx=Rxx,
+        y_nodes=y_nodes,
+        f=f,
+        fy=fy,
+        fyy=fyy,
         a_batch=a_batch,
         omega_batch=omega_batch,
         lambda_batch=lambda_batch,
@@ -227,16 +216,17 @@ def teukolsky_residual_loss(
         cfg=cfg,
     )
 
-    # 4) 端点处理：默认只在内点算 loss（避免 x=1 视界处 Δ=0 引发数值问题）
+    # 5) interior only
     if exclude_endpoints and res.shape[1] > 2:
         res_used = res[:, 1:-1]
     else:
         res_used = res
 
-    loss = complex_mse(res_used)
+    loss = torch.mean(res_used.real**2 + res_used.imag**2)
 
     diag = {
-        "loss_res": float(loss.detach().cpu().item()),
-        "res_abs_max": float(torch.max(torch.abs(res_used)).detach().cpu().item()),
+        "loss_res": float(loss.detach().cpu()),
+        "res_abs_max": float(torch.abs(res_used).max().detach().cpu()),
+        "f_abs_max": float(torch.abs(f).max().detach().cpu()),
     }
     return loss, diag
