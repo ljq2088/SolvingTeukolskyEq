@@ -1,1 +1,105 @@
-# Teukolsky 径向方程配置：固定 ℓ,m，参数化 a,ω 范围等
+# Teukolsky radial operator configuration (M=1 by default)
+# Fixed mode: (l, m); parameterized: (a, omega)
+# Separation constant symbol: lambda
+
+problem:
+  name: teukolsky_radial
+  M: 1.0
+  s: -2
+  l: 2         # 固定 ℓ（你可改）
+  m: 2         # 固定 m（你可改）
+  problem:
+  name: teukolsky_radial
+  M: 1.0
+  s: -2
+  l: 2
+  m: 2
+
+  # --- separation constant λ ---
+  lambda:
+    mode: compute      # given / compute
+    value: null        # mode=given 时使用
+    compute:
+      backend: gremlineqre   # 只是标记，实际调用 utils/compute_lambda.py
+
+  # --- amplitude ratio R_amp (used in prefactor_Q) ---
+  R_amp:
+    mode: compute      # off / given / compute
+    given:
+      value: null      # mode=given 时使用（complex 或 float）
+    compute:
+      backend: kerr_matcher  # 标记
+      p: 1            # 你 prefactor_Q 里的指数用到的 p（你已经确认 exponent = -p-4）
+      r_match: 8.0
+      n_cheb: 32
+
+params:
+  a:
+    min: 0.0
+    max: 0.99
+  omega:
+    # 允许复频（只做实频通量，可把 imag 固定为 0）
+    min: 0.01
+    max: 1.50
+
+
+mapping:
+  # 先无量纲：z = r/M；默认 M=1 => z=r
+  z:
+    definition: "z = r / M"
+  # 紧化到 x∈(0,1]：选用 x = r_plus / r（视界 r=r_plus -> x=1；无穷远 -> 0）
+  x:
+    definition: "x = r_plus / r"
+    range: "(0, 1]"
+    inverse: "r = r_plus / x"
+    # 用于从 r-form 转到 x-form 的链式法则
+    derivatives:
+      dx_dr: "dx/dr = -r_plus / r^2 = -x^2 / r_plus"
+      d2x_dr2: "d2x/dr2 = 2*r_plus / r^3 = 2*x^3 / r_plus^2"
+  xi:
+    # Chebyshev 用的 [-1,1] 坐标
+    definition: "xi = 2*x - 1"
+    range: "[-1, 1]"
+
+kerr:
+  horizons:
+    r_plus: "r_plus = M + sqrt(M^2 - a^2)"
+    r_minus: "r_minus = M - sqrt(M^2 - a^2)"
+  delta:
+    definition: "Delta(r) = r^2 - 2*M*r + a^2 = (r-r_plus)(r-r_minus)"
+  K:
+    definition: "K(r) = (r^2 + a^2)*omega - a*m"
+
+potential:
+  # Teukolsky radial potential term (in the standard expanded r-form)
+  V:
+    definition: "V(r) = (K^2 - 2*i*s*(r-M)*K)/Delta + 4*i*s*omega*r - lambda"
+
+rprime:
+  # r'(r)（按你给的写法原样写入；你说先放空也可以）
+  # 请注意：你给的最后两项 log 的自变量是一样的；如需改成 ln|r-r_plus| 等，请你后续自行修正。
+  definition: >
+    rprime = r - r_plus
+             + (r_plus^2 + a^2)/(r_plus - r_minus) * ln|r - r_plus + 1|
+             - (r_minus^2 + a^2)/(r_plus - r_minus) * ln|r - r_plus + 1|
+  implementation: "TODO: implement in physical_ansatz/teukolsky_coeffs.py (rprime_placeholder)"
+
+spectral:
+  basis: chebyshev
+  order: 64
+  grid: "chebyshev_gauss_lobatto"
+  hard_normalization:
+    # 你提出的“固定 x=1 输出为 1”
+    # 若用 f(x)=Σ c_n T_n(xi)，且 xi(1)=1，则 T_n(1)=1 => Σ c_n = 1
+    enforce_at_x: 1.0
+    rule: "sum(c_n) = 1  (complex: apply to Re/Im separately)"
+
+training:
+  # 这里仅放最关键占位；细节在 default.yaml / trainer 配置里补齐
+  dtype: float64
+  batch:
+    n_param: 32         # 每步采样多少组 (a,omega)
+    n_x: 65             # 每组参数在多少个 x 节点上计算残差（通常等于谱节点数）
+  loss:
+    residual: "mean(|L[R]|^2) over x-nodes and param-batch"
+    boundary_layer: "placeholder: asymptotic/log-derivative matching near x=1 and x~0"

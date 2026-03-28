@@ -9,7 +9,7 @@ if _KERR_MATCHER_PATH not in sys.path:
 
 from .compute_lambda import compute_lambda
 
-def compute_amplitude_ratio(a, omega, l, m, r_match=8.0, n_cheb=32, s=-2):
+def compute_amplitude_ratio(a, omega, l, m, lambda_sep=None, r_match=8.0, n_cheb=32, s=-2):
     """
     计算Kerr黑洞引力波散射振幅比
 
@@ -18,6 +18,7 @@ def compute_amplitude_ratio(a, omega, l, m, r_match=8.0, n_cheb=32, s=-2):
         omega: 频率
         l: 角量子数 (l >= 2)
         m: 方位角量子数 (|m| <= l)
+        lambda_sep: 球旋分离常数 (None则自动计算)
         r_match: 匹配半径
         n_cheb: Chebyshev多项式阶数
         s: 自旋权重 (默认 -2)
@@ -30,8 +31,9 @@ def compute_amplitude_ratio(a, omega, l, m, r_match=8.0, n_cheb=32, s=-2):
             'ratio_arg': float   # arg(ratio)
         }
     """
-    # 计算角向分离常数
-    lambda_sep = compute_lambda(a, omega, l, m, s)
+    # 如果未提供 lambda_sep，则自动计算
+    if lambda_sep is None:
+        lambda_sep = compute_lambda(a, omega, l, m, s)
 
     try:
         from kerr_matcher.params import SolverParams
