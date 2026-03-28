@@ -121,9 +121,9 @@ from physical_ansatz.teukolsky_coeffs import coeffs_x
 
 def residual_from_nodes(
     x_nodes: torch.Tensor,   # (Nx,) or (Nx,1), real
-    R: torch.Tensor,         # (B,Nx) complex
-    Rx: torch.Tensor,        # (B,Nx) complex
-    Rxx: torch.Tensor,       # (B,Nx) complex
+    R: torch.Tensor,         # (B,Nx) complex - this is R'(x), the regular part
+    Rx: torch.Tensor,        # (B,Nx) complex - dR'/dx
+    Rxx: torch.Tensor,       # (B,Nx) complex - d²R'/dx²
     a_batch: torch.Tensor,   # (B,) real
     omega_batch: torch.Tensor,# (B,) real or complex
     lambda_batch: torch.Tensor,# (B,) complex
@@ -132,7 +132,10 @@ def residual_from_nodes(
     cfg: Dict[str, Any],
 ) -> torch.Tensor:
     """
-    计算 residual: A2*Rxx + A1*Rx + A0*R
+    计算 residual: A2*R'_xx + A1*R'_x + A0*R' = 0
+
+    注意：这里的 R 实际上是 R'(x)，即 R(r) = R'(x)*U(r) 中的 regular 部分
+
     返回 (B,Nx) complex
     """
     prob = cfg["problem"]
@@ -164,3 +167,76 @@ def residual_from_nodes(
 
     res = A2*Rxx_ + A1*Rx_ + A0*R_
     return res.squeeze(-1)   # (B,Nx)
+
+def complex_mse(z: torch.Tensor) -> torch.Tensor:
+    return torch.mean(z.real*z.real + z.imag*z.imag)
+
+def teukolsky_residual_loss(
+    cfg: Dict[str, Any],
+    cache: AuxCache,
+    x_nodes: torch.Tensor,     # (Nx,) or (Nx,1)
+    D: torch.Tensor,           # (Nx,Nx) real
+    D2: torch.Tensor,          # (Nx,Nx) real
+    R_nodes: torch.Tensor,     # (B,Nx) complex
+    a_batch: torch.Tensor,     # (B,) real
+    omega_batch: torch.Tensor, # (B,) real or complex
+    exclude_endpoints: bool = True,
+) -> Tuple[torch.Tensor, Dict[str, float]]:
+    """
+    返回:
+      loss (scalar)
+      diagnostics dict
+    """
+    # 1) 先算 Rx, Rxx
+    Rx  = R_nodes @ D.T
+    Rxx = R_nodes @ D2.T
+
+    # 2) 逐样本算 lambda 与 R_amp（不可导，作为常量进入）
+    B = a_batch.shape[0]
+    lam_list = []
+    p_val: Optional[int] = None
+    ramp_list = []
+
+    for i in range(B):
+        lam_i = get_lambda_from_cfg(cfg, cache, a_batch[i], omega_batch[i])
+        p_i, ramp_i = get_ramp_and_p_from_cfg(cfg, cache, a_batch[i], omega_batch[i])
+        lam_list.append(lam_i)
+        ramp_list.append(ramp_i)
+        if p_val is None:
+            p_val = p_i
+        else:
+            # p 必须一致（同一个训练任务）
+            if p_i != p_val:
+                raise ValueError(f"Inconsistent p across batch: {p_val} vs {p_i}")
+
+    lambda_batch = torch.stack(lam_list).to(dtype=torch.complex128)
+    ramp_batch   = torch.stack(ramp_list).to(dtype=torch.complex128)
+    p = int(p_val or 0)
+
+    # 3) residual
+    res = residual_from_nodes(
+        x_nodes=x_nodes,
+        R=R_nodes,
+        Rx=Rx,
+        Rxx=Rxx,
+        a_batch=a_batch,
+        omega_batch=omega_batch,
+        lambda_batch=lambda_batch,
+        p=p,
+        ramp_batch=ramp_batch,
+        cfg=cfg,
+    )
+
+    # 4) 端点处理：默认只在内点算 loss（避免 x=1 视界处 Δ=0 引发数值问题）
+    if exclude_endpoints and res.shape[1] > 2:
+        res_used = res[:, 1:-1]
+    else:
+        res_used = res
+
+    loss = complex_mse(res_used)
+
+    diag = {
+        "loss_res": float(loss.detach().cpu().item()),
+        "res_abs_max": float(torch.max(torch.abs(res_used)).detach().cpu().item()),
+    }
+    return loss, diag

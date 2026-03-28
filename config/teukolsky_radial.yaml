@@ -1,6 +1,16 @@
 # Teukolsky radial operator configuration (M=1 by default)
 # Fixed mode: (l, m); parameterized: (a, omega)
-# Separation constant symbol: lambda
+#
+# 符号说明：
+# - R(r): 完整的径向波函数
+# - U(r) = Q(r)*P(r): 渐近因子（prefactor），编码边界行为
+# - R'(x): regular 部分，R(r) = R'(x)*U(r)
+# - x = r_plus/r ∈ (0,1]: 紧化坐标，r_plus→1, ∞→0
+# - λ: 角向分离常数（separation constant）
+# - R_amp: 反射振幅（用于 prefactor_Q）
+#
+# 方程：A2(x)*R'_xx + A1(x)*R'_x + A0(x)*R' = 0
+
 
 problem:
   name: teukolsky_radial

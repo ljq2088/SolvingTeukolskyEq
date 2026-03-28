@@ -29,23 +29,29 @@ from .prefactor import *
 #     i = 1j
 #     return (K*K - 2.0*i*s*(r - M)*K)/Δ + 4.0*i*s*omega*r - lambda_
 
-def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int,p, R_amp: torch.Tensor, lambda_: torch.Tensor, s: int=-2, M: float = 1.0,
+def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, p, R_amp: torch.Tensor, lambda_: torch.Tensor, s: int=-2, M: float = 1.0,
              dx_dr: torch.Tensor = None, d2x_dr2: torch.Tensor = None):
     """
-    Return A2,A1,A0 in x-form:
-        A2 R'_xx + A1 R'_x + A0 R' = 0 (1)
-    Derived from r-form:
-        Δ R_rr + (s+1)Δ_r R_r + V R = 0 (2)
-    Replace R with R'(r)*U(r)
-    and then transform to x coordinate via r=r(x), we get the above x-form with coefficients A2,A1,A0.
-    From replacement of R with R'(r)*U(r), we get: 
-        Δ (2R'_rU_r+R'U_rr+R'_rrU) + (s+1)Δ_r(R'_rU+R'U_r) + VU R' = 0 (3)
-        Δ (2R'_x*dx_dr*U_r(r(x))+R'U_rr(r(x))+(R'_xx*dx_dr**2+R'_x*d2x_dr2)U(r(x))) + (s+1)Δ_r(R'_x*dx_dr*U+R'U_r) + VU R' = 0 (4)
-        Comparing with A2 U_xx + A1 U_x + A0 U = 0, we get:
-        A2 = Δ * (dx_dr**2)*U
-        A1 = Δ * (2dx_dr*U_r+d2x_dr2*U)+(s+1)Δ_r*dx_dr*U
-        A0 = VU+(s+1)Δ_r*U_r+Δ*U_rr
+    Return A2,A1,A0 in x-form for R'(x):
+        A2 R'_xx + A1 R'_x + A0 R' = 0
 
+    Original Teukolsky equation in r-form:
+        Δ R_rr + (s+1)Δ_r R_r + V R = 0
+
+    With R = R'(r)*U(r), where U(r) = Q(r)*P(r) is the prefactor, we get:
+        Δ (R'_rr*U + 2R'_r*U_r + R'*U_rr) + (s+1)Δ_r(R'_r*U + R'*U_r) + V*U*R' = 0
+
+    Transform to x coordinate via chain rule:
+        R'_r = R'_x * dx/dr
+        R'_rr = R'_xx * (dx/dr)^2 + R'_x * d²x/dr²
+
+    Divide by U to get equation for R'(x):
+        A2 R'_xx + A1 R'_x + A0 R' = 0
+
+    where:
+        A2 = Δ * (dx/dr)^2
+        A1 = Δ * (2*(U_r/U)*dx/dr + d²x/dr²) + (s+1)*Δ_r*dx/dr
+        A0 = V + (s+1)*Δ_r*(U_r/U) + Δ*(U_rr/U)
     """
     r = r_from_x(x, a, M)
     Δ = delta(r, a, M)
