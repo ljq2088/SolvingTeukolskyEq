@@ -29,8 +29,8 @@ M_MODE = 2
 A      = 0.1
 N_OVT  = 0       # 泛音阶数
 RMIN   = 2.1     # 避开 r_plus 奇点
-RMAX   = 1000.0
-NPTS   = 500
+RMAX   = 5000.0
+NPTS   = 5000
 M      = 1.0
 
 KERNEL_PATH  = r"/mnt/f/mma/WolframKernel.exe"
@@ -153,6 +153,48 @@ def make_plots(r, R_over_P, omega, out_dir):
     print(f"Saved 4 figures to: {out_dir}")
 
 
+def make_plots_x(x, R_over_P, omega, out_dir):
+    """在 x = r_plus/r ∈ (0,1] 坐标下绘图，x=1 对应视界，x→0 对应无穷远"""
+    wr, wi = omega.real, omega.imag
+    title = (
+        rf"$R_{{QNM}}/P$ vs $x=r_+/r$: $l={L},\ m={M_MODE},\ a={A},\ s={S}$"
+        "\n"
+        rf"$\omega = {wr:.5f}{wi:+.5f}i$  (n={N_OVT})"
+    )
+
+    # 图5: x 坐标 Re/Im（普通轴，x 从小到大即 r 从大到小）
+    fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
+    axes[0].plot(x, R_over_P.real, lw=1.0)
+    axes[0].set_ylabel(r"$\mathrm{Re}[R/P]$")
+    axes[0].set_title(title)
+    axes[0].axvline(1.0, color="gray", lw=0.8, ls="--", label=r"$x=1\ (r=r_+)$")
+    axes[0].legend(fontsize=8)
+    axes[0].grid(True, alpha=0.3)
+    axes[1].plot(x, R_over_P.imag, lw=1.0, color="C1")
+    axes[1].set_xlabel(r"$x = r_+ / r$")
+    axes[1].set_ylabel(r"$\mathrm{Im}[R/P]$")
+    axes[1].axvline(1.0, color="gray", lw=0.8, ls="--")
+    axes[1].grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "RoverP_x_re_im.png"), dpi=200)
+    plt.close()
+
+    # 图6: x 坐标 模长
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(x, np.abs(R_over_P), lw=1.0, color="C2")
+    ax.axvline(1.0, color="gray", lw=0.8, ls="--", label=r"$x=1\ (r=r_+)$")
+    ax.set_xlabel(r"$x = r_+ / r$")
+    ax.set_ylabel(r"$|R/P|$")
+    ax.set_title(title)
+    ax.legend(fontsize=8)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "RoverP_x_abs.png"), dpi=200)
+    plt.close()
+
+    print(f"Saved 2 x-coord figures to: {out_dir}")
+
+
 # ── 主函数 ────────────────────────────────────────────
 if __name__ == "__main__":
     print(f"Parameters: s={S}, l={L}, m={M_MODE}, n={N_OVT}, a={A}")
@@ -181,4 +223,13 @@ if __name__ == "__main__":
     print(f"|R/P| range: [{np.abs(R_over_P).min():.4e}, {np.abs(R_over_P).max():.4e}]")
 
     make_plots(r, R_over_P, omega, out_dir)
+
+    # x = r_plus / r，需要 r_plus
+    from physical_ansatz.mapping import r_plus as get_rplus
+    a_t  = torch.tensor(A, dtype=torch.float64)
+    rp   = float(get_rplus(a_t, M).item())
+    x    = rp / r
+    print(f"r_plus = {rp:.6f},  x range: [{x.min():.4e}, {x.max():.4e}]")
+
+    make_plots_x(x, R_over_P, omega, out_dir)
     print("Done.")
