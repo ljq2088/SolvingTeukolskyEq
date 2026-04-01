@@ -15,7 +15,7 @@ def transform_coeffs_x_to_y(
     A1: torch.Tensor,
     A0: torch.Tensor,
     y: torch.Tensor,   # (B,Ny,1) 或 (Ny,) in [-1,1]
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     从 x 坐标的系数 A2,A1,A0 变换到 y 坐标的系数 B2,B1,B0
 

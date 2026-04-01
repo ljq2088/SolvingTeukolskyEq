@@ -60,7 +60,7 @@ def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, p, R
     U=U_factor(r,a,omega,p,R_amp,m,s,M)
     U_r=U_factor_r(r,a,omega,p,R_amp,m,s,M)
     lnU_r=lnU_factor_r(r,a,omega,p,R_amp,m,s,M)
-    U_rr=U_factor_rr(r,a,omega,p,R_amp,m,s,M)
+    U_rr=U_factor_r_r(r,a,omega,p,R_amp,m,s,M)
 
     # if caller did not precompute dx/dr, d2x/dr2, compute via formulas for x=r_plus/r
     if dx_dr is None or d2x_dr2 is None:

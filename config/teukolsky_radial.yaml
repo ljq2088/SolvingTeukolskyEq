@@ -16,12 +16,6 @@ problem:
   name: teukolsky_radial
   M: 1.0
   s: -2
-  l: 2         # 固定 ℓ（你可改）
-  m: 2         # 固定 m（你可改）
-  problem:
-  name: teukolsky_radial
-  M: 1.0
-  s: -2
   l: 2
   m: 2
 
