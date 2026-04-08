@@ -1,0 +1,75 @@
+physics_config: config/teukolsky_radial.yaml
+
+param_sampling:
+  a_center: 0.1
+  a_range: 0.01
+  omega_center: 0.1
+  omega_range: 0.01
+
+model:
+  hidden_dims: [64, 64, 64, 64]
+  activation: tanh
+
+sampling:
+  mode: fixed_pool
+  param_sampler: sobol
+  n_interior: 64
+  n_boundary: 0
+  batch_size: 4
+  n_param_samples: 32
+  n_epochs: 20000
+
+adaptive_sampling:
+  enabled: true
+  candidate_method: sobol
+  n_candidates: 512
+  refresh_freq: 50
+  adaptive_frac: 0.7
+  normalize_residual: true
+
+anchors:
+  mode: sentinel_plus_adaptive
+  n_adaptive: 6
+  n_random: 0
+
+train:
+  lr: 0.001
+  anchor_freq: 5
+  n_anchors: 8
+
+loss:
+  weight_interior: 1.0
+  weight_boundary: 0.0
+  weight_anchor: 1.0
+
+loss_balance:
+  mode: lbpinn
+  eps: 1.0e-12
+
+curriculum:
+  enabled: true
+  stages:
+    - epochs: 2000
+      a_range: 0.0
+      omega_range: 0.0
+      weight_anchor: 20.0
+    - epochs: 4000
+      a_range: 0.005
+      omega_range: 0.005
+      weight_anchor: 8.0
+    - epochs: 14000
+      a_range: 0.01
+      omega_range: 0.01
+      weight_anchor: 3.0
+
+validation:
+  val_freq: 50
+  val_n_points: 200
+  save_best_freq: 50
+
+early_stop:
+  patience: 500
+  threshold: 1.0e-6
+
+runtime:
+  dtype: float64
