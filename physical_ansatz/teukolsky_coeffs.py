@@ -52,16 +52,17 @@ def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, p, R
         A2 = Δ * (dx/dr)^2
         A1 = Δ * (2*(U_r/U)*dx/dr + d²x/dr²) + (s+1)*Δ_r*dx/dr
         A0 = V + (s+1)*Δ_r*(U_r/U) + Δ*(U_rr/U)
+
     """
-    r = r_from_x(x, a, M)
+    rp=r_plus(a, M)
+    r = r_from_x(x, rp)
     Δ = delta(r, a, M)
     Δr = delta_r(r, M)
     V = V_of_r(r, a, omega, m, s, lambda_, M)
-    U=U_factor(r,a,omega,p,R_amp,m,s,M)
-    U_r=U_factor_r(r,a,omega,p,R_amp,m,s,M)
-    lnU_r=lnU_factor_r(r,a,omega,p,R_amp,m,s,M)
-    U_rr=U_factor_r_r(r,a,omega,p,R_amp,m,s,M)
-
+    P,P_r,P_rr= Leaver_prefactors(r, a, omega, m, M, s)
+    Q,Q_r,Q_rr= prefactor_Q(r, a, omega, p, R_amp, M, s)
+    U,U_r,U_rr=U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr)
+    lnU_r=torch.log(U_r)
     # if caller did not precompute dx/dr, d2x/dr2, compute via formulas for x=r_plus/r
     if dx_dr is None or d2x_dr2 is None:
         # NOTE: prefer passing from mapping for consistency/caching

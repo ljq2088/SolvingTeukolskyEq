@@ -1,6 +1,6 @@
 """
-PINN MLP网络：(a, ω, y) → R'(y)
-直接训练R'，不再使用g(x)f(x)+1的变换
+PINN MLP网络：(a, ω, y) → f(y)
+
 """
 import torch
 import torch.nn as nn
@@ -8,14 +8,14 @@ import torch.nn as nn
 
 class PINN_MLP(nn.Module):
     """
-    简单的MLP网络，输入 (a, ω, y)，输出 R'(y)
+    简单的MLP网络，输入 (a, ω, y)，输出 f(y)
 
     参数范围：
         a ∈ [0.09, 0.11] (a=0.1±0.01)
         ω ∈ [0.09, 0.11] (ω=0.1±0.01)
         y ∈ [-1, 1]
 
-    输出：R'(y) 复数
+    输出：f(y) 复数
     """
     def __init__(
         self,
@@ -55,9 +55,16 @@ class PINN_MLP(nn.Module):
         self._init_weights()
 
     def _init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
+        linear_layers = [m for m in self.modules() if isinstance(m, nn.Linear)]
+
+        for i, m in enumerate(linear_layers):
+            if i < len(linear_layers) - 1:
+                nn.init.xavier_normal_(m.weight, gain=1.0)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            else:
+                # 最后一层压小，避免初始输出和高阶导过大
+                nn.init.xavier_normal_(m.weight, gain=0.05)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 

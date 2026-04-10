@@ -13,6 +13,21 @@ model:
 sampling:
   mode: fixed_pool
   param_sampler: sobol
+    # 新增：内点采样策略
+  # 可选：
+  #   article_uniform   -> 2212.06103v2 的均匀网格
+  #   random_uniform    -> 全区间均匀随机
+  #   sobol_random      -> Sobol 低差异随机
+  #   chebyshev         -> Chebyshev 点
+  #   luna              -> 当前 boundary-biased 风格
+  #   rard              -> 你当前的残差自适应
+  interior_strategy: article_uniform
+
+  # 新增：边界点策略
+  #   none
+  #   exact_safe
+  #   luna_boundary
+  boundary_strategy: none
   n_interior: 64
   n_boundary: 0
   batch_size: 4
@@ -25,7 +40,7 @@ adaptive_sampling:
   n_candidates: 512
   refresh_freq: 50
   adaptive_frac: 0.7
-  normalize_residual: true
+  normalize_residual: false
 
 anchors:
   mode: sentinel_plus_adaptive
@@ -33,9 +48,31 @@ anchors:
   n_random: 0
 
 train:
-  lr: 0.001
-  anchor_freq: 5
+  lr: 8.0e-2
+  anchor_freq: 10
+  anchor_start_step: 2000
   n_anchors: 8
+
+  viz_show_enabled: true
+  viz_enabled: true
+  viz_every_steps: 100
+  viz_auto_close_sec: 3.0
+  viz_num_points: 500
+  viz_r_min: 2.0
+  viz_r_max: 1000.0
+
+  viz_save_enabled: true
+  viz_subdir: "viz_compare"
+
+scheduler:
+  enabled: true
+  type: exp_after_warmup
+
+  # 学习率 warmup/decay
+  warmup_steps: 3000
+  decay_start: 3000
+  decay_rate: 0.999
+  min_lr: 1.0e-4
 
 loss:
   weight_interior: 1.0
@@ -43,7 +80,7 @@ loss:
   weight_anchor: 1.0
 
 loss_balance:
-  mode: lbpinn
+  mode: fixed #or lbpinn
   eps: 1.0e-12
 
 curriculum:
@@ -52,15 +89,39 @@ curriculum:
     - epochs: 2000
       a_range: 0.0
       omega_range: 0.0
-      weight_anchor: 20.0
+      weight_anchor: 0.0
     - epochs: 4000
       a_range: 0.005
       omega_range: 0.005
-      weight_anchor: 8.0
+      weight_anchor: 0.2
     - epochs: 14000
       a_range: 0.01
       omega_range: 0.01
-      weight_anchor: 3.0
+      weight_anchor: 0.5
+
+# 新增：collocation curriculum（来自 curriculum collocation 思想的工程版）
+collocation_curriculum:
+  enabled: false
+  stages:
+    - epochs: 1000
+      interior_strategy: article_uniform
+      n_interior: 32
+    - epochs: 3000
+      interior_strategy: chebyshev
+      n_interior: 64
+    - epochs: 999999
+      interior_strategy: rard
+      n_interior: 64
+
+# 新增：anti-trivial seed supervision
+anti_trivial:
+  enabled: true
+  seed_steps: 3000
+  seed_every: 5
+  n_seed: 16
+  seed_strategy: article_uniform
+  weight_seed: 0.2
+  relative: false
 
 validation:
   val_freq: 50
@@ -73,3 +134,43 @@ early_stop:
 
 runtime:
   dtype: float64
+
+# 新增：stall 时重采样/重启（对应 adaptive self-supervision + restart 的工程版）
+restart:
+  enabled: false
+  stall_window: 300
+  stall_tol: 1.0e-4
+  lr_decay_on_restart: 0.5
+
+# 新增：动态平衡 anchor（对应 gradient pathology 文献思想的工程版）
+dynamic_balance:
+  enabled: false
+  every_steps: 20
+  w_anchor_min: 1.0e-3
+  w_anchor_max: 10.0
+
+flat_variance:
+  enabled: true
+
+  # 作用对象: f / Rprime
+  target: Rprime
+
+  # loss_var = 1 / (exp(kappa * sigma) - 1 + eps)
+  kappa: 1.0
+  eps: 1.0e-12
+
+  # 权重
+  weight: 1.0e+11
+  # 方差项权重调度
+  decay_enabled: true
+  warmup_steps: 3000
+  decay_start: 3000
+  decay_rate: 0.999
+  min_weight: 1.0e+9
+  # 只在前期启用，避免后期为了抬方差制造无意义振荡
+  steps: 16000
+
+  # 是否单独采样固定点，而不是复用 PDE 点
+  use_dedicated_points: true
+  strategy: article_uniform
+  n_points: 64

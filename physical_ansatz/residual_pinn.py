@@ -12,7 +12,8 @@ import numpy as np
 from .residual import AuxCache, get_lambda_from_cfg, get_ramp_and_p_from_cfg
 from .teukolsky_coeffs import coeffs_x
 from .mapping import r_plus, r_from_x
-from .prefactor import U_factor
+from .prefactor import *
+from .transform_y import transform_coeffs_x_to_y, g_factor,h_factor
 
 
 def compute_Rprime_derivatives_autograd(model, a_batch, omega_batch, y_points):
@@ -102,7 +103,7 @@ def compute_pointwise_pde_residual(
     ramp_batch,
     p,
     y_interior,
-    normalize=True,
+    normalize=False,
     eps=1e-12,
 ):
     device = a_batch.device
@@ -137,18 +138,29 @@ def compute_pointwise_pde_residual(
     A1_int = torch.stack(A1_list, dim=0)
     A0_int = torch.stack(A0_list, dim=0)
 
-    B2_int = A2_int * 4.0
-    B1_int = A1_int * 2.0
-    B0_int = A0_int
+    
+    h=h_factor(a_batch,omega_batch,m,M,s)
+    B2_int, B1_int, B0_int,rhs = transform_coeffs_x_to_y(
+        A2_int, A1_int, A0_int, y_interior,h=h
+    )
 
-    residual_int = B2_int * Rprime_yy_int + B1_int * Rprime_y_int + B0_int * Rprime_int
+    residual_int = B2_int * Rprime_yy_int + B1_int * Rprime_y_int + B0_int * Rprime_int-rhs
+    term2 = B2_int * Rprime_yy_int
+    term1 = B1_int * Rprime_y_int
+    term0 = B0_int * Rprime_int
+
+    residual_int = term2 + term1 + term0 - rhs
     pointwise = torch.abs(residual_int) ** 2
 
     if normalize:
-        coeff_scale = (
-            1.0 + torch.abs(B2_int) ** 2 + torch.abs(B1_int) ** 2 + torch.abs(B0_int) ** 2
-        ).detach()
-        pointwise = pointwise / coeff_scale.clamp_min(eps)
+        scale = (
+            1.0
+            + torch.abs(term2.detach()) ** 2
+            + torch.abs(term1.detach()) ** 2
+            + torch.abs(term0.detach()) ** 2
+            + torch.abs(rhs.detach()) ** 2
+        )
+        pointwise = pointwise / scale.clamp_min(eps)
 
     return residual_int, pointwise
 
@@ -253,7 +265,7 @@ def pinn_residual_loss(
     y_boundary,
     weight_interior=1.0,
     weight_boundary=10.0,
-    normalize_residual=True,
+    normalize_residual=False,
     residual_scale_eps=1e-12,
     return_pointwise=False,
 ):
@@ -361,7 +373,7 @@ def compute_data_anchor_loss(
     omega_batch,
     y_anchors,
     R_mma_anchors,
-    relative=True,
+    relative=False,
     eps=1e-12,
 ):
     M = float(cfg["problem"].get("M", 1.0))
@@ -380,12 +392,16 @@ def compute_data_anchor_loss(
         rp = r_plus(a_batch[i], M)
         r_i = r_from_x(x_anchors, rp)
         p_i, ramp_i = get_ramp_and_p_from_cfg(cfg, cache, a_batch[i], omega_batch[i])
-        U_i = U_factor(r_i, a_batch[i], omega_batch[i], p_i, ramp_i, m, s, M)
+        P, P_r, P_rr = Leaver_prefactors(r_i, a_batch[i], omega_batch[i],m,M,s)
+        Q, Q_r, Q_rr = prefactor_Q(r_i, a_batch[i], omega_batch[i],p_i,ramp_i,M,s)
+        U_i,_,_ =U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr)
         U_list.append(U_i)
 
     U_batch = torch.stack(U_list, dim=0)
     Rprime_mma = R_mma_anchors / U_batch
-
+    
+    g,_,_ = g_factor(x_anchors)
+    Rprime_pred = Rprime_pred*g+1.0
     err2 = torch.abs(Rprime_pred - Rprime_mma) ** 2
     if relative:
         scale = torch.mean(torch.abs(Rprime_mma.detach()) ** 2, dim=1, keepdim=True)
@@ -394,3 +410,57 @@ def compute_data_anchor_loss(
         loss_anchor = torch.mean(err2)
 
     return loss_anchor
+
+def compute_variance_regularizer(
+    model,
+    cfg,
+    a_batch,
+    omega_batch,
+    y_points,
+    target="Rprime",
+    kappa=20.0,
+    eps=1.0e-12,
+):
+    """
+    用于惩罚“输出几乎为常数”的伪平凡解。
+
+    参数
+    ----
+    model : PINN_MLP
+    cfg : dict
+    a_batch, omega_batch : [B]
+    y_points : [N]
+    target : "f" or "Rprime"
+    kappa : float
+    eps : float
+    """
+
+    # 模型输出: [B, N] complex
+    f_pred = model(a_batch, omega_batch, y_points)
+
+    if target == "f":
+        z = f_pred
+
+    elif target == "Rprime":
+        x_points = 0.5 * (y_points + 1.0)
+        g_val, _, _ = g_factor(x_points)   # [N]
+        z = g_val.unsqueeze(0) * f_pred + 1.0
+
+    else:
+        raise ValueError(f"Unknown target for variance regularizer: {target}")
+
+    # 复数标准差:
+    # sigma_b = sqrt( mean( |z - mean(z)|^2 ) + eps )
+    z_mean = z.mean(dim=1, keepdim=True)
+    sigma_b = torch.sqrt(torch.mean(torch.abs(z - z_mean) ** 2, dim=1) + eps)
+
+    # batch 平均
+    sigma = sigma_b.mean()
+
+    loss_var = 1.0 / (torch.expm1(kappa * sigma) + eps)
+
+    info = {
+        "sigma_var": float(sigma.item()),
+        "loss_var": float(loss_var.item()),
+    }
+    return loss_var, info

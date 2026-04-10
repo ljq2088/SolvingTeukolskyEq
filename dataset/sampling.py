@@ -26,19 +26,27 @@ def sample_points_luna_style(
     Returns:
         y_interior: (n_interior,) 内点
         y_boundary: (2*n_boundary,) 边界点
+
+    IMPORTANT: y范围必须严格在(-1, 1)内，避免x=0或x=1导致r无穷大或r=r_+
     """
-    # 边界点：在 y=-1 和 y=1 附近密集采样
-    y_left_bd = -1.0 + boundary_layer_width * torch.rand(
+    # 安全边界：避开±1，防止x=0或x=1
+    y_safe_min = -0.99
+    y_safe_max = 0.99
+
+    # 边界点：在 y=-1 和 y=1 附近密集采样，但不能到达±1
+    y_left_bd = y_safe_min + boundary_layer_width * torch.rand(
         n_boundary, device=device, dtype=dtype
     )
-    y_right_bd = 1.0 - boundary_layer_width * torch.rand(
+    y_right_bd = y_safe_max - boundary_layer_width * torch.rand(
         n_boundary, device=device, dtype=dtype
     )
     y_boundary = torch.cat([y_left_bd, y_right_bd], dim=0)
-    
 
-    # 内点：在整个区域均匀随机采样
-    y_interior = -1.0 + 2.0 * torch.rand(n_interior, device=device, dtype=dtype)
+
+    # 内点：在安全区域均匀随机采样
+    y_interior = y_safe_min + (y_safe_max - y_safe_min) * torch.rand(
+        n_interior, device=device, dtype=dtype
+    )
 
     return y_interior, y_boundary
 
@@ -53,7 +61,7 @@ def sample_points_adaptive(
 ):
     """
     自适应采样：
-    - 边界点：精确在 y=±1
+    - 边界点：接近但不到达 y=±1
     - 边界层点：在 y=±1 附近
     - 内点：在整个区域
 
@@ -69,26 +77,32 @@ def sample_points_adaptive(
         y_boundary: (2*n_boundary_each,)
         y_boundary_layer: (2*n_boundary_layer_each,)
     """
-    # 精确边界点
+    # 安全边界：避开±1
+    y_safe_min = -0.99
+    y_safe_max = 0.99
+
+    # 边界点：接近±0.99但不到达
     y_left_exact = torch.full(
-        (n_boundary_each,), -1.0, device=device, dtype=dtype
+        (n_boundary_each,), y_safe_min, device=device, dtype=dtype
     )
     y_right_exact = torch.full(
-        (n_boundary_each,), 1.0, device=device, dtype=dtype
+        (n_boundary_each,), y_safe_max, device=device, dtype=dtype
     )
     y_boundary = torch.cat([y_left_exact, y_right_exact], dim=0)
 
     # 边界层点
-    y_left_layer = -1.0 + boundary_layer_width * torch.rand(
+    y_left_layer = y_safe_min + boundary_layer_width * torch.rand(
         n_boundary_layer_each, device=device, dtype=dtype
     )
-    y_right_layer = 1.0 - boundary_layer_width * torch.rand(
+    y_right_layer = y_safe_max - boundary_layer_width * torch.rand(
         n_boundary_layer_each, device=device, dtype=dtype
     )
     y_boundary_layer = torch.cat([y_left_layer, y_right_layer], dim=0)
 
     # 内点
-    y_interior = -1.0 + 2.0 * torch.rand(n_interior, device=device, dtype=dtype)
+    y_interior = y_safe_min + (y_safe_max - y_safe_min) * torch.rand(
+        n_interior, device=device, dtype=dtype
+    )
 
     return y_interior, y_boundary, y_boundary_layer
 
@@ -128,13 +142,20 @@ def sample_anchor_points(n_anchors, y_min=-0.8, y_max=0.8, device='cpu', dtype=t
 
     Args:
         n_anchors: 锚点数量
-        y_min, y_max: y坐标范围（避开±1边界）
+        y_min, y_max: y坐标范围（必须在(-0.99, 0.99)内避开边界）
 
     Returns:
         y_anchors: (n_anchors,)
     """
+    # 确保范围安全
+    y_min = max(y_min, -0.98)
+    y_max = min(y_max, 0.98)
+
     y = y_min + (y_max - y_min) * torch.rand(n_anchors, device=device, dtype=dtype)
     return y
+
+
+
 
 
 def sample_parameters_sobol(
@@ -165,14 +186,20 @@ def build_candidate_pool_1d(
     dtype=torch.float64,
     seed=2026,
 ):
+    """
+    构建候选点池，范围严格在(-0.99, 0.99)内
+    """
     if method == "sobol":
         engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True, seed=seed)
-        y = 2.0 * engine.draw(n_points).squeeze(-1).to(device=device, dtype=dtype) - 1.0
+        # 映射到(-0.99, 0.99)而不是(-1, 1)
+        y = 1.98 * engine.draw(n_points).squeeze(-1).to(device=device, dtype=dtype) - 0.99
     elif method == "chebyshev":
         k = torch.arange(n_points, device=device, dtype=dtype)
-        y = torch.cos(torch.pi * (2.0 * k + 1.0) / (2.0 * n_points))
+        y_raw = torch.cos(torch.pi * (2.0 * k + 1.0) / (2.0 * n_points))
+        # 缩放到(-0.99, 0.99)
+        y = 0.99 * y_raw
     else:
-        y = -1.0 + 2.0 * torch.rand(n_points, device=device, dtype=dtype)
+        y = -0.99 + 1.98 * torch.rand(n_points, device=device, dtype=dtype)
 
     return torch.sort(y).values
 
@@ -217,3 +244,119 @@ def get_sentinel_anchor_points(device='cpu', dtype=torch.float64):
         device=device,
         dtype=dtype,
     )
+
+
+def sample_points_uniform_grid(
+    n_points,
+    y_min=-0.99,
+    y_max=0.99,
+    device='cpu',
+    dtype=torch.float64,
+    shuffle=False,
+):
+    if n_points <= 1:
+        y = torch.tensor([(y_min + y_max) * 0.5], device=device, dtype=dtype)
+    else:
+        y = torch.linspace(y_min, y_max, n_points, device=device, dtype=dtype)
+    if shuffle:
+        y = y[torch.randperm(y.numel(), device=device)]
+    return y
+
+
+def sample_points_random_uniform(
+    n_points,
+    y_min=-0.99,
+    y_max=0.99,
+    device='cpu',
+    dtype=torch.float64,
+):
+    return y_min + (y_max - y_min) * torch.rand(n_points, device=device, dtype=dtype)
+
+
+def sample_points_sobol_random(
+    n_points,
+    y_min=-0.99,
+    y_max=0.99,
+    device='cpu',
+    dtype=torch.float64,
+    seed=2026,
+):
+    engine = torch.quasirandom.SobolEngine(dimension=1, scramble=True, seed=seed)
+    y = engine.draw(n_points).squeeze(-1).to(device=device, dtype=dtype)
+    return y_min + (y_max - y_min) * y
+
+
+def sample_points_chebyshev_grid(
+    n_points,
+    y_min=-0.99,
+    y_max=0.99,
+    device='cpu',
+    dtype=torch.float64,
+):
+    k = torch.arange(n_points, device=device, dtype=dtype)
+    y = torch.cos(torch.pi * (2.0 * k + 1.0) / (2.0 * n_points))
+    y = 0.5 * (y_max - y_min) * y + 0.5 * (y_max + y_min)
+    return torch.sort(y).values
+
+
+def sample_interior_points(
+    strategy,
+    n_points,
+    device='cpu',
+    dtype=torch.float64,
+    article_cfg=None,
+    boundary_layer_width=0.1,
+):
+    article_cfg = article_cfg or {}
+    y_min = article_cfg.get("y_min", -0.99)
+    y_max = article_cfg.get("y_max", 0.99)
+    shuffle = article_cfg.get("shuffle", False)
+
+    if strategy == "article_uniform":
+        return sample_points_uniform_grid(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+            shuffle=shuffle,
+        )
+
+    if strategy == "random_uniform":
+        return sample_points_random_uniform(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+    if strategy == "sobol_random":
+        return sample_points_sobol_random(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+    if strategy == "chebyshev":
+        return sample_points_chebyshev_grid(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+    if strategy == "luna":
+        y_interior, _ = sample_points_luna_style(
+            n_interior=n_points,
+            n_boundary=0,
+            boundary_layer_width=boundary_layer_width,
+            device=device,
+            dtype=dtype,
+        )
+        return y_interior
+
+    raise ValueError(f"Unknown interior sampling strategy: {strategy}")

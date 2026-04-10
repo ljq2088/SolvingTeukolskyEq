@@ -6,15 +6,20 @@ import torch
 import yaml
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-
+import numpy as np
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+
+from pathlib import Path
+
 from config.config_loader import load_pinn_full_config
 from model.pinn_mlp import PINN_MLP
-from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss
+from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss,compute_variance_regularizer
 from physical_ansatz.residual import AuxCache, get_lambda_from_cfg, get_ramp_and_p_from_cfg
+from physical_ansatz.transform_y import g_factor, transform_coeffs_x_to_y,h_factor
 from physical_ansatz.mapping import r_plus, r_from_x
+from physical_ansatz.prefactor import Leaver_prefactors, prefactor_Q, U_prefactor
 from dataset.sampling import sample_points_luna_style, sample_parameters
 from dataset.sampling import (
     sample_points_luna_style,
@@ -23,6 +28,7 @@ from dataset.sampling import (
     build_candidate_pool_1d,
     sample_points_rard,
     get_sentinel_anchor_points,
+    sample_interior_points,
 )
 
 from dataset.mathematica_anchor import get_mathematica_Rin
@@ -43,6 +49,7 @@ class PINNTrainer:
         self.physics_cfg = self.full_cfg["physics"]
         self.train_cfg = self.full_cfg["train"]
 
+
         # 训练配置分组  
         param_cfg = self.train_cfg.get("param_sampling", {})
         model_cfg = self.train_cfg.get("model", {})
@@ -53,16 +60,90 @@ class PINNTrainer:
         val_cfg = self.train_cfg.get("validation", {})
         early_cfg = self.train_cfg.get("early_stop", {})
         runtime_cfg = self.train_cfg.get("runtime", {})
+        flat_var_cfg = self.train_cfg.get("flat_variance", {})
 
+        sched_cfg = self.train_cfg.get("scheduler", {})
+        self.scheduler_enabled = sched_cfg.get("enabled", False)
+        self.scheduler_type = sched_cfg.get("type", "none")
+        self.lr_warmup_steps = sched_cfg.get("warmup_steps", 0)
+        self.lr_decay_start = sched_cfg.get("decay_start", 0)
+        self.lr_decay_rate = sched_cfg.get("decay_rate", 1.0)
+        self.min_lr = sched_cfg.get("min_lr", 1.0e-4)
+        self.base_lr = train_cfg.get("lr", 1.0e-3)
+        #平坦惩罚
+        self.flat_var_enabled = flat_var_cfg.get("enabled", False)
+        self.flat_var_target = flat_var_cfg.get("target", "Rprime")
+        self.flat_var_kappa = flat_var_cfg.get("kappa", 20.0)
+        self.flat_var_eps = flat_var_cfg.get("eps", 1.0e-12)
+        self.flat_var_weight = flat_var_cfg.get("weight", 1.0e-3)
+        self.flat_var_steps = flat_var_cfg.get("steps", 0)
+        self.flat_var_decay_enabled = flat_var_cfg.get("decay_enabled", False)
+        self.flat_var_warmup_steps = flat_var_cfg.get("warmup_steps", 0)
+        self.flat_var_decay_start = flat_var_cfg.get("decay_start", 0)
+        self.flat_var_decay_rate = flat_var_cfg.get("decay_rate", 1.0)
+        self.flat_var_min_weight = flat_var_cfg.get("min_weight", 0.0)
+        self.flat_var_base_weight = self.flat_var_weight
+
+
+        self.flat_var_use_dedicated_points = flat_var_cfg.get("use_dedicated_points", True)
+        self.flat_var_strategy = flat_var_cfg.get("strategy", "article_uniform")
+        self.flat_var_n_points = flat_var_cfg.get("n_points", 64)
+        # loss 权重
+        self.weight_interior = loss_cfg.get("weight_interior", 1.0)
+        self.weight_boundary = loss_cfg.get("weight_boundary", 10.0)
+        self.weight_anchor = loss_cfg.get("weight_anchor", 1.0)
+        # 采样配置
+        self.n_interior = sampling_cfg.get("n_interior", 100)
+        self.n_boundary = sampling_cfg.get("n_boundary", 20)
+        self.batch_size = sampling_cfg.get("batch_size", 4)
+        self.use_batch_gd = sampling_cfg.get("use_batch_gd", False)
+        self.n_param_samples = sampling_cfg.get("n_param_samples", 20)
+        self.n_epochs = sampling_cfg.get("n_epochs", 100)
 
         adaptive_cfg = self.train_cfg.get("adaptive_sampling", {})
         anchor_cfg = self.train_cfg.get("anchors", {})
         loss_balance_cfg = self.train_cfg.get("loss_balance", {})
         curriculum_cfg = self.train_cfg.get("curriculum", {})
 
+
+        collocation_curr_cfg = self.train_cfg.get("collocation_curriculum", {})
+        anti_trivial_cfg = self.train_cfg.get("anti_trivial", {})
+        restart_cfg = self.train_cfg.get("restart", {})
+        dynamic_balance_cfg = self.train_cfg.get("dynamic_balance", {})
+
         self.param_sampler = sampling_cfg.get("param_sampler", "sobol")
 
-        
+        self.interior_strategy = sampling_cfg.get("interior_strategy", "rard")
+        self.boundary_strategy = sampling_cfg.get("boundary_strategy", "none")
+        self.article_uniform_cfg = sampling_cfg.get("article_uniform", {})
+
+        self.collocation_curriculum_enabled = collocation_curr_cfg.get("enabled", False)
+        self.collocation_curriculum_stages = collocation_curr_cfg.get("stages", [])
+        self.curr_interior_strategy = self.interior_strategy
+        self.curr_n_interior = self.n_interior
+
+        self.anti_trivial_enabled = anti_trivial_cfg.get("enabled", False)
+        self.seed_steps = anti_trivial_cfg.get("seed_steps", 0)
+        self.seed_every = anti_trivial_cfg.get("seed_every", 10)
+        self.n_seed = anti_trivial_cfg.get("n_seed", 8)
+        self.seed_strategy = anti_trivial_cfg.get("seed_strategy", "article_uniform")
+        self.weight_seed = anti_trivial_cfg.get("weight_seed", 0.1)
+        self.seed_relative = anti_trivial_cfg.get("relative", False)
+
+        self.restart_enabled = restart_cfg.get("enabled", False)
+        self.stall_window = restart_cfg.get("stall_window", 300)
+        self.stall_tol = restart_cfg.get("stall_tol", 1e-4)
+        self.lr_decay_on_restart = restart_cfg.get("lr_decay_on_restart", 0.5)
+        self._stall_best = float("inf")
+        self._stall_count = 0
+
+        self.dynamic_balance_enabled = dynamic_balance_cfg.get("enabled", False)
+        self.dynamic_balance_every = dynamic_balance_cfg.get("every_steps", 20)
+        self.w_anchor_min = dynamic_balance_cfg.get("w_anchor_min", 1e-3)
+        self.w_anchor_max = dynamic_balance_cfg.get("w_anchor_max", 10.0)
+        self.dynamic_anchor_weight = self.weight_anchor
+
+
 
         # dtype
         dtype_name = runtime_cfg.get("dtype", "float64")
@@ -74,24 +155,29 @@ class PINNTrainer:
         self.omega_center = param_cfg.get("omega_center", 0.1)
         self.omega_range = param_cfg.get("omega_range", 0.01)
 
-        # 采样配置
-        self.n_interior = sampling_cfg.get("n_interior", 100)
-        self.n_boundary = sampling_cfg.get("n_boundary", 20)
-        self.batch_size = sampling_cfg.get("batch_size", 4)
-        self.use_batch_gd = sampling_cfg.get("use_batch_gd", False)
-        self.n_param_samples = sampling_cfg.get("n_param_samples", 20)
-        self.n_epochs = sampling_cfg.get("n_epochs", 100)
+
 
         # 训练配置
         self.n_steps = train_cfg.get("n_steps", 50000)
         self.lr = train_cfg.get("lr", 1e-3)
         self.anchor_freq = train_cfg.get("anchor_freq", 100)
+        self.anchor_start_step = train_cfg.get("anchor_start_step", 0)
         self.n_anchors = train_cfg.get("n_anchors", 10)
+        self.viz_enabled = train_cfg.get("viz_enabled", False)
+        self.viz_every_steps = train_cfg.get("viz_every_steps", 500)
+        self.viz_auto_close_sec = train_cfg.get("viz_auto_close_sec", 3.0)
+        self.viz_num_points = train_cfg.get("viz_num_points", 400)
+        self.viz_r_min = train_cfg.get("viz_r_min", 2.0)
+        self.viz_r_max = train_cfg.get("viz_r_max", 100.0)
+        self.viz_save_enabled = train_cfg.get("viz_save_enabled", True)
+        self.viz_subdir = train_cfg.get("viz_subdir", "viz_compare")
+        self.viz_show_enabled = train_cfg.get("viz_show_enabled", True)
+        # 如果 trainer.train(save_dir=...) 之后会再覆盖主输出目录，这里先给默认值
+        self.output_dir = Path(getattr(self, "output_dir", "outputs/pinn"))
+        self.viz_dir = self.output_dir / self.viz_subdir
+        self.viz_dir.mkdir(parents=True, exist_ok=True)
 
-        # loss 权重
-        self.weight_interior = loss_cfg.get("weight_interior", 1.0)
-        self.weight_boundary = loss_cfg.get("weight_boundary", 10.0)
-        self.weight_anchor = loss_cfg.get("weight_anchor", 1.0)
+
 
         # 早停
         self.early_stop_patience = early_cfg.get("patience", 500)
@@ -313,7 +399,33 @@ class PINNTrainer:
             raise ValueError(f"Unknown param_sampling_mode: {self.param_sampling_mode}")
 
         return batches
-    
+
+    def _current_lr(self, global_step: int) -> float:
+        if not self.scheduler_enabled:
+            return self.base_lr
+
+        if global_step < self.lr_decay_start:
+            return self.base_lr
+
+        lr = self.base_lr * (self.lr_decay_rate ** (global_step - self.lr_decay_start))
+        return max(self.min_lr, lr)
+
+
+    def _current_flat_var_weight(self, global_step: int) -> float:
+        if not self.flat_var_enabled:
+            return 0.0
+
+        if not self.flat_var_decay_enabled:
+            return self.flat_var_base_weight
+
+        if global_step < self.flat_var_decay_start:
+            return self.flat_var_base_weight
+
+        w = self.flat_var_base_weight * (
+            self.flat_var_decay_rate ** (global_step - self.flat_var_decay_start)
+        )
+        return max(self.flat_var_min_weight, w)
+        
     def _apply_curriculum(self, epoch):
         if not self.curriculum_enabled or not self.curriculum_stages:
             return False
@@ -338,7 +450,64 @@ class PINNTrainer:
                     changed = True
                 break
         return changed
+    def _apply_collocation_curriculum(self, epoch):
+        if not self.collocation_curriculum_enabled or not self.collocation_curriculum_stages:
+            return False
 
+        acc = 0
+        changed = False
+        for stage in self.collocation_curriculum_stages:
+            acc += int(stage["epochs"])
+            if epoch < acc:
+                new_strategy = stage.get("interior_strategy", self.curr_interior_strategy)
+                new_n_interior = int(stage.get("n_interior", self.curr_n_interior))
+                if new_strategy != self.curr_interior_strategy or new_n_interior != self.curr_n_interior:
+                    self.curr_interior_strategy = new_strategy
+                    self.curr_n_interior = new_n_interior
+                    changed = True
+                break
+        return changed
+
+    def _maybe_restart_on_stall(self, current_loss):
+        if not self.restart_enabled:
+            return
+
+        if current_loss < self._stall_best - self.stall_tol:
+            self._stall_best = current_loss
+            self._stall_count = 0
+            return
+
+        self._stall_count += 1
+        if self._stall_count < self.stall_window:
+            return
+
+        # 重置候选点池
+        self._candidate_y = None
+
+        # 清空 Adam 动量
+        self.optimizer.state.clear()
+
+        # 降低学习率
+        for group in self.optimizer.param_groups:
+            group["lr"] *= self.lr_decay_on_restart
+
+        print(
+            f"[restart] collocation resampled, optimizer state cleared, "
+            f"new lr={self.optimizer.param_groups[0]['lr']:.3e}"
+        )
+
+        self._stall_count = 0
+        self._stall_best = current_loss    
+
+    def _sample_flat_var_points(self):
+        y_var = sample_interior_points(
+            strategy=self.flat_var_strategy,
+            n_points=self.flat_var_n_points,
+            device=self.device,
+            dtype=self.dtype,
+            article_cfg=self.article_uniform_cfg,
+        )
+        return y_var
 
     def _sample_param_batch(self, batch_size, skip=0):
         if self.param_sampler == "sobol":
@@ -362,15 +531,65 @@ class PINNTrainer:
             dtype=self.dtype,
         )
 
+    
+    def _sample_seed_points(self):
+        y_seed = sample_interior_points(
+            strategy=self.seed_strategy,
+            n_points=self.n_seed,
+            device=self.device,
+            dtype=self.dtype,
+            article_cfg=self.article_uniform_cfg,
+        )
+        return y_seed.clone().requires_grad_(True)
+
 
     def _sample_training_points(self, batch, global_step):
-        if not self.adaptive_sampling_enabled:
-            return sample_points_luna_style(
-                n_interior=self.n_interior,
-                n_boundary=self.n_boundary,
+        strategy = self.curr_interior_strategy
+
+        # 2212 / chebyshev / random / sobol / luna：都走固定或随机规则采样
+        if strategy != "rard":
+            y_interior = sample_interior_points(
+                strategy=strategy,
+                n_points=self.curr_n_interior,
                 device=self.device,
                 dtype=self.dtype,
+                article_cfg=self.article_uniform_cfg,
+            )
+
+            if self.boundary_strategy == "none" or self.n_boundary == 0:
+                y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
+            elif self.boundary_strategy == "luna_boundary":
+                _, y_boundary = sample_points_luna_style(
+                    n_interior=0,
+                    n_boundary=self.n_boundary,
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+            elif self.boundary_strategy == "exact_safe":
+                y_boundary = torch.tensor(
+                    [-0.99] * self.n_boundary + [0.99] * self.n_boundary,
+                    device=self.device,
+                    dtype=self.dtype,
+                )
+            else:
+                raise ValueError(f"Unknown boundary strategy: {self.boundary_strategy}")
+
+            return (
+                y_interior.clone().requires_grad_(True),
+                y_boundary.clone().requires_grad_(True) if y_boundary.numel() > 0 else y_boundary,
             ), None
+
+        # 你当前的 RAR-D 自适应采样
+        if not self.adaptive_sampling_enabled:
+            y_interior = sample_interior_points(
+                strategy="random_uniform",
+                n_points=self.curr_n_interior,
+                device=self.device,
+                dtype=self.dtype,
+                article_cfg=self.article_uniform_cfg,
+            )
+            y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
+            return (y_interior.clone().requires_grad_(True), y_boundary), None
 
         if self._candidate_y is None or (global_step % self.refresh_freq == 1):
             self._candidate_y = build_candidate_pool_1d(
@@ -398,11 +617,10 @@ class PINNTrainer:
         )
 
         score = probe_info["pointwise_interior"].mean(dim=0)
-
         y_interior = sample_points_rard(
             candidate_y=self._candidate_y,
             residual_score=score,
-            n_select=self.n_interior,
+            n_select=self.curr_n_interior,
             adaptive_frac=self.adaptive_frac,
         )
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
@@ -421,22 +639,55 @@ class PINNTrainer:
         return y.clone().requires_grad_(True)
 
 
-    def _combine_losses(self, loss_pde, loss_anchor=None):
+    def _combine_losses(
+        self,
+        loss_pde,
+        loss_seed=None,
+        loss_anchor=None,
+        loss_var=None,
+        anchor_weight=None,
+        var_weight=None,
+    ):
         if self.loss_balance_mode == "lbpinn":
             total = torch.exp(-self.log_sigma_interior) * loss_pde + self.log_sigma_interior
+
+            if loss_seed is not None:
+                total = total + self.weight_seed * loss_seed
+
             if loss_anchor is not None:
-                total = total + self.weight_anchor * (
+                wa = self.weight_anchor if anchor_weight is None else anchor_weight
+                total = total + wa * (
                     torch.exp(-self.log_sigma_anchor) * loss_anchor + self.log_sigma_anchor
                 )
+
+            if loss_var is not None:
+                wv = self.flat_var_weight if var_weight is None else var_weight
+                total = total + wv * loss_var
+
             return total
 
         total = self.weight_interior * loss_pde
+
+        if loss_seed is not None:
+            total = total + self.weight_seed * loss_seed
+
         if loss_anchor is not None:
-            total = total + self.weight_anchor * loss_anchor
+            wa = self.weight_anchor if anchor_weight is None else anchor_weight
+            total = total + wa * loss_anchor
+
+        if loss_var is not None:
+            wv = self.flat_var_weight if var_weight is None else var_weight
+            total = total + wv * loss_var
+
         return total
 
 
     def _run_one_training_batch(self, batch, global_step):
+        current_lr = self._current_lr(global_step)
+        for group in self.optimizer.param_groups:
+            group["lr"] = current_lr
+
+        # info["lr"] = float(current_lr)
         a_batch = batch["a_batch"]
         omega_batch = batch["omega_batch"]
         lambda_batch = batch["lambda_batch"]
@@ -464,10 +715,95 @@ class PINNTrainer:
             normalize_residual=self.normalize_residual,
         )
 
+
+        loss_var = None
+        info["loss_var"] = 0.0
+        info["sigma_var"] = 0.0
+
+        use_flat_var = (
+            self.flat_var_enabled
+            and global_step <= self.flat_var_steps
+        )
+
+        if use_flat_var:
+            if self.flat_var_use_dedicated_points:
+                y_var = self._sample_flat_var_points()
+            else:
+                y_var = y_interior
+
+            loss_var, var_info = compute_variance_regularizer(
+                model=self.model,
+                cfg=self.physics_cfg,
+                a_batch=a_batch,
+                omega_batch=omega_batch,
+                y_points=y_var,
+                target=self.flat_var_target,
+                kappa=self.flat_var_kappa,
+                eps=self.flat_var_eps,
+            )
+
+            info["loss_var"] = float(loss_var.item())
+            info["sigma_var"] = float(var_info["sigma_var"])
+
+        var_weight = self._current_flat_var_weight(global_step)
+        info["weight_var"] = float(var_weight)
+
+        loss_seed = None
+        info["loss_seed"] = 0.0
+
+        use_seed = (
+            self.anti_trivial_enabled
+            and global_step <= self.seed_steps
+            and global_step % self.seed_every == 0
+        )
+
+        if use_seed:
+            y_seed = self._sample_seed_points()
+
+            M = float(self.physics_cfg["problem"].get("M", 1.0))
+            l = int(self.physics_cfg["problem"].get("l", 2))
+            m = int(self.physics_cfg["problem"].get("m", 2))
+            s = int(self.physics_cfg["problem"].get("s", -2))
+
+            x_seed = (y_seed + 1.0) / 2.0
+            R_mma_list = []
+
+            for i in range(a_batch.shape[0]):
+                rp = r_plus(a_batch[i], M)
+                r_seed = r_from_x(x_seed, rp).detach().cpu().numpy()
+
+                R_mma = get_mathematica_Rin(
+                    float(a_batch[i]),
+                    float(omega_batch[i]),
+                    l, m, s,
+                    r_seed,
+                )
+                R_mma_list.append(
+                    torch.tensor(R_mma, dtype=torch.complex128, device=self.device)
+                )
+
+            R_mma_seed = torch.stack(R_mma_list, dim=0)
+
+            loss_seed = compute_data_anchor_loss(
+                self.model,
+                self.physics_cfg,
+                a_batch,
+                omega_batch,
+                y_seed,
+                R_mma_seed,
+                relative=self.seed_relative,
+            )
+            info["loss_seed"] = float(loss_seed.item())
+
         loss_anchor = None
         info["loss_anchor"] = 0.0
 
-        if global_step % self.anchor_freq == 0:
+        use_anchor = (
+            global_step >= self.anchor_start_step
+            and global_step % self.anchor_freq == 0
+        )
+
+        if use_anchor:
             y_anchors = self._sample_anchor_points(residual_score)
 
             M = float(self.physics_cfg["problem"].get("M", 1.0))
@@ -504,11 +840,35 @@ class PINNTrainer:
             )
             info["loss_anchor"] = float(loss_anchor.item())
 
-        total_loss = self._combine_losses(loss_pde, loss_anchor)
+        anchor_weight = self.weight_anchor
+        if loss_anchor is not None:
+            anchor_weight = self._update_dynamic_anchor_weight(
+                loss_pde, loss_anchor, global_step
+            )
 
+        total_loss = self._combine_losses(
+            loss_pde,
+            loss_seed=loss_seed,
+            loss_anchor=loss_anchor,
+            loss_var=loss_var,
+            anchor_weight=anchor_weight,
+            var_weight=var_weight
+
+        )
+        info["weight_anchor_dynamic"] = float(anchor_weight)
+        
+        self.optimizer.zero_grad()
         total_loss.backward()
+        grad_sq = 0.0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                grad_sq += p.grad.detach().pow(2).sum().item()
+        grad_norm = grad_sq ** 0.5
+
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
         self.optimizer.step()
+
+        info["grad_norm"] = grad_norm
 
         info["total_loss"] = float(total_loss.item())
         if self.loss_balance_mode == "lbpinn":
@@ -516,6 +876,209 @@ class PINNTrainer:
             info["w_anchor"] = float(torch.exp(-self.log_sigma_anchor).item())
 
         return total_loss, info
+
+
+
+
+    def _channels_to_complex(self, out: torch.Tensor) -> torch.Tensor:
+        """
+        将模型输出转成复数。
+        约定:
+        - 若最后一维是 2，则 out[...,0] 是实部，out[...,1] 是虚部
+        - 若模型本来就返回 complex tensor，则直接返回
+        """
+        if torch.is_complex(out):
+            return out
+        if out.shape[-1] != 2:
+            raise ValueError(
+                f"Expected model output last dim = 2 for [Re, Im], got shape {tuple(out.shape)}"
+            )
+        return out[..., 0] + 1j * out[..., 1]
+
+
+    def _show_prediction_vs_mma(
+        self,
+        a_val: torch.Tensor,
+        omega_val: torch.Tensor,
+        lambda_val: torch.Tensor,
+        ramp_val: torch.Tensor,
+        p_val: int,
+        global_step: int,
+    ):
+        """
+        在 r ∈ [viz_r_min, viz_r_max] 上画:
+            R_pred(r) = U(r) * ( g(x(r)) * f(y(r)) + 1 )
+        并与 Mathematica 的 R_in 对比。
+        显示若干秒后自动关闭窗口。
+        """
+        if not self.viz_enabled:
+            return
+
+        # ---- 统一 dtype / device，跟随模型 ----
+        model_param = next(self.model.parameters())
+        dtype = model_param.dtype
+        device = model_param.device
+
+        # ---- 物理参数 ----
+        a_scalar = float(a_val.detach().cpu().item())
+        omega_scalar = float(omega_val.detach().cpu().item())
+
+        problem_cfg = self.physics_cfg["problem"]
+        M = float(problem_cfg.get("M", 1.0))
+        l = int(problem_cfg.get("l", 2))
+        m = int(problem_cfg.get("m", 2))
+        s = int(problem_cfg.get("s", -2))
+
+        a_t = torch.tensor(a_scalar, device=device, dtype=dtype)
+        omega_t = torch.tensor(omega_scalar, device=device, dtype=dtype)
+
+        if isinstance(ramp_val, torch.Tensor):
+            ramp_t = ramp_val.detach().to(device=device, dtype=dtype)
+        else:
+            ramp_t = torch.tensor(float(ramp_val), device=device, dtype=dtype)
+
+        rp = r_plus(a_t, M)
+
+        # ---- r 网格 ----
+        r_min = max(self.viz_r_min, float(rp.detach().cpu().item()) + 1.0e-4)
+        r_max = self.viz_r_max
+
+        if r_min >= r_max:
+            print(f"[viz] skip: r_min={r_min:.6f} >= r_max={r_max:.6f}")
+            return
+
+        r_grid = torch.linspace(
+            r_min, r_max, self.viz_num_points, device=device, dtype=dtype
+        )
+
+        # x = r_+ / r, y = 2x - 1
+        x_grid = rp / r_grid
+        y_grid = 2.0 * x_grid - 1.0
+
+         # ---- Mathematica 参考值 ----
+        r_np = r_grid.detach().cpu().numpy()
+        try:
+            R_mma = get_mathematica_Rin(
+                a_scalar,
+                omega_scalar,
+                l,
+                m,
+                s,
+                r_np,
+            )
+            R_mma_t = torch.as_tensor(R_mma, device=device, dtype=torch.complex128)
+        except Exception as e:
+            print(f"[viz] Mathematica evaluation failed at step {global_step}: {e}")
+            self.model.train()
+            return
+
+        # ---- 前向 ----
+        self.model.eval()
+        with torch.no_grad():
+            # 你的 PINN_MLP.forward(a, omega, y) 返回复数 f_complex
+            f_pred = self.model(a_t.unsqueeze(0), omega_t.unsqueeze(0), y_grid).squeeze(0)
+
+            # g(x) = exp(x-1)-1
+            g_val, _, _ = g_factor(x_grid)
+
+            # R' = g(x) * f(y) + 1
+            h=h_factor(a_t, omega_t, m=m, M=M, s=s)
+            Rprime_pred = g_val * f_pred + h
+
+            # U = Leaver_prefactor * prefactor_Q
+            P, P_r, P_rr = Leaver_prefactors(
+                r_grid, a_t, omega_t, m=m, M=M, s=s
+            )
+            Q, Q_r, Q_rr = prefactor_Q(
+                r_grid,
+                a_t,
+                omega_t,
+                p=int(p_val),
+                R_amp=ramp_t,
+                M=M,
+                s=s,
+            )
+
+            U, _, _ = U_prefactor(P, P_r, P_rr, Q, Q_r, Q_rr)
+
+            R_pred = U * Rprime_pred
+            f_from_mma=(R_mma_t/U-h)/g_val
+            
+
+       
+
+        R_pred_np = R_pred.detach().cpu().numpy()
+        R_mma_np = np.asarray(R_mma)
+        f_pred_np = f_pred.detach().cpu().numpy()
+        f_from_mma_np=f_from_mma.detach().cpu().numpy()
+        # ---- 画图 ----
+        plt.ion()
+        fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=True)
+        axes = axes.ravel()
+
+        axes[0].plot(r_np, np.real(R_pred_np), label="Pred Re(R)", lw=1.8)
+        axes[0].plot(r_np, np.real(R_mma_np), "--", label="MMA Re(R)", lw=1.2)
+        axes[0].set_ylabel("Re(R)")
+        axes[0].legend()
+        axes[0].grid(alpha=0.3)
+
+        axes[1].plot(r_np, np.imag(R_pred_np), label="Pred Im(R)", lw=1.8)
+        axes[1].plot(r_np, np.imag(R_mma_np), "--", label="MMA Im(R)", lw=1.2)
+        axes[1].set_ylabel("Im(R)")
+        axes[1].legend()
+        axes[1].grid(alpha=0.3)
+
+        axes[2].plot(r_np, np.abs(R_pred_np), label="Pred |R|", lw=1.8)
+        axes[2].plot(r_np, np.abs(R_mma_np), "--", label="MMA |R|", lw=1.2)
+        axes[2].set_ylabel("|R|")
+        axes[2].set_xlabel("r")
+        axes[2].legend()
+        axes[2].grid(alpha=0.3)
+
+        axes[3].plot(r_np, np.real(f_pred_np), label="Pred Re(f)", lw=1.8)
+        axes[3].plot(r_np, np.real(f_from_mma_np), "--", label="MMA Re(f)", lw=1.2)
+        axes[3].set_ylabel("Re(f)")
+        axes[3].legend()
+        axes[3].grid(alpha=0.3)
+
+        axes[4].plot(r_np, np.imag(f_pred_np), label="Pred Im(f)", lw=1.8)
+        axes[4].plot(r_np, np.imag(f_from_mma_np), "--", label="MMA Im(f)", lw=1.2)
+        axes[4].set_ylabel("Im(R)")
+        axes[4].legend()
+        axes[4].grid(alpha=0.3)
+
+        axes[5].plot(r_np, np.abs(f_pred_np), label="Pred |f|", lw=1.8)
+        axes[5].plot(r_np, np.abs(f_from_mma_np), "--", label="MMA |f|", lw=1.2)
+        axes[5].set_ylabel("|f|")
+        axes[5].set_xlabel("r")
+        axes[5].legend()
+        axes[5].grid(alpha=0.3)
+
+        fig.suptitle(
+            f"step={global_step}, a={a_scalar:.6f}, omega={omega_scalar:.6f}",
+            fontsize=12
+        )
+        fig.tight_layout()
+
+        # ---- 保存图片到 outputs/pinn/viz_compare/ ----
+        if self.viz_save_enabled:
+            filename = (
+                f"step_{global_step:06d}"
+                f"_a_{a_scalar:.6f}"
+                f"_omega_{omega_scalar:.6f}.png"
+            )
+            save_path = self.viz_dir / filename
+            fig.savefig(save_path, dpi=160, bbox_inches="tight")
+            print(f"[viz] saved figure to {save_path}")
+
+        # ---- 非阻塞显示 + 自动关闭 ----
+        if self.viz_show_enabled:
+            plt.show(block=False)
+            plt.pause(self.viz_auto_close_sec)
+
+        plt.close(fig)
+        plt.close("all")
+        self.model.train()
 
 
     def validate(self, a_val=None, omega_val=None):
@@ -607,19 +1170,19 @@ class PINNTrainer:
 
         # 计算PDE loss
         loss, info = pinn_residual_loss(
-    model=self.model,
-    cfg=self.physics_cfg,
-    a_batch=a_batch,
-    omega_batch=omega_batch,
-    lambda_batch=lambda_batch,
-    ramp_batch=ramp_batch,
-    p=p,
-    y_interior=y_interior,
-    y_boundary=y_boundary,
-    weight_interior=self.weight_interior,
-    weight_boundary=self.weight_boundary,
-)
-
+            model=self.model,
+            cfg=self.physics_cfg,
+            a_batch=a_batch,
+            omega_batch=omega_batch,
+            lambda_batch=lambda_batch,
+            ramp_batch=ramp_batch,
+            p=p,
+            y_interior=y_interior,
+            y_boundary=y_boundary,
+            weight_interior=self.weight_interior,
+            weight_boundary=self.weight_boundary,
+        )
+        self._maybe_restart_on_stall(info["total_loss"])
         total_loss = loss
         info['loss_anchor'] = 0.0
 
@@ -744,7 +1307,11 @@ class PINNTrainer:
 
     def train(self, save_dir='outputs/pinn'):
         os.makedirs(save_dir, exist_ok=True)
+        self.output_dir = Path(save_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        self.viz_dir = self.output_dir / self.viz_subdir
+        self.viz_dir.mkdir(parents=True, exist_ok=True)
         best_val_loss = float('inf')
         no_improve_count = 0
         global_step = 0
@@ -782,6 +1349,13 @@ class PINNTrainer:
         with tqdm(total=total_steps, desc="Training", dynamic_ncols=True) as pbar:
             for epoch in range(self.n_epochs):
                 stage_changed = self._apply_curriculum(epoch)
+                colloc_changed = self._apply_collocation_curriculum(epoch)
+                if colloc_changed:
+                    print(
+                        f"[info] collocation curriculum switched: "
+                        f"strategy={self.curr_interior_strategy}, "
+                        f"n_interior={self.curr_n_interior}"
+                    )
                 if stage_changed and self.param_sampling_mode == "fixed_pool":
                     fixed_pool = self._build_fixed_param_pool()
                     print(
@@ -801,7 +1375,26 @@ class PINNTrainer:
 
                     self.loss_history.append(info["total_loss"])
                     self.step_history.append(global_step)
+                    
+                    # ---- 周期性在线可视化 ----
+                    if self.viz_enabled and global_step > 0 and global_step % self.viz_every_steps == 0:
+                        try:
+                            a_batch = batch["a_batch"]
+                            omega_batch = batch["omega_batch"]
+                            lambda_batch = batch["lambda_batch"]
+                            ramp_batch = batch["ramp_batch"]
+                            p = batch["p"]
 
+                            self._show_prediction_vs_mma(
+                                a_batch[0],
+                                omega_batch[0],
+                                lambda_batch[0],
+                                ramp_batch[0],
+                                p,
+                                global_step,
+                            )
+                        except Exception as e:
+                            print(f"[viz] failed at step {global_step}: {e}")
                     # 更新进度条
                     pbar.update(1)
                     pbar.set_postfix({
@@ -809,6 +1402,9 @@ class PINNTrainer:
                         "int": f"{info.get('loss_interior', 0.0):.3e}",
                         "bd": f"{info.get('loss_boundary', 0.0):.3e}",
                         "anchor": f"{info.get('loss_anchor', 0.0):.3e}",
+                        "grad": f"{info.get('grad_norm', 0.0):.3e}",
+                        "var": f"{info.get('loss_var', 0.0):.3e}",
+                        "sig": f"{info.get('sigma_var', 0.0):.3e}",
                     })
 
                     # 验证
@@ -857,6 +1453,33 @@ class PINNTrainer:
         print(f"[info] final model saved to: {final_model_path}")
 
         self.plot_loss_curve(save_dir)
+
+    def _grad_norm(self, loss):
+        self.optimizer.zero_grad(set_to_none=True)
+        loss.backward(retain_graph=True)
+
+        grad_sq = 0.0
+        for p in self.model.parameters():
+            if p.grad is not None:
+                grad_sq += p.grad.detach().pow(2).sum().item()
+
+        return grad_sq ** 0.5
+
+
+    def _update_dynamic_anchor_weight(self, loss_pde, loss_anchor, global_step):
+        if not self.dynamic_balance_enabled or loss_anchor is None:
+            return self.dynamic_anchor_weight
+
+        if global_step % self.dynamic_balance_every != 0:
+            return self.dynamic_anchor_weight
+
+        g_pde = self._grad_norm(loss_pde)
+        g_anchor = self._grad_norm(loss_anchor)
+
+        ratio = g_pde / (g_anchor + 1e-12)
+        ratio = max(self.w_anchor_min, min(self.w_anchor_max, ratio))
+        self.dynamic_anchor_weight = float(ratio)
+        return self.dynamic_anchor_weight
 
     # def train_random_sampling(self, save_dir='outputs/pinn'):
     #     """随机采样训练"""

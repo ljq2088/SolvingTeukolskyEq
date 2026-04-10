@@ -43,6 +43,28 @@ def get_mathematica_Rin(a, omega, l, m, s, r_points):
 
     r_points = np.asarray(r_points, dtype=float).reshape(-1)
 
+    # 安全检查：验证参数合法性，防止Mathematica卡死
+    if len(r_points) == 0:
+        raise ValueError("r_points is empty")
+    if len(r_points) > 1000:
+        raise ValueError(f"Too many points ({len(r_points)}), max 1000 to prevent Mathematica hang")
+    if not np.all(np.isfinite(r_points)):
+        raise ValueError(f"r_points contains non-finite values: {r_points}")
+
+    # 检查物理参数合法性
+    if not (0 <= abs(a) < 1.0):
+        raise ValueError(f"Invalid spin parameter a = {a}, must be in [0, 1)")
+    if not np.isfinite(omega):
+        raise ValueError(f"Invalid omega = {omega}")
+
+    # 计算视界半径
+    M = 1.0
+    r_plus = M + np.sqrt(M**2 - a**2)
+
+    # 检查r必须 >= r_+ (允许0.1%误差)
+    if np.any(r_points < r_plus * 0.999):
+        raise ValueError(f"r_points contains values below horizon r_+ = {r_plus:.6f}: min(r) = {np.min(r_points):.6f}")
+
     # 构造成 Mathematica 列表 {r1, r2, ..., rn}
     rlist_str = ", ".join(f"{float(r):.16g}" for r in r_points)
 
@@ -93,20 +115,25 @@ def sample_anchor_points_gaussian_clusters(
 
     Returns:
         y_anchors: (n_clusters * n_points_per_cluster,)
+
+    IMPORTANT: y必须在(-0.99, 0.99)内，避免x=0或x=1
     """
     y_anchors_list = []
 
+    # 安全边界
+    y_safe_min = -0.98
+    y_safe_max = 0.98
+
     for _ in range(n_clusters):
-        # 随机选择中心点 y ∈ [-0.9, 0.9]（避开边界）
-        center = -0.9 + 1.8 * torch.rand(1, device=device, dtype=dtype)
+        # 随机选择中心点 y ∈ [-0.8, 0.8]（避开边界）
+        center = -0.8 + 1.6 * torch.rand(1, device=device, dtype=dtype)
 
         # 在中心周围高斯采样
         offsets = sigma * torch.randn(n_points_per_cluster, device=device, dtype=dtype)
         cluster_points = center + offsets
 
-        # 截断到 [-1, 1]
-        # cluster_points = torch.clamp(cluster_points, -1.0, 1.0)
-        cluster_points = torch.clamp(cluster_points, min=-0.99, max=0.99)
+        # 截断到安全范围
+        cluster_points = torch.clamp(cluster_points, min=y_safe_min, max=y_safe_max)
 
         y_anchors_list.append(cluster_points)
 
