@@ -297,9 +297,9 @@ def pinn_residual_loss(
     total_loss = weight_interior * loss_interior + weight_boundary * loss_boundary
 
     info = {
-        "loss_interior": float(loss_interior.item()),
-        "loss_boundary": float(loss_boundary.item()),
-        "total_loss": float(total_loss.item()),
+        "loss_interior": float(loss_interior.detach().cpu().item()),
+        "loss_boundary": float(loss_boundary.detach().cpu().item()),
+        "total_loss": float(total_loss.detach().cpu().item()),
     }
 
     if return_pointwise:
@@ -401,7 +401,8 @@ def compute_data_anchor_loss(
     Rprime_mma = R_mma_anchors / U_batch
     
     g,_,_ = g_factor(x_anchors)
-    Rprime_pred = Rprime_pred*g+1.0
+    h=h_factor(a_batch,omega_batch,m,M,s)
+    Rprime_pred = Rprime_pred*g+h.view(-1, 1)
     err2 = torch.abs(Rprime_pred - Rprime_mma) ** 2
     if relative:
         scale = torch.mean(torch.abs(Rprime_mma.detach()) ** 2, dim=1, keepdim=True)
@@ -420,6 +421,7 @@ def compute_variance_regularizer(
     target="Rprime",
     kappa=20.0,
     eps=1.0e-12,
+    m=2.0,
 ):
     """
     用于惩罚“输出几乎为常数”的伪平凡解。
@@ -438,13 +440,15 @@ def compute_variance_regularizer(
     # 模型输出: [B, N] complex
     f_pred = model(a_batch, omega_batch, y_points)
 
+    h=h_factor(a_batch,omega_batch,m)
+
     if target == "f":
         z = f_pred
 
     elif target == "Rprime":
         x_points = 0.5 * (y_points + 1.0)
         g_val, _, _ = g_factor(x_points)   # [N]
-        z = g_val.unsqueeze(0) * f_pred + 1.0
+        z = g_val.unsqueeze(0) * f_pred + h.view(-1, 1)
 
     else:
         raise ValueError(f"Unknown target for variance regularizer: {target}")
@@ -460,7 +464,7 @@ def compute_variance_regularizer(
     loss_var = 1.0 / (torch.expm1(kappa * sigma) + eps)
 
     info = {
-        "sigma_var": float(sigma.item()),
-        "loss_var": float(loss_var.item()),
+        "sigma_var": float(sigma.detach().cpu().item()),
+        "loss_var": float(loss_var.detach().cpu().item()),
     }
     return loss_var, info

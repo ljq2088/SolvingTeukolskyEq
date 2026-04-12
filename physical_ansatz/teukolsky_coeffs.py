@@ -62,7 +62,7 @@ def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, p, R
     P,P_r,P_rr= Leaver_prefactors(r, a, omega, m, M, s)
     Q,Q_r,Q_rr= prefactor_Q(r, a, omega, p, R_amp, M, s)
     U,U_r,U_rr=U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr)
-    lnU_r=torch.log(U_r)
+    
     # if caller did not precompute dx/dr, d2x/dr2, compute via formulas for x=r_plus/r
     if dx_dr is None or d2x_dr2 is None:
         # NOTE: prefer passing from mapping for consistency/caching
@@ -71,7 +71,7 @@ def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, p, R
         d2x_dr2 = d2x_dr2_from_x(x, a, M)
     #divide by U to get A2,A1,A0
     A2=Δ*(dx_dr**2)
-    A1=Δ*(2*dx_dr*lnU_r+d2x_dr2)+(s+1)*Δr*dx_dr
-    A0=V+(s+1)*Δr*lnU_r+Δ*U_rr/U
+    A1=Δ*(2*dx_dr*U_r/U+d2x_dr2)+(s+1)*Δr*dx_dr
+    A0=V+(s+1)*Δr*(U_r/U)+Δ*(U_rr/U)
     return A2, A1, A0
 

@@ -194,10 +194,12 @@ def build_candidate_pool_1d(
         # 映射到(-0.99, 0.99)而不是(-1, 1)
         y = 1.98 * engine.draw(n_points).squeeze(-1).to(device=device, dtype=dtype) - 0.99
     elif method == "chebyshev":
-        k = torch.arange(n_points, device=device, dtype=dtype)
-        y_raw = torch.cos(torch.pi * (2.0 * k + 1.0) / (2.0 * n_points))
-        # 缩放到(-0.99, 0.99)
-        y = 0.99 * y_raw
+        if n_points <= 1:
+            y = torch.tensor([0.0], device=device, dtype=dtype)
+        else:
+            k = torch.arange(n_points, device=device, dtype=dtype)
+            y_raw = torch.cos(torch.pi * k / (n_points - 1))   # Lobatto
+            y = 0.99 * y_raw
     else:
         y = -0.99 + 1.98 * torch.rand(n_points, device=device, dtype=dtype)
 
@@ -288,14 +290,36 @@ def sample_points_sobol_random(
 
 def sample_points_chebyshev_grid(
     n_points,
-    y_min=-0.99,
-    y_max=0.99,
+    y_min=-0.9999,
+    y_max=0.9999,
     device='cpu',
     dtype=torch.float64,
 ):
+    """
+    安全版 Chebyshev-Lobatto 采点。
+    特点：
+    - 在 y_min / y_max 附近更密
+    - 不触碰真正的 ±1，只在安全区间 [y_min, y_max] 内
+    - 默认返回升序点列
+    """
+    if n_points <= 0:
+        return torch.empty(0, device=device, dtype=dtype)
+
+    if n_points == 1:
+        return torch.tensor(
+            [0.5 * (y_min + y_max)],
+            device=device,
+            dtype=dtype,
+        )
+
     k = torch.arange(n_points, device=device, dtype=dtype)
-    y = torch.cos(torch.pi * (2.0 * k + 1.0) / (2.0 * n_points))
-    y = 0.5 * (y_max - y_min) * y + 0.5 * (y_max + y_min)
+    # Lobatto nodes in [-1, 1]
+    y_ref = torch.cos(torch.pi * k / (n_points - 1))
+
+    # 映射到 [y_min, y_max]
+    y = 0.5 * (y_max - y_min) * y_ref + 0.5 * (y_max + y_min)
+
+    # 升序，便于后续处理
     return torch.sort(y).values
 
 
@@ -308,8 +332,8 @@ def sample_interior_points(
     boundary_layer_width=0.1,
 ):
     article_cfg = article_cfg or {}
-    y_min = article_cfg.get("y_min", -0.99)
-    y_max = article_cfg.get("y_max", 0.99)
+    y_min = article_cfg.get("y_min", -0.9999)
+    y_max = article_cfg.get("y_max", 0.9999)
     shuffle = article_cfg.get("shuffle", False)
 
     if strategy == "article_uniform":

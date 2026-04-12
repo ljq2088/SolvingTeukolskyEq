@@ -1,58 +1,178 @@
-physics_config: config/teukolsky_radial.yaml
+include:
+  physics: config/teukolsky_radial.yaml
 
-param_sampling:
-  a_center: 0.1
-  a_range: 0.01
-  omega_center: 0.1
-  omega_range: 0.01
+parameter_space:
+  a:
+    center: 0.1
+    range: 0.00
+  omega:
+    center: 0.1
+    range: 0.00
 
 model:
-  hidden_dims: [64, 64, 64, 64]
-  activation: tanh
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
 
 sampling:
-  mode: fixed_pool
-  param_sampler: sobol
-    # 新增：内点采样策略
-  # 可选：
-  #   article_uniform   -> 2212.06103v2 的均匀网格
-  #   random_uniform    -> 全区间均匀随机
-  #   sobol_random      -> Sobol 低差异随机
-  #   chebyshev         -> Chebyshev 点
-  #   luna              -> 当前 boundary-biased 风格
-  #   rard              -> 你当前的残差自适应
-  interior_strategy: article_uniform
+  parameter_batch:
+    mode: fixed_pool
+    sampler: sobol
+    batch_size: 4
+    n_param_samples: 1
 
-  # 新增：边界点策略
-  #   none
-  #   exact_safe
-  #   luna_boundary
-  boundary_strategy: none
-  n_interior: 64
-  n_boundary: 0
-  batch_size: 4
-  n_param_samples: 32
-  n_epochs: 20000
+  collocation:
+    interior:
+      strategy: chebyshev
+      n_points: 64
 
-adaptive_sampling:
-  enabled: true
-  candidate_method: sobol
-  n_candidates: 512
-  refresh_freq: 50
-  adaptive_frac: 0.7
-  normalize_residual: false
+    boundary:
+      strategy: none
+      n_points: 0
 
-anchors:
-  mode: sentinel_plus_adaptive
-  n_adaptive: 6
-  n_random: 0
+    adaptive:
+      enabled: true
+      candidate_method: sobol
+      n_candidates: 512
+      refresh_freq: 50
+      adaptive_frac: 0.7
+      normalize_residual: false
 
-train:
-  lr: 8.0e-2
-  anchor_freq: 10
-  anchor_start_step: 2000
-  n_anchors: 8
+  anchors:
+    mode: chebyshev_plus_adaptive
+    n_base: 20
+    n_adaptive: 5
+    n_random: 0
 
+training:
+  optimizer:
+    lr: 1.0e-3
+
+  anchor:
+    freq: 1
+    start_step: 1
+    n_anchors: 20
+
+  scheduler:
+    enabled: true
+    type: exp_after_warmup
+    warmup_steps: 3000
+    decay_start: 500
+    decay_rate: 0.9999
+    min_lr: 1.0e-4
+
+  loss:
+    weight_interior: 1.0
+    weight_boundary: 0.0
+    weight_anchor: 1.0e+2
+
+  loss_balance:
+    mode: fixed
+    eps: 1.0e-12
+
+  validation:
+    val_freq: 50
+    val_n_points: 200
+    save_best_freq: 50
+
+  early_stop:
+    patience: 500
+    threshold: 1.0e-6
+
+  weight_schedule:
+    anchor:
+      enabled: true
+      steps: 50000
+      decay_enabled: true
+      warmup_steps: 0
+      decay_start: 500
+      decay_rate: 0.99999
+      min_weight: 1.0e-3
+
+    interior:
+      enabled: true
+      steps: 50000
+      growth_enabled: true
+      warmup_steps: 0
+      growth_start: 500
+      growth_rate: 1.00001
+      max_weight: 1.0
+
+  epochs: 50000
+
+curriculum:
+  parameter:
+    enabled: false
+    stages:
+      - epochs: 2000
+        a_range: 0.0
+        omega_range: 0.0
+        weight_anchor: 0.0
+      - epochs: 4000
+        a_range: 0.005
+        omega_range: 0.005
+        weight_anchor: 0.2
+      - epochs: 14000
+        a_range: 0.01
+        omega_range: 0.01
+        weight_anchor: 0.5
+
+  collocation:
+    enabled: false
+    stages:
+      - epochs: 1000
+        interior_strategy: article_uniform
+        n_interior: 32
+      - epochs: 3000
+        interior_strategy: chebyshev
+        n_interior: 64
+      - epochs: 999999
+        interior_strategy: rard
+        n_interior: 64
+
+regularization:
+  anti_trivial:
+    enabled: false
+    seed_steps: 3000
+    seed_every: 5
+    n_seed: 16
+    seed_strategy: chebyshev
+    weight_seed: 0.2
+    relative: false
+
+  dynamic_balance:
+    enabled: false
+    every_steps: 20
+    w_anchor_min: 1.0e-5
+    w_anchor_max: 10.0
+
+  flat_variance:
+    enabled: false
+    target: Rprime
+    kappa: 1.0
+    eps: 1.0e-12
+    weight: 1.0
+    decay_enabled: true
+    warmup_steps: 3000
+    decay_start: 500
+    decay_rate: 0.9999
+    min_weight: 1.0e+7
+    steps: 50000
+    use_dedicated_points: true
+    strategy: chebyshev
+    n_points: 64
+
+restart:
+  enabled: false
+  stall_window: 300
+  stall_tol: 1.0e-4
+  lr_decay_on_restart: 0.5
+
+visualization:
   viz_show_enabled: true
   viz_enabled: true
   viz_every_steps: 100
@@ -60,117 +180,8 @@ train:
   viz_num_points: 500
   viz_r_min: 2.0
   viz_r_max: 1000.0
-
   viz_save_enabled: true
   viz_subdir: "viz_compare"
 
-scheduler:
-  enabled: true
-  type: exp_after_warmup
-
-  # 学习率 warmup/decay
-  warmup_steps: 3000
-  decay_start: 3000
-  decay_rate: 0.999
-  min_lr: 1.0e-4
-
-loss:
-  weight_interior: 1.0
-  weight_boundary: 0.0
-  weight_anchor: 1.0
-
-loss_balance:
-  mode: fixed #or lbpinn
-  eps: 1.0e-12
-
-curriculum:
-  enabled: true
-  stages:
-    - epochs: 2000
-      a_range: 0.0
-      omega_range: 0.0
-      weight_anchor: 0.0
-    - epochs: 4000
-      a_range: 0.005
-      omega_range: 0.005
-      weight_anchor: 0.2
-    - epochs: 14000
-      a_range: 0.01
-      omega_range: 0.01
-      weight_anchor: 0.5
-
-# 新增：collocation curriculum（来自 curriculum collocation 思想的工程版）
-collocation_curriculum:
-  enabled: false
-  stages:
-    - epochs: 1000
-      interior_strategy: article_uniform
-      n_interior: 32
-    - epochs: 3000
-      interior_strategy: chebyshev
-      n_interior: 64
-    - epochs: 999999
-      interior_strategy: rard
-      n_interior: 64
-
-# 新增：anti-trivial seed supervision
-anti_trivial:
-  enabled: true
-  seed_steps: 3000
-  seed_every: 5
-  n_seed: 16
-  seed_strategy: article_uniform
-  weight_seed: 0.2
-  relative: false
-
-validation:
-  val_freq: 50
-  val_n_points: 200
-  save_best_freq: 50
-
-early_stop:
-  patience: 500
-  threshold: 1.0e-6
-
 runtime:
   dtype: float64
-
-# 新增：stall 时重采样/重启（对应 adaptive self-supervision + restart 的工程版）
-restart:
-  enabled: false
-  stall_window: 300
-  stall_tol: 1.0e-4
-  lr_decay_on_restart: 0.5
-
-# 新增：动态平衡 anchor（对应 gradient pathology 文献思想的工程版）
-dynamic_balance:
-  enabled: false
-  every_steps: 20
-  w_anchor_min: 1.0e-3
-  w_anchor_max: 10.0
-
-flat_variance:
-  enabled: true
-
-  # 作用对象: f / Rprime
-  target: Rprime
-
-  # loss_var = 1 / (exp(kappa * sigma) - 1 + eps)
-  kappa: 1.0
-  eps: 1.0e-12
-
-  # 权重
-  weight: 1.0e+11
-  # 方差项权重调度
-  decay_enabled: true
-  warmup_steps: 3000
-  decay_start: 3000
-  decay_rate: 0.999
-  min_weight: 1.0e+9
-  # 只在前期启用，避免后期为了抬方差制造无意义振荡
-  steps: 16000
-
-  # 是否单独采样固定点，而不是复用 PDE 点
-  use_dedicated_points: true
-  strategy: article_uniform
-  n_points: 64

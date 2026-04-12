@@ -14,7 +14,7 @@ def h_factor( a: torch.Tensor, omega: torch.Tensor, m: int, M: float = 1.0, s: i
     """
     常数项 h，确保边界条件满足 B^trans=1
 
-    h = exp(i(ω+k)r_+)*2^(-2ik)*(r_+-r_-)^(-1+2i(ω+k))
+    h = 1/(exp(i(ω+k)r_+)*2^(-2ik)*(r_+-r_-)^(-1+2i(ω+k)))
 
     其中 k = ω - m*Ω_H，Ω_H = a/(2Mr_+) 是黑洞的角速度
     """
@@ -23,7 +23,7 @@ def h_factor( a: torch.Tensor, omega: torch.Tensor, m: int, M: float = 1.0, s: i
     Ω_H = a / (2.0 * M * rp)
     k = omega - m * Ω_H
     i = 1j
-    return torch.exp(i*(omega+k)*rp) * (2.0**(-2.0*i*k)) * ((rp - rm)**(-1.0 + 2.0*i*(omega+k)))
+    return torch.exp(-i*(omega+k)*rp) * (2.0**(2.0*i*k)) * ((rp - rm)**(1.0 - 2.0*i*(omega+k)))
 
 def g_factor(x: torch.Tensor):
     g = torch.exp(x - 1.0) - 1.0

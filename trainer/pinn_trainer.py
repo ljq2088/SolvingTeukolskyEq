@@ -29,6 +29,7 @@ from dataset.sampling import (
     sample_points_rard,
     get_sentinel_anchor_points,
     sample_interior_points,
+    sample_points_chebyshev_grid,
 )
 
 from dataset.mathematica_anchor import get_mathematica_Rin
@@ -37,195 +38,305 @@ from dataset.mathematica_anchor import get_mathematica_Rin
 
 
 class PINNTrainer:
+    # def __init__(self, cfg_path, device='cpu'):
+    #     """
+    #     Args:
+    #         cfg_path: 配置文件路径
+    #         device: 'cpu' 或 'cuda'
+    #     """
+    #     self.device = device
+    #     # 加载总配置，并拆分 train / physics
+    #     self.full_cfg = load_pinn_full_config(cfg_path)
+    #     self.physics_cfg = self.full_cfg["physics"]
+    #     self.train_cfg = self.full_cfg["train"]
+
+
+    #     # 训练配置分组  
+    #     param_cfg = self.train_cfg.get("param_sampling", {})
+    #     model_cfg = self.train_cfg.get("model", {})
+    #     sampling_cfg = self.train_cfg.get("sampling", {})
+    #     self.param_sampling_mode = sampling_cfg.get("mode", "random")
+    #     train_cfg = self.train_cfg.get("train", {})
+    #     loss_cfg = self.train_cfg.get("loss", {})
+    #     val_cfg = self.train_cfg.get("validation", {})
+    #     early_cfg = self.train_cfg.get("early_stop", {})
+    #     runtime_cfg = self.train_cfg.get("runtime", {})
+    #     flat_var_cfg = self.train_cfg.get("flat_variance", {})
+
+    #     sched_cfg = self.train_cfg.get("scheduler", {})
+    #     self.scheduler_enabled = sched_cfg.get("enabled", False)
+    #     self.scheduler_type = sched_cfg.get("type", "none")
+    #     self.lr_warmup_steps = sched_cfg.get("warmup_steps", 0)
+    #     self.lr_decay_start = sched_cfg.get("decay_start", 0)
+    #     self.lr_decay_rate = sched_cfg.get("decay_rate", 1.0)
+    #     self.min_lr = sched_cfg.get("min_lr", 1.0e-4)
+    #     self.base_lr = train_cfg.get("lr", 1.0e-3)
+    #     #平坦惩罚
+    #     self.flat_var_enabled = flat_var_cfg.get("enabled", False)
+    #     self.flat_var_target = flat_var_cfg.get("target", "Rprime")
+    #     self.flat_var_kappa = flat_var_cfg.get("kappa", 20.0)
+    #     self.flat_var_eps = flat_var_cfg.get("eps", 1.0e-12)
+    #     self.flat_var_weight = flat_var_cfg.get("weight", 1.0e-3)
+    #     self.flat_var_steps = flat_var_cfg.get("steps", 0)
+    #     self.flat_var_decay_enabled = flat_var_cfg.get("decay_enabled", False)
+    #     self.flat_var_warmup_steps = flat_var_cfg.get("warmup_steps", 0)
+    #     self.flat_var_decay_start = flat_var_cfg.get("decay_start", 0)
+    #     self.flat_var_decay_rate = flat_var_cfg.get("decay_rate", 1.0)
+    #     self.flat_var_min_weight = flat_var_cfg.get("min_weight", 0.0)
+    #     self.flat_var_base_weight = self.flat_var_weight
+
+
+    #     self.flat_var_use_dedicated_points = flat_var_cfg.get("use_dedicated_points", True)
+    #     self.flat_var_strategy = flat_var_cfg.get("strategy", "chebyshev")
+    #     self.flat_var_n_points = flat_var_cfg.get("n_points", 64)
+    #     # loss 权重
+    #     self.weight_interior = loss_cfg.get("weight_interior", 1.0)
+    #     self.weight_boundary = loss_cfg.get("weight_boundary", 10.0)
+    #     self.weight_anchor = loss_cfg.get("weight_anchor", 1.0)
+    #     # 采样配置
+    #     self.n_interior = sampling_cfg.get("n_interior", 100)
+    #     self.n_boundary = sampling_cfg.get("n_boundary", 20)
+    #     self.batch_size = sampling_cfg.get("batch_size", 4)
+    #     self.use_batch_gd = sampling_cfg.get("use_batch_gd", False)
+    #     self.n_param_samples = sampling_cfg.get("n_param_samples", 20)
+    #     self.n_epochs = sampling_cfg.get("n_epochs", 100)
+
+    #     adaptive_cfg = self.train_cfg.get("adaptive_sampling", {})
+    #     anchor_cfg = self.train_cfg.get("anchors", {})
+    #     loss_balance_cfg = self.train_cfg.get("loss_balance", {})
+    #     curriculum_cfg = self.train_cfg.get("curriculum", {})
+
+
+    #     collocation_curr_cfg = self.train_cfg.get("collocation_curriculum", {})
+    #     anti_trivial_cfg = self.train_cfg.get("anti_trivial", {})
+    #     restart_cfg = self.train_cfg.get("restart", {})
+    #     dynamic_balance_cfg = self.train_cfg.get("dynamic_balance", {})
+
+    #     self.param_sampler = sampling_cfg.get("param_sampler", "sobol")
+
+    #     self.interior_strategy = sampling_cfg.get("interior_strategy", "chebyshev")
+    #     self.boundary_strategy = sampling_cfg.get("boundary_strategy", "none")
+    #     self.article_uniform_cfg = sampling_cfg.get("article_uniform", {})
+
+    #     self.collocation_curriculum_enabled = collocation_curr_cfg.get("enabled", False)
+    #     self.collocation_curriculum_stages = collocation_curr_cfg.get("stages", [])
+    #     self.curr_interior_strategy = self.interior_strategy
+    #     self.curr_n_interior = self.n_interior
+
+    #     self.anti_trivial_enabled = anti_trivial_cfg.get("enabled", False)
+    #     self.seed_steps = anti_trivial_cfg.get("seed_steps", 0)
+    #     self.seed_every = anti_trivial_cfg.get("seed_every", 10)
+    #     self.n_seed = anti_trivial_cfg.get("n_seed", 8)
+    #     self.seed_strategy = anti_trivial_cfg.get("seed_strategy", "article_uniform")
+    #     self.weight_seed = anti_trivial_cfg.get("weight_seed", 0.1)
+    #     self.seed_relative = anti_trivial_cfg.get("relative", False)
+
+    #     self.restart_enabled = restart_cfg.get("enabled", False)
+    #     self.stall_window = restart_cfg.get("stall_window", 300)
+    #     self.stall_tol = restart_cfg.get("stall_tol", 1e-4)
+    #     self.lr_decay_on_restart = restart_cfg.get("lr_decay_on_restart", 0.5)
+    #     self._stall_best = float("inf")
+    #     self._stall_count = 0
+
+    #     self.dynamic_balance_enabled = dynamic_balance_cfg.get("enabled", False)
+    #     self.dynamic_balance_every = dynamic_balance_cfg.get("every_steps", 20)
+    #     self.w_anchor_min = dynamic_balance_cfg.get("w_anchor_min", 1e-3)
+    #     self.w_anchor_max = dynamic_balance_cfg.get("w_anchor_max", 10.0)
+    #     self.dynamic_anchor_weight = self.weight_anchor
+
+
+
+    #     # dtype
+    #     dtype_name = runtime_cfg.get("dtype", "float64")
+    #     self.dtype = torch.float64 if dtype_name == "float64" else torch.float32
+
+    #     # 参数范围
+    #     self.a_center = param_cfg.get("a_center", 0.1)
+    #     self.a_range = param_cfg.get("a_range", 0.01)
+    #     self.omega_center = param_cfg.get("omega_center", 0.1)
+    #     self.omega_range = param_cfg.get("omega_range", 0.01)
+
+
+
+    #     # 训练配置
+    #     self.n_steps = train_cfg.get("n_steps", 50000)
+    #     self.lr = train_cfg.get("lr", 1e-3)
+    #     self.anchor_freq = train_cfg.get("anchor_freq", 100)
+    #     self.anchor_start_step = train_cfg.get("anchor_start_step", 0)
+    #     self.n_anchors = train_cfg.get("n_anchors", 10)
+    #     self.viz_enabled = train_cfg.get("viz_enabled", False)
+    #     self.viz_every_steps = train_cfg.get("viz_every_steps", 500)
+    #     self.viz_auto_close_sec = train_cfg.get("viz_auto_close_sec", 3.0)
+    #     self.viz_num_points = train_cfg.get("viz_num_points", 400)
+    #     self.viz_r_min = train_cfg.get("viz_r_min", 2.0)
+    #     self.viz_r_max = train_cfg.get("viz_r_max", 100.0)
+    #     self.viz_save_enabled = train_cfg.get("viz_save_enabled", True)
+    #     self.viz_subdir = train_cfg.get("viz_subdir", "viz_compare")
+    #     self.viz_show_enabled = train_cfg.get("viz_show_enabled", True)
+    #     # 如果 trainer.train(save_dir=...) 之后会再覆盖主输出目录，这里先给默认值
+    #     self.output_dir = Path(getattr(self, "output_dir", "outputs/pinn"))
+    #     self.viz_dir = self.output_dir / self.viz_subdir
+    #     self.viz_dir.mkdir(parents=True, exist_ok=True)
+
+
+
+    #     # 早停
+    #     self.early_stop_patience = early_cfg.get("patience", 500)
+    #     self.early_stop_threshold = early_cfg.get("threshold", 1e-6)
+
+    #     # 验证
+    #     self.val_freq = val_cfg.get("val_freq", 50)
+    #     self.val_n_points = val_cfg.get("val_n_points", 200)
+    #     self.save_best_freq = val_cfg.get("save_best_freq", 50)
+
+
+
+    #     self.adaptive_sampling_enabled = adaptive_cfg.get("enabled", True)
+    #     self.candidate_method = adaptive_cfg.get("candidate_method", "sobol")
+    #     self.n_candidates = adaptive_cfg.get("n_candidates", 512)
+    #     self.refresh_freq = adaptive_cfg.get("refresh_freq", 50)
+    #     self.adaptive_frac = adaptive_cfg.get("adaptive_frac", 0.7)
+    #     self.normalize_residual = adaptive_cfg.get("normalize_residual", True)
+
+    #     self.anchor_mode = anchor_cfg.get("mode", "sentinel_plus_adaptive")
+    #     self.n_anchor_adaptive = anchor_cfg.get("n_adaptive", 6)
+    #     self.n_anchor_random = anchor_cfg.get("n_random", 2)
+    #     self.n_anchor_base = anchor_cfg.get("n_base", 8)
+
+    #     self.loss_balance_mode = loss_balance_cfg.get("mode", "lbpinn")
+    #     self.loss_balance_eps = loss_balance_cfg.get("eps", 1e-12)
+
+    #     self.curriculum_enabled = curriculum_cfg.get("enabled", False)
+    #     self.curriculum_stages = curriculum_cfg.get("stages", [])
+
+    #     self.curr_a_range = self.a_range
+    #     self.curr_omega_range = self.omega_range
+    #     self._candidate_y = None    
+
+    #             # ===== anchor 权重调度（仿 flat_variance）=====
+    #     anchor_w_cfg = self.train_cfg.get("anchor_weight_schedule", {})
+    #     self.anchor_w_enabled = anchor_w_cfg.get("enabled", False)
+    #     self.anchor_w_steps = anchor_w_cfg.get("steps", 0)
+    #     self.anchor_w_decay_enabled = anchor_w_cfg.get("decay_enabled", False)
+    #     self.anchor_w_warmup_steps = anchor_w_cfg.get("warmup_steps", 0)
+    #     self.anchor_w_decay_start = anchor_w_cfg.get("decay_start", 0)
+    #     self.anchor_w_decay_rate = anchor_w_cfg.get("decay_rate", 1.0)
+    #     self.anchor_w_min_weight = anchor_w_cfg.get("min_weight", 0.0)
+
+    #     # ===== residual / interior 权重调度（与 flat 相反：逐步增大）=====
+    #     interior_w_cfg = self.train_cfg.get("interior_weight_schedule", {})
+    #     self.interior_w_enabled = interior_w_cfg.get("enabled", False)
+    #     self.interior_w_steps = interior_w_cfg.get("steps", 0)
+    #     self.interior_w_growth_enabled = interior_w_cfg.get("growth_enabled", False)
+    #     self.interior_w_warmup_steps = interior_w_cfg.get("warmup_steps", 0)
+    #     self.interior_w_growth_start = interior_w_cfg.get("growth_start", 0)
+    #     self.interior_w_growth_rate = interior_w_cfg.get("growth_rate", 1.0)
+    #     self.interior_w_max_weight = interior_w_cfg.get("max_weight", self.weight_interior)
+
+    #     # 保存基础权重
+    #     self.anchor_w_base_weight = self.weight_anchor
+    #     self.interior_w_base_weight = self.weight_interior
+
+
+    #     # 创建模型
+    #     hidden_dims = model_cfg.get("hidden_dims", [128, 128, 128, 128])
+    #     activation = model_cfg.get("activation", "silu")
+
+    #     fourier_num_freqs = model_cfg.get("fourier_num_freqs", 8)
+    #     fourier_scale = model_cfg.get("fourier_scale", 1.0)
+    #     param_embed_dim = model_cfg.get("param_embed_dim", 64)
+    #     use_film = model_cfg.get("use_film", True)
+    #     use_residual = model_cfg.get("use_residual", True)
+
+    #     self.model = PINN_MLP(
+    #         hidden_dims=hidden_dims,
+    #         activation=activation,
+    #         fourier_num_freqs=fourier_num_freqs,
+    #         fourier_scale=fourier_scale,
+    #         param_embed_dim=param_embed_dim,
+    #         use_film=use_film,
+    #         use_residual=use_residual,
+    #     ).to(device=self.device, dtype=self.dtype)
+
+    #     # self.model = PINN_MLP(
+    #     #     hidden_dims=hidden_dims,
+    #     #     activation='tanh',
+    #     # ).to(device=self.device, dtype=self.dtype)
+
+    #     # 优化器
+    #     extra_params = []
+    #     if self.loss_balance_mode == "lbpinn":
+    #         self.log_sigma_interior = torch.nn.Parameter(
+    #             torch.zeros((), device=self.device, dtype=self.dtype)
+    #         )
+    #         self.log_sigma_anchor = torch.nn.Parameter(
+    #             torch.zeros((), device=self.device, dtype=self.dtype)
+    #         )
+    #         extra_params = [self.log_sigma_interior, self.log_sigma_anchor]
+
+    #     self.optimizer = torch.optim.Adam(
+    #         list(self.model.parameters()) + extra_params,
+    #         lr=self.lr,
+    #     )
+
+    #     # 缓存
+    #     self.cache = AuxCache()
+
+    #     # 历史记录
+    #     self.loss_history = []
+    #     self.step_history = []
+    #     self.val_loss_history = []
+    #     self.best_val_loss = float('inf')
+
+    #     print(f"Parameter sampling mode: {self.param_sampling_mode}")
+
     def __init__(self, cfg_path, device='cpu'):
-        """
-        Args:
-            cfg_path: 配置文件路径
-            device: 'cpu' 或 'cuda'
-        """
         self.device = device
-        # 加载总配置，并拆分 train / physics
+
+        # ---- load config ----
         self.full_cfg = load_pinn_full_config(cfg_path)
         self.physics_cfg = self.full_cfg["physics"]
-        self.train_cfg = self.full_cfg["train"]
+        self.cfg = self.full_cfg["train"]
 
+        # 兼容旧代码
+        self.train_cfg = self.cfg
 
-        # 训练配置分组  
-        param_cfg = self.train_cfg.get("param_sampling", {})
-        model_cfg = self.train_cfg.get("model", {})
-        sampling_cfg = self.train_cfg.get("sampling", {})
-        self.param_sampling_mode = sampling_cfg.get("mode", "random")
-        train_cfg = self.train_cfg.get("train", {})
-        loss_cfg = self.train_cfg.get("loss", {})
-        val_cfg = self.train_cfg.get("validation", {})
-        early_cfg = self.train_cfg.get("early_stop", {})
-        runtime_cfg = self.train_cfg.get("runtime", {})
-        flat_var_cfg = self.train_cfg.get("flat_variance", {})
+        # ---- grouped init ----
+        self._init_runtime(self.cfg.get("runtime", {}))
+        self._init_parameter_space(self.cfg.get("parameter_space", {}))
+        self._init_model_cfg(self.cfg.get("model", {}))
+        self._init_training(self.cfg.get("training", {}))
+        self._init_sampling(self.cfg.get("sampling", {}))
+        self._init_curriculum(self.cfg.get("curriculum", {}))
+        self._init_regularization(self.cfg.get("regularization", {}))
+        self._init_restart(self.cfg.get("restart", {}))
+        self._init_visualization(self.cfg.get("visualization", {}))
 
-        sched_cfg = self.train_cfg.get("scheduler", {})
-        self.scheduler_enabled = sched_cfg.get("enabled", False)
-        self.scheduler_type = sched_cfg.get("type", "none")
-        self.lr_warmup_steps = sched_cfg.get("warmup_steps", 0)
-        self.lr_decay_start = sched_cfg.get("decay_start", 0)
-        self.lr_decay_rate = sched_cfg.get("decay_rate", 1.0)
-        self.min_lr = sched_cfg.get("min_lr", 1.0e-4)
-        self.base_lr = train_cfg.get("lr", 1.0e-3)
-        #平坦惩罚
-        self.flat_var_enabled = flat_var_cfg.get("enabled", False)
-        self.flat_var_target = flat_var_cfg.get("target", "Rprime")
-        self.flat_var_kappa = flat_var_cfg.get("kappa", 20.0)
-        self.flat_var_eps = flat_var_cfg.get("eps", 1.0e-12)
-        self.flat_var_weight = flat_var_cfg.get("weight", 1.0e-3)
-        self.flat_var_steps = flat_var_cfg.get("steps", 0)
-        self.flat_var_decay_enabled = flat_var_cfg.get("decay_enabled", False)
-        self.flat_var_warmup_steps = flat_var_cfg.get("warmup_steps", 0)
-        self.flat_var_decay_start = flat_var_cfg.get("decay_start", 0)
-        self.flat_var_decay_rate = flat_var_cfg.get("decay_rate", 1.0)
-        self.flat_var_min_weight = flat_var_cfg.get("min_weight", 0.0)
-        self.flat_var_base_weight = self.flat_var_weight
-
-
-        self.flat_var_use_dedicated_points = flat_var_cfg.get("use_dedicated_points", True)
-        self.flat_var_strategy = flat_var_cfg.get("strategy", "article_uniform")
-        self.flat_var_n_points = flat_var_cfg.get("n_points", 64)
-        # loss 权重
-        self.weight_interior = loss_cfg.get("weight_interior", 1.0)
-        self.weight_boundary = loss_cfg.get("weight_boundary", 10.0)
-        self.weight_anchor = loss_cfg.get("weight_anchor", 1.0)
-        # 采样配置
-        self.n_interior = sampling_cfg.get("n_interior", 100)
-        self.n_boundary = sampling_cfg.get("n_boundary", 20)
-        self.batch_size = sampling_cfg.get("batch_size", 4)
-        self.use_batch_gd = sampling_cfg.get("use_batch_gd", False)
-        self.n_param_samples = sampling_cfg.get("n_param_samples", 20)
-        self.n_epochs = sampling_cfg.get("n_epochs", 100)
-
-        adaptive_cfg = self.train_cfg.get("adaptive_sampling", {})
-        anchor_cfg = self.train_cfg.get("anchors", {})
-        loss_balance_cfg = self.train_cfg.get("loss_balance", {})
-        curriculum_cfg = self.train_cfg.get("curriculum", {})
-
-
-        collocation_curr_cfg = self.train_cfg.get("collocation_curriculum", {})
-        anti_trivial_cfg = self.train_cfg.get("anti_trivial", {})
-        restart_cfg = self.train_cfg.get("restart", {})
-        dynamic_balance_cfg = self.train_cfg.get("dynamic_balance", {})
-
-        self.param_sampler = sampling_cfg.get("param_sampler", "sobol")
-
-        self.interior_strategy = sampling_cfg.get("interior_strategy", "rard")
-        self.boundary_strategy = sampling_cfg.get("boundary_strategy", "none")
-        self.article_uniform_cfg = sampling_cfg.get("article_uniform", {})
-
-        self.collocation_curriculum_enabled = collocation_curr_cfg.get("enabled", False)
-        self.collocation_curriculum_stages = collocation_curr_cfg.get("stages", [])
-        self.curr_interior_strategy = self.interior_strategy
-        self.curr_n_interior = self.n_interior
-
-        self.anti_trivial_enabled = anti_trivial_cfg.get("enabled", False)
-        self.seed_steps = anti_trivial_cfg.get("seed_steps", 0)
-        self.seed_every = anti_trivial_cfg.get("seed_every", 10)
-        self.n_seed = anti_trivial_cfg.get("n_seed", 8)
-        self.seed_strategy = anti_trivial_cfg.get("seed_strategy", "article_uniform")
-        self.weight_seed = anti_trivial_cfg.get("weight_seed", 0.1)
-        self.seed_relative = anti_trivial_cfg.get("relative", False)
-
-        self.restart_enabled = restart_cfg.get("enabled", False)
-        self.stall_window = restart_cfg.get("stall_window", 300)
-        self.stall_tol = restart_cfg.get("stall_tol", 1e-4)
-        self.lr_decay_on_restart = restart_cfg.get("lr_decay_on_restart", 0.5)
-        self._stall_best = float("inf")
-        self._stall_count = 0
-
-        self.dynamic_balance_enabled = dynamic_balance_cfg.get("enabled", False)
-        self.dynamic_balance_every = dynamic_balance_cfg.get("every_steps", 20)
-        self.w_anchor_min = dynamic_balance_cfg.get("w_anchor_min", 1e-3)
-        self.w_anchor_max = dynamic_balance_cfg.get("w_anchor_max", 10.0)
-        self.dynamic_anchor_weight = self.weight_anchor
-
-
-
-        # dtype
-        dtype_name = runtime_cfg.get("dtype", "float64")
-        self.dtype = torch.float64 if dtype_name == "float64" else torch.float32
-
-        # 参数范围
-        self.a_center = param_cfg.get("a_center", 0.1)
-        self.a_range = param_cfg.get("a_range", 0.01)
-        self.omega_center = param_cfg.get("omega_center", 0.1)
-        self.omega_range = param_cfg.get("omega_range", 0.01)
-
-
-
-        # 训练配置
-        self.n_steps = train_cfg.get("n_steps", 50000)
-        self.lr = train_cfg.get("lr", 1e-3)
-        self.anchor_freq = train_cfg.get("anchor_freq", 100)
-        self.anchor_start_step = train_cfg.get("anchor_start_step", 0)
-        self.n_anchors = train_cfg.get("n_anchors", 10)
-        self.viz_enabled = train_cfg.get("viz_enabled", False)
-        self.viz_every_steps = train_cfg.get("viz_every_steps", 500)
-        self.viz_auto_close_sec = train_cfg.get("viz_auto_close_sec", 3.0)
-        self.viz_num_points = train_cfg.get("viz_num_points", 400)
-        self.viz_r_min = train_cfg.get("viz_r_min", 2.0)
-        self.viz_r_max = train_cfg.get("viz_r_max", 100.0)
-        self.viz_save_enabled = train_cfg.get("viz_save_enabled", True)
-        self.viz_subdir = train_cfg.get("viz_subdir", "viz_compare")
-        self.viz_show_enabled = train_cfg.get("viz_show_enabled", True)
-        # 如果 trainer.train(save_dir=...) 之后会再覆盖主输出目录，这里先给默认值
-        self.output_dir = Path(getattr(self, "output_dir", "outputs/pinn"))
-        self.viz_dir = self.output_dir / self.viz_subdir
-        self.viz_dir.mkdir(parents=True, exist_ok=True)
-
-
-
-        # 早停
-        self.early_stop_patience = early_cfg.get("patience", 500)
-        self.early_stop_threshold = early_cfg.get("threshold", 1e-6)
-
-        # 验证
-        self.val_freq = val_cfg.get("val_freq", 50)
-        self.val_n_points = val_cfg.get("val_n_points", 200)
-        self.save_best_freq = val_cfg.get("save_best_freq", 50)
-
-
-
-        self.adaptive_sampling_enabled = adaptive_cfg.get("enabled", True)
-        self.candidate_method = adaptive_cfg.get("candidate_method", "sobol")
-        self.n_candidates = adaptive_cfg.get("n_candidates", 512)
-        self.refresh_freq = adaptive_cfg.get("refresh_freq", 50)
-        self.adaptive_frac = adaptive_cfg.get("adaptive_frac", 0.7)
-        self.normalize_residual = adaptive_cfg.get("normalize_residual", True)
-
-        self.anchor_mode = anchor_cfg.get("mode", "sentinel_plus_adaptive")
-        self.n_anchor_adaptive = anchor_cfg.get("n_adaptive", 6)
-        self.n_anchor_random = anchor_cfg.get("n_random", 2)
-
-        self.loss_balance_mode = loss_balance_cfg.get("mode", "lbpinn")
-        self.loss_balance_eps = loss_balance_cfg.get("eps", 1e-12)
-
-        self.curriculum_enabled = curriculum_cfg.get("enabled", False)
-        self.curriculum_stages = curriculum_cfg.get("stages", [])
+        # ---- cache / histories ----
+        self.cache = AuxCache()
+        self.loss_history = []
+        self.step_history = []
+        self.val_loss_history = []
+        self.best_val_loss = float('inf')
 
         self.curr_a_range = self.a_range
         self.curr_omega_range = self.omega_range
+        self.curr_interior_strategy = self.interior_strategy
+        self.curr_n_interior = self.n_interior
         self._candidate_y = None
 
-
-        # 创建模型
-        hidden_dims = model_cfg.get("hidden_dims", [64, 64, 64, 64])
-        activation = model_cfg.get("activation", "tanh")
+        # ---- model ----
         self.model = PINN_MLP(
-            hidden_dims=hidden_dims,
-            activation=activation,
+            hidden_dims=self.model_hidden_dims,
+            activation=self.model_activation,
+            fourier_num_freqs=self.model_fourier_num_freqs,
+            fourier_scale=self.model_fourier_scale,
+            param_embed_dim=self.model_param_embed_dim,
+            use_film=self.model_use_film,
+            use_residual=self.model_use_residual,
         ).to(device=self.device, dtype=self.dtype)
 
-        # self.model = PINN_MLP(
-        #     hidden_dims=hidden_dims,
-        #     activation='tanh',
-        # ).to(device=self.device, dtype=self.dtype)
-
-        # 优化器
+        # ---- optimizer ----
         extra_params = []
         if self.loss_balance_mode == "lbpinn":
             self.log_sigma_interior = torch.nn.Parameter(
@@ -241,18 +352,204 @@ class PINNTrainer:
             lr=self.lr,
         )
 
-        # 缓存
-        self.cache = AuxCache()
-
-        # 历史记录
-        self.loss_history = []
-        self.step_history = []
-        self.val_loss_history = []
-        self.best_val_loss = float('inf')
-
         print(f"Parameter sampling mode: {self.param_sampling_mode}")
+    def _init_runtime(self, runtime_cfg):
+        dtype_name = runtime_cfg.get("dtype", "float64")
+        self.dtype = torch.float64 if dtype_name == "float64" else torch.float32
+    def _init_parameter_space(self, ps_cfg):
+        a_cfg = ps_cfg.get("a", {})
+        omega_cfg = ps_cfg.get("omega", {})
 
+        self.a_center = a_cfg.get("center", 0.1)
+        self.a_range = a_cfg.get("range", 0.01)
 
+        self.omega_center = omega_cfg.get("center", 0.1)
+        self.omega_range = omega_cfg.get("range", 0.01)
+    def _init_model_cfg(self, model_cfg):
+        self.model_hidden_dims = model_cfg.get("hidden_dims", [64, 64, 64, 64])
+        self.model_activation = model_cfg.get("activation", "tanh")
+        self.model_fourier_num_freqs = model_cfg.get("fourier_num_freqs", 0)
+        self.model_fourier_scale = model_cfg.get("fourier_scale", 1.0)
+        self.model_param_embed_dim = model_cfg.get("param_embed_dim", 64)
+        self.model_use_film = model_cfg.get("use_film", False)
+        self.model_use_residual = model_cfg.get("use_residual", False)
+    def _init_training(self, training_cfg):
+        optimizer_cfg = training_cfg.get("optimizer", {})
+        anchor_cfg = training_cfg.get("anchor", {})
+        scheduler_cfg = training_cfg.get("scheduler", {})
+        loss_cfg = training_cfg.get("loss", {})
+        loss_balance_cfg = training_cfg.get("loss_balance", {})
+        val_cfg = training_cfg.get("validation", {})
+        early_cfg = training_cfg.get("early_stop", {})
+        ws_cfg = training_cfg.get("weight_schedule", {})
+
+        # epochs
+        self.n_epochs = training_cfg.get("epochs", 100)
+
+        # optimizer
+        self.lr = optimizer_cfg.get("lr", 1.0e-3)
+        self.base_lr = self.lr
+
+        # anchor trigger
+        self.anchor_freq = anchor_cfg.get("freq", 100)
+        self.anchor_start_step = anchor_cfg.get("start_step", 0)
+        self.n_anchors = anchor_cfg.get("n_anchors", 10)
+
+        # scheduler
+        self.scheduler_enabled = scheduler_cfg.get("enabled", False)
+        self.scheduler_type = scheduler_cfg.get("type", "none")
+        self.lr_warmup_steps = scheduler_cfg.get("warmup_steps", 0)
+        self.lr_decay_start = scheduler_cfg.get("decay_start", 0)
+        self.lr_decay_rate = scheduler_cfg.get("decay_rate", 1.0)
+        self.min_lr = scheduler_cfg.get("min_lr", 1.0e-4)
+
+        # loss
+        self.weight_interior = loss_cfg.get("weight_interior", 1.0)
+        self.weight_boundary = loss_cfg.get("weight_boundary", 0.0)
+        self.weight_anchor = loss_cfg.get("weight_anchor", 1.0)
+
+        # loss balance
+        self.loss_balance_mode = loss_balance_cfg.get("mode", "fixed")
+        self.loss_balance_eps = loss_balance_cfg.get("eps", 1.0e-12)
+
+        # validation
+        self.val_freq = val_cfg.get("val_freq", 50)
+        self.val_n_points = val_cfg.get("val_n_points", 200)
+        self.save_best_freq = val_cfg.get("save_best_freq", 50)
+
+        # early stop
+        self.early_stop_patience = early_cfg.get("patience", 500)
+        self.early_stop_threshold = early_cfg.get("threshold", 1.0e-6)
+
+        # weight schedule: anchor
+        anchor_w_cfg = ws_cfg.get("anchor", {})
+        self.anchor_w_enabled = anchor_w_cfg.get("enabled", False)
+        self.anchor_w_steps = anchor_w_cfg.get("steps", 0)
+        self.anchor_w_decay_enabled = anchor_w_cfg.get("decay_enabled", False)
+        self.anchor_w_warmup_steps = anchor_w_cfg.get("warmup_steps", 0)
+        self.anchor_w_decay_start = anchor_w_cfg.get("decay_start", 0)
+        self.anchor_w_decay_rate = anchor_w_cfg.get("decay_rate", 1.0)
+        self.anchor_w_min_weight = anchor_w_cfg.get("min_weight", 0.0)
+        self.anchor_w_base_weight = self.weight_anchor
+
+        # weight schedule: interior
+        interior_w_cfg = ws_cfg.get("interior", {})
+        self.interior_w_enabled = interior_w_cfg.get("enabled", False)
+        self.interior_w_steps = interior_w_cfg.get("steps", 0)
+        self.interior_w_growth_enabled = interior_w_cfg.get("growth_enabled", False)
+        self.interior_w_warmup_steps = interior_w_cfg.get("warmup_steps", 0)
+        self.interior_w_growth_start = interior_w_cfg.get("growth_start", 0)
+        self.interior_w_growth_rate = interior_w_cfg.get("growth_rate", 1.0)
+        self.interior_w_max_weight = interior_w_cfg.get("max_weight", self.weight_interior)
+        self.interior_w_base_weight = self.weight_interior
+    def _init_sampling(self, sampling_cfg):
+        param_batch_cfg = sampling_cfg.get("parameter_batch", {})
+        coll_cfg = sampling_cfg.get("collocation", {})
+        interior_cfg = coll_cfg.get("interior", {})
+        boundary_cfg = coll_cfg.get("boundary", {})
+        adaptive_cfg = coll_cfg.get("adaptive", {})
+        anchor_cfg = sampling_cfg.get("anchors", {})
+
+        # parameter batch
+        self.param_sampling_mode = param_batch_cfg.get("mode", "random")
+        self.param_sampler = param_batch_cfg.get("sampler", "sobol")
+        self.batch_size = param_batch_cfg.get("batch_size", 4)
+        self.n_param_samples = param_batch_cfg.get("n_param_samples", 20)
+
+        # collocation interior / boundary
+        self.interior_strategy = interior_cfg.get("strategy", "rard")
+        self.n_interior = interior_cfg.get("n_points", 100)
+
+        self.boundary_strategy = boundary_cfg.get("strategy", "none")
+        self.n_boundary = boundary_cfg.get("n_points", 0)
+
+        # adaptive collocation
+        self.adaptive_sampling_enabled = adaptive_cfg.get("enabled", True)
+        self.candidate_method = adaptive_cfg.get("candidate_method", "sobol")
+        self.n_candidates = adaptive_cfg.get("n_candidates", 512)
+        self.refresh_freq = adaptive_cfg.get("refresh_freq", 50)
+        self.adaptive_frac = adaptive_cfg.get("adaptive_frac", 0.7)
+        self.normalize_residual = adaptive_cfg.get("normalize_residual", True)
+
+        # anchor sampling
+        self.anchor_mode = anchor_cfg.get("mode", "sentinel_plus_adaptive")
+        self.n_anchor_base = anchor_cfg.get("n_base", 8)
+        self.n_anchor_adaptive = anchor_cfg.get("n_adaptive", 6)
+        self.n_anchor_random = anchor_cfg.get("n_random", 0)
+
+        # 兼容旧调用
+        self.article_uniform_cfg = {}
+    def _init_curriculum(self, curriculum_cfg):
+        param_curr_cfg = curriculum_cfg.get("parameter", {})
+        colloc_curr_cfg = curriculum_cfg.get("collocation", {})
+
+        self.curriculum_enabled = param_curr_cfg.get("enabled", False)
+        self.curriculum_stages = param_curr_cfg.get("stages", [])
+
+        self.collocation_curriculum_enabled = colloc_curr_cfg.get("enabled", False)
+        self.collocation_curriculum_stages = colloc_curr_cfg.get("stages", [])
+    def _init_regularization(self, reg_cfg):
+        anti_cfg = reg_cfg.get("anti_trivial", {})
+        dyn_cfg = reg_cfg.get("dynamic_balance", {})
+        flat_cfg = reg_cfg.get("flat_variance", {})
+
+        # anti-trivial
+        self.anti_trivial_enabled = anti_cfg.get("enabled", False)
+        self.seed_steps = anti_cfg.get("seed_steps", 0)
+        self.seed_every = anti_cfg.get("seed_every", 10)
+        self.n_seed = anti_cfg.get("n_seed", 8)
+        self.seed_strategy = anti_cfg.get("seed_strategy", "article_uniform")
+        self.weight_seed = anti_cfg.get("weight_seed", 0.1)
+        self.seed_relative = anti_cfg.get("relative", False)
+
+        # dynamic anchor balance
+        self.dynamic_balance_enabled = dyn_cfg.get("enabled", False)
+        self.dynamic_balance_every = dyn_cfg.get("every_steps", 20)
+        self.w_anchor_min = dyn_cfg.get("w_anchor_min", 1.0e-3)
+        self.w_anchor_max = dyn_cfg.get("w_anchor_max", 10.0)
+        self.dynamic_anchor_weight = self.weight_anchor
+
+        # flat variance
+        self.flat_var_enabled = flat_cfg.get("enabled", False)
+        self.flat_var_target = flat_cfg.get("target", "Rprime")
+        self.flat_var_kappa = flat_cfg.get("kappa", 20.0)
+        self.flat_var_eps = flat_cfg.get("eps", 1.0e-12)
+        self.flat_var_weight = flat_cfg.get("weight", 1.0e-3)
+        self.flat_var_steps = flat_cfg.get("steps", 0)
+
+        self.flat_var_decay_enabled = flat_cfg.get("decay_enabled", False)
+        self.flat_var_warmup_steps = flat_cfg.get("warmup_steps", 0)
+        self.flat_var_decay_start = flat_cfg.get("decay_start", 0)
+        self.flat_var_decay_rate = flat_cfg.get("decay_rate", 1.0)
+        self.flat_var_min_weight = flat_cfg.get("min_weight", 0.0)
+        self.flat_var_base_weight = self.flat_var_weight
+
+        self.flat_var_use_dedicated_points = flat_cfg.get("use_dedicated_points", True)
+        self.flat_var_strategy = flat_cfg.get("strategy", "article_uniform")
+        self.flat_var_n_points = flat_cfg.get("n_points", 64)
+
+    def _init_restart(self, restart_cfg):
+        self.restart_enabled = restart_cfg.get("enabled", False)
+        self.stall_window = restart_cfg.get("stall_window", 300)
+        self.stall_tol = restart_cfg.get("stall_tol", 1e-4)
+        self.lr_decay_on_restart = restart_cfg.get("lr_decay_on_restart", 0.5)
+
+        self._stall_best = float("inf")
+        self._stall_count = 0
+    def _init_visualization(self, viz_cfg):
+        self.viz_show_enabled = viz_cfg.get("viz_show_enabled", True)
+        self.viz_enabled = viz_cfg.get("viz_enabled", False)
+        self.viz_every_steps = viz_cfg.get("viz_every_steps", 500)
+        self.viz_auto_close_sec = viz_cfg.get("viz_auto_close_sec", 3.0)
+        self.viz_num_points = viz_cfg.get("viz_num_points", 400)
+        self.viz_r_min = viz_cfg.get("viz_r_min", 2.0)
+        self.viz_r_max = viz_cfg.get("viz_r_max", 100.0)
+        self.viz_save_enabled = viz_cfg.get("viz_save_enabled", True)
+        self.viz_subdir = viz_cfg.get("viz_subdir", "viz_compare")
+
+        self.output_dir = Path(getattr(self, "output_dir", "outputs/pinn"))
+        self.viz_dir = self.output_dir / self.viz_subdir
+        self.viz_dir.mkdir(parents=True, exist_ok=True)
     def _build_fixed_param_pool(self):
         """
         构造固定参数池，只在 fixed_pool 模式下使用。
@@ -426,6 +723,50 @@ class PINNTrainer:
         )
         return max(self.flat_var_min_weight, w)
         
+    def _current_anchor_weight(self, global_step: int) -> float:
+        """
+        anchor 权重调度：完全仿照 flat_variance 的衰减逻辑
+        """
+        if not self.anchor_w_enabled:
+            return self.anchor_w_base_weight
+
+        if self.anchor_w_steps > 0 and global_step > self.anchor_w_steps:
+            return self.anchor_w_min_weight
+
+        if not self.anchor_w_decay_enabled:
+            return self.anchor_w_base_weight
+
+        if global_step < self.anchor_w_decay_start:
+            return self.anchor_w_base_weight
+
+        w = self.anchor_w_base_weight * (
+            self.anchor_w_decay_rate ** (global_step - self.anchor_w_decay_start)
+        )
+        return max(self.anchor_w_min_weight, w)
+
+
+    def _current_interior_weight(self, global_step: int) -> float:
+        """
+        residual / interior 权重调度：与 flat 相反，随 step 增长
+        """
+        if not self.interior_w_enabled:
+            return self.interior_w_base_weight
+
+        if self.interior_w_steps > 0 and global_step > self.interior_w_steps:
+            return self.interior_w_max_weight
+
+        if not self.interior_w_growth_enabled:
+            return self.interior_w_base_weight
+
+        if global_step < self.interior_w_growth_start:
+            return self.interior_w_base_weight
+
+        w = self.interior_w_base_weight * (
+            self.interior_w_growth_rate ** (global_step - self.interior_w_growth_start)
+        )
+        return min(self.interior_w_max_weight, w)
+    
+
     def _apply_curriculum(self, epoch):
         if not self.curriculum_enabled or not self.curriculum_stages:
             return False
@@ -579,10 +920,10 @@ class PINNTrainer:
                 y_boundary.clone().requires_grad_(True) if y_boundary.numel() > 0 else y_boundary,
             ), None
 
-        # 你当前的 RAR-D 自适应采样
+       
         if not self.adaptive_sampling_enabled:
             y_interior = sample_interior_points(
-                strategy="random_uniform",
+                strategy="chebyshev",
                 n_points=self.curr_n_interior,
                 device=self.device,
                 dtype=self.dtype,
@@ -628,7 +969,20 @@ class PINNTrainer:
 
 
     def _sample_anchor_points(self, residual_score=None):
-        y_parts = [get_sentinel_anchor_points(device=self.device, dtype=self.dtype)]
+        """
+        anchor 点改为：
+        1. 基础 Chebyshev-Lobatto 安全点（边界附近更密）
+        2. 再叠加 residual top-k adaptive 点
+        """
+        y_parts = [
+            sample_points_chebyshev_grid(
+                n_points=self.n_anchor_base,
+                y_min=-0.98,
+                y_max=0.98,
+                device=self.device,
+                dtype=self.dtype,
+            )
+        ]
 
         if residual_score is not None and self.n_anchor_adaptive > 0 and self._candidate_y is not None:
             k = min(self.n_anchor_adaptive, self._candidate_y.numel())
@@ -636,6 +990,7 @@ class PINNTrainer:
             y_parts.append(self._candidate_y[idx].detach())
 
         y = torch.unique(torch.cat(y_parts, dim=0))
+        y = torch.sort(y).values
         return y.clone().requires_grad_(True)
 
 
@@ -645,11 +1000,16 @@ class PINNTrainer:
         loss_seed=None,
         loss_anchor=None,
         loss_var=None,
+        interior_weight=None,
         anchor_weight=None,
         var_weight=None,
     ):
+        wi = self.weight_interior if interior_weight is None else interior_weight
+
         if self.loss_balance_mode == "lbpinn":
-            total = torch.exp(-self.log_sigma_interior) * loss_pde + self.log_sigma_interior
+            total = wi * (
+                torch.exp(-self.log_sigma_interior) * loss_pde + self.log_sigma_interior
+            )
 
             if loss_seed is not None:
                 total = total + self.weight_seed * loss_seed
@@ -666,7 +1026,7 @@ class PINNTrainer:
 
             return total
 
-        total = self.weight_interior * loss_pde
+        total = wi * loss_pde
 
         if loss_seed is not None:
             total = total + self.weight_seed * loss_seed
@@ -714,7 +1074,9 @@ class PINNTrainer:
             weight_boundary=0.0,
             normalize_residual=self.normalize_residual,
         )
-
+        # ===== 当前 step 的动态权重 =====
+        interior_weight = self._current_interior_weight(global_step)
+        anchor_weight_sched = self._current_anchor_weight(global_step)
 
         loss_var = None
         info["loss_var"] = 0.0
@@ -722,7 +1084,7 @@ class PINNTrainer:
 
         use_flat_var = (
             self.flat_var_enabled
-            and global_step <= self.flat_var_steps
+           # and global_step <= self.flat_var_steps
         )
 
         if use_flat_var:
@@ -740,14 +1102,16 @@ class PINNTrainer:
                 target=self.flat_var_target,
                 kappa=self.flat_var_kappa,
                 eps=self.flat_var_eps,
+                m = int(self.physics_cfg["problem"].get("m", 2))
             )
 
-            info["loss_var"] = float(loss_var.item())
+            info["loss_var"] = float(loss_var.detach().cpu().item())
             info["sigma_var"] = float(var_info["sigma_var"])
 
         var_weight = self._current_flat_var_weight(global_step)
         info["weight_var"] = float(var_weight)
-
+        info["weight_interior"] = float(interior_weight)
+        info["weight_anchor_sched"] = float(anchor_weight_sched)
         loss_seed = None
         info["loss_seed"] = 0.0
 
@@ -793,7 +1157,7 @@ class PINNTrainer:
                 R_mma_seed,
                 relative=self.seed_relative,
             )
-            info["loss_seed"] = float(loss_seed.item())
+            info["loss_seed"] = float(loss_seed.detach().cpu().item())
 
         loss_anchor = None
         info["loss_anchor"] = 0.0
@@ -838,26 +1202,65 @@ class PINNTrainer:
                 R_mma_batch,
                 relative=True,
             )
-            info["loss_anchor"] = float(loss_anchor.item())
+            info["loss_anchor"] = float(loss_anchor.detach().cpu().item())
 
-        anchor_weight = self.weight_anchor
-        if loss_anchor is not None:
-            anchor_weight = self._update_dynamic_anchor_weight(
+        anchor_weight = anchor_weight_sched
+
+        if loss_anchor is not None and self.dynamic_balance_enabled:
+            dynamic_mult = self._update_dynamic_anchor_weight(
                 loss_pde, loss_anchor, global_step
             )
+            anchor_weight = anchor_weight_sched * dynamic_mult
 
         total_loss = self._combine_losses(
             loss_pde,
             loss_seed=loss_seed,
             loss_anchor=loss_anchor,
             loss_var=loss_var,
+            interior_weight=interior_weight,
             anchor_weight=anchor_weight,
-            var_weight=var_weight
-
+            var_weight=var_weight,
         )
         info["weight_anchor_dynamic"] = float(anchor_weight)
         
         self.optimizer.zero_grad()
+        # ===== 记录乘权后的各项 loss，供进度条打印 =====
+        if self.loss_balance_mode == "lbpinn":
+            info["loss_interior_eff"] = float(
+                (
+                    interior_weight
+                    * torch.exp(-self.log_sigma_interior)
+                    * loss_pde
+                ).detach().cpu().item()
+            )
+
+            if loss_anchor is not None:
+                info["loss_anchor_eff"] = float(
+                    (
+                        anchor_weight
+                        * torch.exp(-self.log_sigma_anchor)
+                        * loss_anchor
+                    ).detach().cpu().item()
+                )
+            else:
+                info["loss_anchor_eff"] = 0.0
+
+            if loss_var is not None:
+                info["loss_var_eff"] = float((var_weight * loss_var).detach().cpu().item())
+            else:
+                info["loss_var_eff"] = 0.0
+        else:
+            info["loss_interior_eff"] = float((interior_weight * loss_pde).detach().cpu().item())
+
+            if loss_anchor is not None:
+                info["loss_anchor_eff"] = float((anchor_weight * loss_anchor).detach().cpu().item())
+            else:
+                info["loss_anchor_eff"] = 0.0
+
+            if loss_var is not None:
+                info["loss_var_eff"] = float((var_weight * loss_var).detach().cpu().item())
+            else:
+                info["loss_var_eff"] = 0.0
         total_loss.backward()
         grad_sq = 0.0
         for p in self.model.parameters():
@@ -870,7 +1273,7 @@ class PINNTrainer:
 
         info["grad_norm"] = grad_norm
 
-        info["total_loss"] = float(total_loss.item())
+        info["total_loss"] = float(total_loss.detach().cpu().item())
         if self.loss_balance_mode == "lbpinn":
             info["w_int"] = float(torch.exp(-self.log_sigma_interior).item())
             info["w_anchor"] = float(torch.exp(-self.log_sigma_anchor).item())
@@ -906,15 +1309,20 @@ class PINNTrainer:
         global_step: int,
     ):
         """
-        在 r ∈ [viz_r_min, viz_r_max] 上画:
-            R_pred(r) = U(r) * ( g(x(r)) * f(y(r)) + 1 )
-        并与 Mathematica 的 R_in 对比。
-        显示若干秒后自动关闭窗口。
+        左列：
+            在 r ∈ [viz_r_min, viz_r_max] 上均匀采点，对比 R(r)
+
+        右列：
+            在对应区间的 y 上做 Chebyshev 安全采点，对比 R'(y)
+
+        其中
+            R' = g(x) * f(y) + h
+            R  = U * R'
         """
         if not self.viz_enabled:
             return
 
-        # ---- 统一 dtype / device，跟随模型 ----
+        # ---- dtype / device ----
         model_param = next(self.model.parameters())
         dtype = model_param.dtype
         device = model_param.device
@@ -933,13 +1341,13 @@ class PINNTrainer:
         omega_t = torch.tensor(omega_scalar, device=device, dtype=dtype)
 
         if isinstance(ramp_val, torch.Tensor):
-            ramp_t = ramp_val.detach().to(device=device, dtype=dtype)
+            ramp_t = ramp_val.detach().to(device=device, dtype=torch.complex128)
         else:
-            ramp_t = torch.tensor(float(ramp_val), device=device, dtype=dtype)
+            ramp_t = torch.tensor(ramp_val, device=device, dtype=torch.complex128)
 
         rp = r_plus(a_t, M)
 
-        # ---- r 网格 ----
+        # ---- 物理区间 ----
         r_min = max(self.viz_r_min, float(rp.detach().cpu().item()) + 1.0e-4)
         r_max = self.viz_r_max
 
@@ -947,50 +1355,89 @@ class PINNTrainer:
             print(f"[viz] skip: r_min={r_min:.6f} >= r_max={r_max:.6f}")
             return
 
-        r_grid = torch.linspace(
+        # ============================================================
+        # 第一列：R(r)，在 r 上均匀采点
+        # ============================================================
+        r_grid_uniform = torch.linspace(
             r_min, r_max, self.viz_num_points, device=device, dtype=dtype
         )
+        x_grid_from_r = rp / r_grid_uniform
+        y_grid_from_r = 2.0 * x_grid_from_r - 1.0
 
-        # x = r_+ / r, y = 2x - 1
-        x_grid = rp / r_grid
-        y_grid = 2.0 * x_grid - 1.0
-
-         # ---- Mathematica 参考值 ----
-        r_np = r_grid.detach().cpu().numpy()
+        # Mathematica 真值：直接在均匀 r 网格上求 R
+        r_uniform_np = r_grid_uniform.detach().cpu().numpy()
         try:
-            R_mma = get_mathematica_Rin(
+            R_mma_r = get_mathematica_Rin(
                 a_scalar,
                 omega_scalar,
                 l,
                 m,
                 s,
-                r_np,
+                r_uniform_np,
             )
-            R_mma_t = torch.as_tensor(R_mma, device=device, dtype=torch.complex128)
+            R_mma_r_t = torch.as_tensor(R_mma_r, device=device, dtype=torch.complex128)
         except Exception as e:
-            print(f"[viz] Mathematica evaluation failed at step {global_step}: {e}")
+            print(f"[viz] Mathematica evaluation failed for R(r) at step {global_step}: {e}")
+            self.model.train()
+            return
+       
+        # ============================================================
+        # 第二列：R'(y)，在 y 上 Chebyshev 采点
+        # y 区间由 [r_min, r_max] 映射而来
+        # ============================================================
+        y_min = 2.0 * float(rp.detach().cpu().item()) / r_max - 1.0
+        y_max = 2.0 * float(rp.detach().cpu().item()) / r_min - 1.0
+
+        y_grid_cheb = sample_points_chebyshev_grid(
+            n_points=self.viz_num_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+        x_grid_from_y = 0.5 * (y_grid_cheb + 1.0)
+        r_grid_from_y = rp / x_grid_from_y
+
+        # Mathematica 真值：先在 y-cheb 对应的 r 上求 R，再除以 U 得到 R'
+        r_from_y_np = r_grid_from_y.detach().cpu().numpy()
+        try:
+            R_mma_y = get_mathematica_Rin(
+                a_scalar,
+                omega_scalar,
+                l,
+                m,
+                s,
+                r_from_y_np,
+            )
+            R_mma_y_t = torch.as_tensor(R_mma_y, device=device, dtype=torch.complex128)
+        except Exception as e:
+            print(f"[viz] Mathematica evaluation failed for R'(y) at step {global_step}: {e}")
             self.model.train()
             return
 
-        # ---- 前向 ----
+        # ============================================================
+        # 网络前向
+        # ============================================================
         self.model.eval()
         with torch.no_grad():
-            # 你的 PINN_MLP.forward(a, omega, y) 返回复数 f_complex
-            f_pred = self.model(a_t.unsqueeze(0), omega_t.unsqueeze(0), y_grid).squeeze(0)
+            h = h_factor(a_t, omega_t, m=m, M=M, s=s)
 
-            # g(x) = exp(x-1)-1
-            g_val, _, _ = g_factor(x_grid)
+            # ---------- 左列：均匀 r -> 对应 y ----------
+            f_pred_r = self.model(
+                a_t.unsqueeze(0),
+                omega_t.unsqueeze(0),
+                y_grid_from_r,
+            ).squeeze(0)
 
-            # R' = g(x) * f(y) + 1
-            h=h_factor(a_t, omega_t, m=m, M=M, s=s)
-            Rprime_pred = g_val * f_pred + h
+            g_val_r, _, _ = g_factor(x_grid_from_r)
+            Rprime_pred_r = g_val_r * f_pred_r + h
 
-            # U = Leaver_prefactor * prefactor_Q
-            P, P_r, P_rr = Leaver_prefactors(
-                r_grid, a_t, omega_t, m=m, M=M, s=s
+            P_r, P_r_1, P_r_2 = Leaver_prefactors(
+                r_grid_uniform, a_t, omega_t, m=m, M=M, s=s
             )
-            Q, Q_r, Q_rr = prefactor_Q(
-                r_grid,
+            Q_r, Q_r_1, Q_r_2 = prefactor_Q(
+                r_grid_uniform,
                 a_t,
                 omega_t,
                 p=int(p_val),
@@ -998,61 +1445,100 @@ class PINNTrainer:
                 M=M,
                 s=s,
             )
+            U_r, _, _ = U_prefactor(P_r, P_r_1, P_r_2, Q_r, Q_r_1, Q_r_2)
+            R_pred_r = U_r * Rprime_pred_r
 
-            U, _, _ = U_prefactor(P, P_r, P_rr, Q, Q_r, Q_rr)
+            # ---------- 右列：Chebyshev y ----------
+            f_pred_y = self.model(
+                a_t.unsqueeze(0),
+                omega_t.unsqueeze(0),
+                y_grid_cheb,
+            ).squeeze(0)
 
-            R_pred = U * Rprime_pred
-            f_from_mma=(R_mma_t/U-h)/g_val
-            
+            g_val_y, _, _ = g_factor(x_grid_from_y)
+            Rprime_pred_y = g_val_y * f_pred_y + h
 
+            P_y, P_y_1, P_y_2 = Leaver_prefactors(
+                r_grid_from_y, a_t, omega_t, m=m, M=M, s=s
+            )
+            Q_y, Q_y_1, Q_y_2 = prefactor_Q(
+                r_grid_from_y,
+                a_t,
+                omega_t,
+                p=int(p_val),
+                R_amp=ramp_t,
+                M=M,
+                s=s,
+            )
+            U_y, _, _ = U_prefactor(P_y, P_y_1, P_y_2, Q_y, Q_y_1, Q_y_2)
+
+            # Mathematica 的 R'(y)
+            Rprime_from_mma_y = R_mma_y_t / U_y
+        
        
+        # ---- numpy for plotting ----
+        r_uniform_np = r_grid_uniform.detach().cpu().numpy()
+        y_cheb_np = y_grid_cheb.detach().cpu().numpy()
 
-        R_pred_np = R_pred.detach().cpu().numpy()
-        R_mma_np = np.asarray(R_mma)
-        f_pred_np = f_pred.detach().cpu().numpy()
-        f_from_mma_np=f_from_mma.detach().cpu().numpy()
-        # ---- 画图 ----
+        R_pred_r_np = R_pred_r.detach().cpu().numpy()
+        R_mma_r_np = np.asarray(R_mma_r)
+
+        Rprime_pred_y_np = Rprime_pred_y.detach().cpu().numpy()
+        Rprime_from_mma_y_np = Rprime_from_mma_y.detach().cpu().numpy()
+        #查看Rprime_from_mmay_np最后几个值
+        # print(f"[viz] Rprime_from_mma_y_np[-5:]: {Rprime_from_mma_y_np[-5:]}")
+        # ============================================================
+        # 画图
+        # ============================================================
         plt.ion()
-        fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=True)
-        axes = axes.ravel()
+        fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=False)
 
-        axes[0].plot(r_np, np.real(R_pred_np), label="Pred Re(R)", lw=1.8)
-        axes[0].plot(r_np, np.real(R_mma_np), "--", label="MMA Re(R)", lw=1.2)
-        axes[0].set_ylabel("Re(R)")
-        axes[0].legend()
-        axes[0].grid(alpha=0.3)
+        # ---------------- 左列：R(r)，r均匀 ----------------
+        axes[0, 0].plot(r_uniform_np, np.real(R_pred_r_np), label="Pred Re(R)", lw=1.8)
+        axes[0, 0].plot(r_uniform_np, np.real(R_mma_r_np), "--", label="MMA Re(R)", lw=1.2)
+        axes[0, 0].set_ylabel("Re(R)")
+        axes[0, 0].legend()
+        axes[0, 0].grid(alpha=0.3)
 
-        axes[1].plot(r_np, np.imag(R_pred_np), label="Pred Im(R)", lw=1.8)
-        axes[1].plot(r_np, np.imag(R_mma_np), "--", label="MMA Im(R)", lw=1.2)
-        axes[1].set_ylabel("Im(R)")
-        axes[1].legend()
-        axes[1].grid(alpha=0.3)
+        axes[1, 0].plot(r_uniform_np, np.imag(R_pred_r_np), label="Pred Im(R)", lw=1.8)
+        axes[1, 0].plot(r_uniform_np, np.imag(R_mma_r_np), "--", label="MMA Im(R)", lw=1.2)
+        axes[1, 0].set_ylabel("Im(R)")
+        axes[1, 0].legend()
+        axes[1, 0].grid(alpha=0.3)
 
-        axes[2].plot(r_np, np.abs(R_pred_np), label="Pred |R|", lw=1.8)
-        axes[2].plot(r_np, np.abs(R_mma_np), "--", label="MMA |R|", lw=1.2)
-        axes[2].set_ylabel("|R|")
-        axes[2].set_xlabel("r")
-        axes[2].legend()
-        axes[2].grid(alpha=0.3)
+        axes[2, 0].plot(r_uniform_np, np.abs(R_pred_r_np), label="Pred |R|", lw=1.8)
+        axes[2, 0].plot(r_uniform_np, np.abs(R_mma_r_np), "--", label="MMA |R|", lw=1.2)
+        axes[2, 0].set_ylabel("|R|")
+        axes[2, 0].set_xlabel("r")
+        axes[2, 0].legend()
+        axes[2, 0].grid(alpha=0.3)
 
-        axes[3].plot(r_np, np.real(f_pred_np), label="Pred Re(f)", lw=1.8)
-        axes[3].plot(r_np, np.real(f_from_mma_np), "--", label="MMA Re(f)", lw=1.2)
-        axes[3].set_ylabel("Re(f)")
-        axes[3].legend()
-        axes[3].grid(alpha=0.3)
+        # ---------------- 右列：R'(y)，y-Chebyshev ----------------
+        axes[0, 1].plot(y_cheb_np, np.real(Rprime_pred_y_np), label="Pred Re(R')", lw=1.8)
+        axes[0, 1].plot(y_cheb_np, np.real(Rprime_from_mma_y_np), "--", label="MMA Re(R')", lw=1.2)
+        axes[0, 1].set_ylabel("Re(R')")
+        axes[0, 1].set_xlim(-1, 1)
+        axes[0, 1].legend()
+        axes[0, 1].grid(alpha=0.3)
 
-        axes[4].plot(r_np, np.imag(f_pred_np), label="Pred Im(f)", lw=1.8)
-        axes[4].plot(r_np, np.imag(f_from_mma_np), "--", label="MMA Im(f)", lw=1.2)
-        axes[4].set_ylabel("Im(R)")
-        axes[4].legend()
-        axes[4].grid(alpha=0.3)
+        axes[1, 1].plot(y_cheb_np, np.imag(Rprime_pred_y_np), label="Pred Im(R')", lw=1.8)
+        axes[1, 1].plot(y_cheb_np, np.imag(Rprime_from_mma_y_np), "--", label="MMA Im(R')", lw=1.2)
+        axes[1, 1].set_ylabel("Im(R')")
+        axes[1, 1].set_xlim(-1, 1)
+        axes[1, 1].legend()
+        axes[1, 1].grid(alpha=0.3)
 
-        axes[5].plot(r_np, np.abs(f_pred_np), label="Pred |f|", lw=1.8)
-        axes[5].plot(r_np, np.abs(f_from_mma_np), "--", label="MMA |f|", lw=1.2)
-        axes[5].set_ylabel("|f|")
-        axes[5].set_xlabel("r")
-        axes[5].legend()
-        axes[5].grid(alpha=0.3)
+        axes[2, 1].plot(y_cheb_np, np.abs(Rprime_pred_y_np), label="Pred |R'|", lw=1.8)
+        axes[2, 1].plot(y_cheb_np, np.abs(Rprime_from_mma_y_np), "--", label="MMA |R'|", lw=1.2)
+        axes[2, 1].set_ylabel("|R'|")
+        axes[2, 1].set_xlabel("y")
+        axes[2, 1].set_xlim(-1, 1)
+        axes[2, 1].legend()
+        axes[2, 1].grid(alpha=0.3)
+
+        for i in range(3):
+            axes[i, 0].set_xlabel("r")
+            axes[i, 1].set_xlabel("y")
 
         fig.suptitle(
             f"step={global_step}, a={a_scalar:.6f}, omega={omega_scalar:.6f}",
@@ -1060,7 +1546,7 @@ class PINNTrainer:
         )
         fig.tight_layout()
 
-        # ---- 保存图片到 outputs/pinn/viz_compare/ ----
+        # ---- 保存图片 ----
         if self.viz_save_enabled:
             filename = (
                 f"step_{global_step:06d}"
@@ -1096,8 +1582,16 @@ class PINNTrainer:
         r_min = float(rp) + 0.1
         r_max = 100.0
 
-        x_grid = torch.linspace(float(rp)/r_max, float(rp)/r_min, self.val_n_points, device=self.device, dtype=self.dtype)
-        y_grid = 2.0 * x_grid - 1.0
+        y_min = 2.0 * float(rp) / r_max - 1.0
+        y_max = 2.0 * float(rp) / r_min - 1.0
+
+        y_grid = sample_points_chebyshev_grid(
+            n_points=self.val_n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=self.device,
+            dtype=self.dtype,
+        )
         y_grid = y_grid.clone().requires_grad_(True)
 
         a_batch = a_val.unsqueeze(0)
@@ -1116,7 +1610,7 @@ class PINNTrainer:
     weight_interior=1.0, weight_boundary=0.0
 )
 
-        return loss.item()
+        return loss.detach().cpu().item()
 
     def train_step(self):
         """单步训练"""
@@ -1371,13 +1865,13 @@ class PINNTrainer:
                     global_step += 1
 
                     loss, info = self._run_one_training_batch(batch, global_step)
-                    epoch_losses.append(float(loss.item()))
+                    epoch_losses.append(float(loss.detach().cpu().item()))
 
                     self.loss_history.append(info["total_loss"])
                     self.step_history.append(global_step)
                     
                     # ---- 周期性在线可视化 ----
-                    if self.viz_enabled and global_step > 0 and global_step % self.viz_every_steps == 0:
+                    if self.viz_enabled and global_step > 0 and (global_step % self.viz_every_steps == 0 or global_step ==1):
                         try:
                             a_batch = batch["a_batch"]
                             omega_batch = batch["omega_batch"]
@@ -1399,12 +1893,14 @@ class PINNTrainer:
                     pbar.update(1)
                     pbar.set_postfix({
                         "total": f"{info['total_loss']:.3e}",
-                        "int": f"{info.get('loss_interior', 0.0):.3e}",
+                        "int": f"{info.get('loss_interior_eff', 0.0):.3e}",
                         "bd": f"{info.get('loss_boundary', 0.0):.3e}",
-                        "anchor": f"{info.get('loss_anchor', 0.0):.3e}",
+                        "anchor": f"{info.get('loss_anchor_eff', 0.0):.3e}",
                         "grad": f"{info.get('grad_norm', 0.0):.3e}",
-                        "var": f"{info.get('loss_var', 0.0):.3e}",
-                        "sig": f"{info.get('sigma_var', 0.0):.3e}",
+                        "var": f"{info.get('loss_var_eff', 0.0):.3e}",
+                        "w_int": f"{info.get('weight_interior', 0.0):.2e}",
+                        "w_anch": f"{info.get('weight_anchor_sched', 0.0):.2e}",
+                        "w_var": f"{info.get('weight_var', 0.0):.2e}",
                     })
 
                     # 验证
@@ -1412,9 +1908,10 @@ class PINNTrainer:
                         val_loss = self.validate()
                         pbar.set_postfix({
                             "total": f"{info['total_loss']:.3e}",
-                            "int": f"{info.get('loss_interior', 0.0):.3e}",
+                            "int": f"{info.get('loss_interior_eff', 0.0):.3e}",
                             "bd": f"{info.get('loss_boundary', 0.0):.3e}",
-                            "anchor": f"{info.get('loss_anchor', 0.0):.3e}",
+                            "anchor": f"{info.get('loss_anchor_eff', 0.0):.3e}",
+                            "var": f"{info.get('loss_var_eff', 0.0):.3e}",
                             "val": f"{val_loss:.3e}",
                         })
 

@@ -33,13 +33,13 @@ problem:
       value: null      # mode=given 时使用（complex 或 float）
     compute:
       backend: kerr_matcher  # 标记
-      p: 1            # 你 prefactor_Q 里的指数用到的 p（你已经确认 exponent = -p-4）
+      p: 5            # 你 prefactor_Q 里的指数用到的 p（你已经确认 exponent = -p-4）
       r_match: 8.0
       n_cheb: 32
 
 params:
   a:
-    min: 0.0
+    min: 0.01
     max: 0.99
   omega:
     # 允许复频（只做实频通量，可把 imag 固定为 0）
@@ -60,9 +60,9 @@ mapping:
     derivatives:
       dx_dr: "dx/dr = -r_plus / r^2 = -x^2 / r_plus"
       d2x_dr2: "d2x/dr2 = 2*r_plus / r^3 = 2*x^3 / r_plus^2"
-  xi:
+  y:
     # Chebyshev 用的 [-1,1] 坐标
-    definition: "xi = 2*x - 1"
+    definition: "y = 2*x - 1"
     range: "[-1, 1]"
 
 kerr:
@@ -79,14 +79,14 @@ potential:
   V:
     definition: "V(r) = (K^2 - 2*i*s*(r-M)*K)/Delta + 4*i*s*omega*r - lambda"
 
-rprime:
-  # r'(r)（按你给的写法原样写入；你说先放空也可以）
-  # 请注意：你给的最后两项 log 的自变量是一样的；如需改成 ln|r-r_plus| 等，请你后续自行修正。
-  definition: >
-    rprime = r - r_plus
-             + (r_plus^2 + a^2)/(r_plus - r_minus) * ln|r - r_plus + 1|
-             - (r_minus^2 + a^2)/(r_plus - r_minus) * ln|r - r_plus + 1|
-  implementation: "TODO: implement in physical_ansatz/teukolsky_coeffs.py (rprime_placeholder)"
+# rprime:
+#   # r'(r)
+#   # 请注意：你给的最后两项 log 的自变量是一样的；如需改成 ln|r-r_plus| 等，请你后续自行修正。
+#   definition: >
+#     rprime = r - r_plus
+#              + (r_plus^2 + a^2)/(r_plus - r_minus) * ln|r - r_plus + 1|
+#              - (r_minus^2 + a^2)/(r_plus - r_minus) * ln|r - r_plus + 1|
+#   implementation: "TODO: implement in physical_ansatz/teukolsky_coeffs.py (rprime_placeholder)"
 
 spectral:
   basis: chebyshev
