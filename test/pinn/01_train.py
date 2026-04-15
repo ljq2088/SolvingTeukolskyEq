@@ -37,4 +37,19 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     trainer = PINNTrainer(str(cfg_path), device=device)
+    print(f"[train] cfg: {cfg_path}")
+    print(f"[train] device: {device}")
+    print(
+        f"[train] parameter space: "
+        f"a in [{trainer.a_center - trainer.a_range:.6f}, {trainer.a_center + trainer.a_range:.6f}], "
+        f"omega in [{trainer.omega_center - trainer.omega_range:.6f}, {trainer.omega_center + trainer.omega_range:.6f}]"
+    )
+    print(
+        f"[train] initialization: enabled={trainer.init_enabled}, "
+        f"checkpoint={trainer._resolve_init_checkpoint_path() if trainer.init_enabled else None}"
+    )
+    print(
+        f"[train] validation: mode={trainer.val_mode}, samples={trainer.val_param_samples}, "
+        f"sampler={trainer.val_param_sampler}, monitor={trainer.val_monitor}"
+    )
     trainer.train(save_dir=str(PROJECT_ROOT / "outputs" / "pinn"))

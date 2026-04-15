@@ -2,6 +2,7 @@
 PINN Trainer
 """
 import os
+import math
 import torch
 import yaml
 from tqdm import tqdm
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+from datetime import datetime
 
 from pathlib import Path
 
@@ -292,6 +293,8 @@ class PINNTrainer:
 
     def __init__(self, cfg_path, device='cpu'):
         self.device = device
+        self.cfg_path = Path(cfg_path).resolve()
+        self.project_root = self.cfg_path.parent.parent
 
         # ---- load config ----
         self.full_cfg = load_pinn_full_config(cfg_path)
@@ -311,13 +314,18 @@ class PINNTrainer:
         self._init_regularization(self.cfg.get("regularization", {}))
         self._init_restart(self.cfg.get("restart", {}))
         self._init_visualization(self.cfg.get("visualization", {}))
+        self._init_initialization(self.cfg.get("initialization", {}))
 
         # ---- cache / histories ----
         self.cache = AuxCache()
         self.loss_history = []
         self.step_history = []
         self.val_loss_history = []
+        self.val_worst_history = []
         self.best_val_loss = float('inf')
+        self.latest_val_metrics = None
+        self._validation_pool = None
+        self._param_sample_skip = 0
 
         self.curr_a_range = self.a_range
         self.curr_omega_range = self.omega_range
@@ -326,6 +334,16 @@ class PINNTrainer:
         self._candidate_y = None
 
         # ---- model ----
+
+        problem_cfg = self.physics_cfg.get("problem", {})
+        M = float(problem_cfg.get("M", 1.0))
+        m_mode = int(problem_cfg.get("m", 2))
+
+        a_center_local = 0.5 * (self.model_a_min_local + self.model_a_max_local)
+        a_half_range_local = 0.5 * (self.model_a_max_local - self.model_a_min_local)
+
+        self._check_patch_consistency()
+
         self.model = PINN_MLP(
             hidden_dims=self.model_hidden_dims,
             activation=self.model_activation,
@@ -334,7 +352,16 @@ class PINNTrainer:
             param_embed_dim=self.model_param_embed_dim,
             use_film=self.model_use_film,
             use_residual=self.model_use_residual,
+            a_center_local=a_center_local,
+            a_half_range_local=a_half_range_local,
+            omega_min_local=self.model_omega_min_local,
+            omega_max_local=self.model_omega_max_local,
+            M=M,
+            m_mode=m_mode,
         ).to(device=self.device, dtype=self.dtype)
+
+        print(f"[model] local patch: a in [{self.model_a_min_local}, {self.model_a_max_local}]")
+        print(f"[model] local patch: omega in [{self.model_omega_min_local}, {self.model_omega_max_local}]")
 
         # ---- optimizer ----
         extra_params = []
@@ -352,6 +379,8 @@ class PINNTrainer:
             lr=self.lr,
         )
 
+        self._load_initial_checkpoint_if_needed()
+
         print(f"Parameter sampling mode: {self.param_sampling_mode}")
     def _init_runtime(self, runtime_cfg):
         dtype_name = runtime_cfg.get("dtype", "float64")
@@ -359,20 +388,57 @@ class PINNTrainer:
     def _init_parameter_space(self, ps_cfg):
         a_cfg = ps_cfg.get("a", {})
         omega_cfg = ps_cfg.get("omega", {})
+        domain_cfg = ps_cfg.get("domain", {})
 
         self.a_center = a_cfg.get("center", 0.1)
         self.a_range = a_cfg.get("range", 0.01)
 
         self.omega_center = omega_cfg.get("center", 0.1)
         self.omega_range = omega_cfg.get("range", 0.01)
+        self.k_horizon_margin = float(domain_cfg.get("k_horizon_margin", 1.0e-2))
+        self.param_resample_factor = int(domain_cfg.get("resample_factor", 4))
+        self.param_resample_max_attempts = int(domain_cfg.get("max_attempts", 32))
     def _init_model_cfg(self, model_cfg):
-        self.model_hidden_dims = model_cfg.get("hidden_dims", [64, 64, 64, 64])
-        self.model_activation = model_cfg.get("activation", "tanh")
-        self.model_fourier_num_freqs = model_cfg.get("fourier_num_freqs", 0)
+        self.model_hidden_dims = model_cfg.get("hidden_dims", [128, 128, 128, 128])
+        self.model_activation = model_cfg.get("activation", "silu")
+        self.model_fourier_num_freqs = model_cfg.get("fourier_num_freqs", 2)
         self.model_fourier_scale = model_cfg.get("fourier_scale", 1.0)
         self.model_param_embed_dim = model_cfg.get("param_embed_dim", 64)
-        self.model_use_film = model_cfg.get("use_film", False)
-        self.model_use_residual = model_cfg.get("use_residual", False)
+        self.model_use_film = model_cfg.get("use_film", True)
+        self.model_use_residual = model_cfg.get("use_residual", True)
+
+        self.model_a_min_local = model_cfg.get("a_min_local", 0.05)
+        self.model_a_max_local = model_cfg.get("a_max_local", 0.2)
+        self.model_omega_min_local = model_cfg.get("omega_min_local", 0.1)
+        self.model_omega_max_local = model_cfg.get("omega_max_local", 1.0)
+    def _check_patch_consistency(self):
+        """
+        检查当前训练参数域是否落在模型 patch 内。
+        给一个很小的浮点容差，避免 0.099999999999 < 0.1 这种误判。
+        """
+        tol = 1.0e-12
+
+        train_a_min = self.a_center - self.a_range
+        train_a_max = self.a_center + self.a_range
+        train_omega_min = self.omega_center - self.omega_range
+        train_omega_max = self.omega_center + self.omega_range
+
+        model_a_min = self.model_a_min_local
+        model_a_max = self.model_a_max_local
+        model_omega_min = self.model_omega_min_local
+        model_omega_max = self.model_omega_max_local
+
+        if train_a_min < model_a_min - tol or train_a_max > model_a_max + tol:
+            raise ValueError(
+                f"Training a-range [{train_a_min}, {train_a_max}] "
+                f"falls outside model patch [{model_a_min}, {model_a_max}]"
+            )
+
+        if train_omega_min < model_omega_min - tol or train_omega_max > model_omega_max + tol:
+            raise ValueError(
+                f"Training omega-range [{train_omega_min}, {train_omega_max}] "
+                f"falls outside model patch [{model_omega_min}, {model_omega_max}]"
+            )
     def _init_training(self, training_cfg):
         optimizer_cfg = training_cfg.get("optimizer", {})
         anchor_cfg = training_cfg.get("anchor", {})
@@ -416,6 +482,13 @@ class PINNTrainer:
         self.val_freq = val_cfg.get("val_freq", 50)
         self.val_n_points = val_cfg.get("val_n_points", 200)
         self.save_best_freq = val_cfg.get("save_best_freq", 50)
+        self.val_mode = val_cfg.get("mode", "fixed_pool")
+        self.val_param_samples = val_cfg.get("n_param_samples", 16)
+        self.val_param_sampler = val_cfg.get("param_sampler", "sobol")
+        self.val_monitor = val_cfg.get("monitor", "mean")
+        self.val_track_worst = val_cfg.get("track_worst", True)
+        self.val_sobol_seed = val_cfg.get("sobol_seed", 4321)
+        self.val_sobol_skip = val_cfg.get("sobol_skip", 0)
 
         # early stop
         self.early_stop_patience = early_cfg.get("patience", 500)
@@ -527,7 +600,19 @@ class PINNTrainer:
         self.flat_var_use_dedicated_points = flat_cfg.get("use_dedicated_points", True)
         self.flat_var_strategy = flat_cfg.get("strategy", "article_uniform")
         self.flat_var_n_points = flat_cfg.get("n_points", 64)
+                # head regularization
+        head_reg_cfg = reg_cfg.get("head_reg", {})
+        self.head_reg_enabled = head_reg_cfg.get("enabled", False)
+        self.head_reg_weight_nl = head_reg_cfg.get("weight_nl", 1.0e-6)
+        self.head_reg_weight_resp = head_reg_cfg.get("weight_resp", 1.0e-8)
 
+        # parameter curvature regularization
+        curv_cfg = reg_cfg.get("param_curvature", {})
+        self.param_curv_enabled = curv_cfg.get("enabled", False)
+        self.param_curv_weight = curv_cfg.get("weight", 1.0e-4)
+        self.param_curv_delta_alpha = curv_cfg.get("delta_alpha", 0.05)
+        self.param_curv_delta_xi = curv_cfg.get("delta_xi", 0.05)
+        self.param_curv_n_probe_points = curv_cfg.get("n_probe_points", 32)
     def _init_restart(self, restart_cfg):
         self.restart_enabled = restart_cfg.get("enabled", False)
         self.stall_window = restart_cfg.get("stall_window", 300)
@@ -550,6 +635,41 @@ class PINNTrainer:
         self.output_dir = Path(getattr(self, "output_dir", "outputs/pinn"))
         self.viz_dir = self.output_dir / self.viz_subdir
         self.viz_dir.mkdir(parents=True, exist_ok=True)
+        self.viz_start_time = None
+    def _init_initialization(self, init_cfg):
+        self.init_enabled = init_cfg.get("enabled", False)
+        self.init_checkpoint = init_cfg.get("checkpoint", None)
+        self.init_load_optimizer = init_cfg.get("load_optimizer", False)
+        self.init_strict = init_cfg.get("strict", True)
+    def _resolve_init_checkpoint_path(self) -> Path | None:
+        if not self.init_checkpoint:
+            return None
+
+        ckpt_path = Path(self.init_checkpoint).expanduser()
+        if ckpt_path.is_absolute():
+            return ckpt_path
+
+        return (self.project_root / ckpt_path).resolve()
+    def _load_initial_checkpoint_if_needed(self):
+        if not self.init_enabled:
+            return
+
+        ckpt_path = self._resolve_init_checkpoint_path()
+        if ckpt_path is None:
+            raise ValueError("initialization.enabled=True but initialization.checkpoint is missing")
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"Initialization checkpoint not found: {ckpt_path}")
+
+        checkpoint = torch.load(ckpt_path, map_location=self.device)
+        state_dict = checkpoint.get("model_state_dict", checkpoint)
+        self.model.load_state_dict(state_dict, strict=self.init_strict)
+
+        if self.init_load_optimizer and isinstance(checkpoint, dict) and "optimizer_state_dict" in checkpoint:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        print(f"[init] loaded model weights from: {ckpt_path}")
+        if self.init_load_optimizer:
+            print("[init] optimizer state restored from checkpoint")
     def _build_fixed_param_pool(self):
         """
         构造固定参数池，只在 fixed_pool 模式下使用。
@@ -573,45 +693,204 @@ class PINNTrainer:
         #     dtype=self.dtype,
         # )
 
-        a_all, omega_all = self._sample_param_batch(
-            batch_size=self.n_param_samples,
-            skip=0,
+        pool = self._build_param_pool_with_metadata(
+            target_size=self.n_param_samples,
+            a_center=self.a_center,
+            a_range=self.curr_a_range,
+            omega_center=self.omega_center,
+            omega_range=self.curr_omega_range,
+            sampler=self.param_sampler,
+            cache=AuxCache(),
+            sobol_skip=self._param_sample_skip if self.param_sampler == "sobol" else 0,
+            advance_main_skip=True,
+        )
+        a_all = pool["a_all"]
+        omega_all = pool["omega_all"]
+        lambda_all = pool["lambda_all"]
+        ramp_all = pool["ramp_all"]
+        p_val = pool["p"]
+
+        print(
+            f"[param_pool] a in [{a_all.min().item():.6f}, {a_all.max().item():.6f}], "
+            f"omega in [{omega_all.min().item():.6f}, {omega_all.max().item():.6f}]"
         )
 
-        lambda_list = []
-        ramp_list = []
-        p_val = None
-        cache = AuxCache()
+        return pool
 
-        for i in range(self.n_param_samples):
-            lam_i = get_lambda_from_cfg(
-                self.physics_cfg, cache, a_all[i], omega_all[i]
-            )
-            p_i, ramp_i = get_ramp_and_p_from_cfg(
-                self.physics_cfg, cache, a_all[i], omega_all[i]
-            )
+    def _build_validation_pool(self):
+        """
+        构造固定验证参数池。
+        验证始终覆盖完整 parameter_space，而不是 curriculum 的当前子区间。
+        """
+        if self.val_mode != "fixed_pool":
+            raise ValueError(f"Unsupported validation mode: {self.val_mode}")
 
-            if p_val is None:
-                p_val = int(p_i or 5)
-            else:
-                if int(p_i or 5) != p_val:
-                    raise ValueError("不同参数样本返回了不同的 p，当前实现不支持。")
+        return self._build_param_pool_with_metadata(
+            target_size=self.val_param_samples,
+            a_center=self.a_center,
+            a_range=self.a_range,
+            omega_center=self.omega_center,
+            omega_range=self.omega_range,
+            sampler=self.val_param_sampler,
+            cache=AuxCache(),
+            sobol_seed=self.val_sobol_seed,
+            sobol_skip=self.val_sobol_skip,
+            advance_main_skip=False,
+        )
 
-            lambda_list.append(lam_i)
-            ramp_list.append(ramp_i)
 
-        lambda_all = torch.stack(lambda_list, dim=0)
-        ramp_all = torch.stack(ramp_list, dim=0)
+    def _format_float_tag(self, x: float, ndigits: int = 3) -> str:
+        """
+        用于文件夹命名，把浮点数转成安全字符串。
+        例如 0.125 -> 0p125
+        """
+        return f"{x:.{ndigits}f}".replace("-", "m").replace(".", "p")
 
-        return {
-            "a_all": a_all,
-            "omega_all": omega_all,
-            "lambda_all": lambda_all,
-            "ramp_all": ramp_all,
+
+    def _build_viz_reference_sample(self, fixed_pool=None):
+        """
+        构造本次训练固定使用的可视化参考样本。
+        逻辑：
+        1) fixed_pool 模式：从整个参数池里选最接近训练中心(a_center, omega_center)的样本
+        2) random 模式：直接用训练中心构造一个参考样本
+        返回：
+            {
+                "a": ...,
+                "omega": ...,
+                "lambda": ...,
+                "ramp": ...,
+                "p": int,
+            }
+        """
+        target_a = torch.tensor(self.a_center, device=self.device, dtype=self.dtype)
+        target_omega = torch.tensor(self.omega_center, device=self.device, dtype=self.dtype)
+
+        # ---- fixed_pool: 从参数池中挑一个固定参考点 ----
+        if self.param_sampling_mode == "fixed_pool" and fixed_pool is not None:
+            a_all = fixed_pool["a_all"]
+            omega_all = fixed_pool["omega_all"]
+            lambda_all = fixed_pool["lambda_all"]
+            ramp_all = fixed_pool["ramp_all"]
+            p_val = fixed_pool["p"]
+
+            denom_a = max(float(self.a_range), 1.0e-12)
+            denom_omega = max(float(self.omega_range), 1.0e-12)
+
+            score = ((a_all - target_a) / denom_a) ** 2 + ((omega_all - target_omega) / denom_omega) ** 2
+            idx = int(torch.argmin(score).item())
+
+            sample = {
+                "a": a_all[idx],
+                "omega": omega_all[idx],
+                "lambda": lambda_all[idx],
+                "ramp": ramp_all[idx],
+                "p": int(p_val),
+            }
+            return sample
+
+        # ---- random: 直接用中心点构造 ----
+        lam = get_lambda_from_cfg(self.physics_cfg, self.cache, target_a, target_omega)
+        p_val, ramp = get_ramp_and_p_from_cfg(self.physics_cfg, self.cache, target_a, target_omega)
+
+        sample = {
+            "a": target_a,
+            "omega": target_omega,
+            "lambda": lam.to(device=self.device, dtype=torch.complex128),
+            "ramp": ramp.to(device=self.device, dtype=torch.complex128),
             "p": int(p_val or 5),
         }
+        return sample
+
+    def _plot_parameter_domain(self, save_dir, fixed_pool=None):
+        """
+        绘制训练开始时的 (a, omega) 参数域示意图。
+        显示：
+        - 完整矩形 parameter_space
+        - 共振线 omega = m * Omega_H(a)
+        - 按 |k_horizon| < margin 剔除的危险带
+        - 当前训练池 / 验证池散点
+        """
+        problem_cfg = self.physics_cfg.get("problem", {})
+        M = float(problem_cfg.get("M", 1.0))
+        m_mode = int(problem_cfg.get("m", 2))
+
+        a_min = self.a_center - self.a_range
+        a_max = self.a_center + self.a_range
+        omega_min = self.omega_center - self.omega_range
+        omega_max = self.omega_center + self.omega_range
+
+        a_grid = np.linspace(a_min, a_max, 600)
+        spin_gap = np.sqrt(np.clip(M * M - a_grid * a_grid, 1.0e-12, None))
+        r_plus_grid = M + spin_gap
+        omega_h = a_grid / (r_plus_grid * r_plus_grid + a_grid * a_grid)
+        omega_res = m_mode * omega_h
+        omega_lo = np.clip(omega_res - self.k_horizon_margin, omega_min, omega_max)
+        omega_hi = np.clip(omega_res + self.k_horizon_margin, omega_min, omega_max)
+
+        fig, ax = plt.subplots(figsize=(7.5, 6.0))
+        ax.fill_between(
+            a_grid,
+            omega_lo,
+            omega_hi,
+            color="#d95f02",
+            alpha=0.20,
+            label=rf"excluded: $|k_H| < {self.k_horizon_margin:.1e}$",
+        )
+        ax.plot(a_grid, omega_res, color="#d95f02", lw=1.8, label=r"resonance: $\omega = m \Omega_H(a)$")
+
+        if fixed_pool is not None:
+            ax.scatter(
+                fixed_pool["a_all"].detach().cpu().numpy(),
+                fixed_pool["omega_all"].detach().cpu().numpy(),
+                s=18,
+                color="#1b9e77",
+                alpha=0.85,
+                label="training pool",
+            )
+
+        if self._validation_pool is not None:
+            ax.scatter(
+                self._validation_pool["a_all"].detach().cpu().numpy(),
+                self._validation_pool["omega_all"].detach().cpu().numpy(),
+                s=22,
+                marker="x",
+                color="#7570b3",
+                alpha=0.9,
+                label="validation pool",
+            )
+
+        ax.set_xlim(a_min, a_max)
+        ax.set_ylim(omega_min, omega_max)
+        ax.set_xlabel("a")
+        ax.set_ylabel("omega")
+        ax.set_title("Training Parameter Domain")
+        ax.grid(alpha=0.25)
+        ax.legend(loc="best", fontsize=9)
+        fig.tight_layout()
+
+        save_path = Path(save_dir) / "parameter_domain.png"
+        fig.savefig(save_path, dpi=180, bbox_inches="tight")
+        plt.close(fig)
+        print(f"[train] parameter domain figure saved to: {save_path}")
 
 
+    def _make_run_name(self) -> str:
+        """
+        用训练开始时间 + 当前训练范围生成 run 文件夹名。
+        """
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        a_min = self.a_center - self.a_range
+        a_max = self.a_center + self.a_range
+        omega_min = self.omega_center - self.omega_range
+        omega_max = self.omega_center + self.omega_range
+
+        run_name = (
+            f"{ts}"
+            f"_a_{self._format_float_tag(a_min)}_{self._format_float_tag(a_max)}"
+            f"_omega_{self._format_float_tag(omega_min)}_{self._format_float_tag(omega_max)}"
+        )
+        return run_name
     def _get_param_batches_for_epoch(self, fixed_pool=None):
         """
         返回当前 epoch 需要遍历的参数 batch 列表。
@@ -638,38 +917,24 @@ class PINNTrainer:
             #     dtype=self.dtype,
             # )
 
-            a_batch, omega_batch = self._sample_param_batch(
-                batch_size=self.batch_size,
-                skip=0,
+            batch_pool = self._build_param_pool_with_metadata(
+                target_size=self.batch_size,
+                a_center=self.a_center,
+                a_range=self.curr_a_range,
+                omega_center=self.omega_center,
+                omega_range=self.curr_omega_range,
+                sampler=self.param_sampler,
+                cache=self.cache,
+                sobol_skip=self._param_sample_skip if self.param_sampler == "sobol" else 0,
+                advance_main_skip=True,
             )
 
-            lambda_list = []
-            ramp_list = []
-            p_val = None
-
-            for i in range(self.batch_size):
-                lam_i = get_lambda_from_cfg(
-                    self.physics_cfg, self.cache, a_batch[i], omega_batch[i]
-                )
-                p_i, ramp_i = get_ramp_and_p_from_cfg(
-                    self.physics_cfg, self.cache, a_batch[i], omega_batch[i]
-                )
-
-                if p_val is None:
-                    p_val = int(p_i or 5)
-                else:
-                    if int(p_i or 5) != p_val:
-                        raise ValueError("当前 batch 内不同样本返回了不同的 p。")
-
-                lambda_list.append(lam_i)
-                ramp_list.append(ramp_i)
-
             batches.append({
-                "a_batch": a_batch,
-                "omega_batch": omega_batch,
-                "lambda_batch": torch.stack(lambda_list, dim=0),
-                "ramp_batch": torch.stack(ramp_list, dim=0),
-                "p": int(p_val or 5),
+                "a_batch": batch_pool["a_all"],
+                "omega_batch": batch_pool["omega_all"],
+                "lambda_batch": batch_pool["lambda_all"],
+                "ramp_batch": batch_pool["ramp_all"],
+                "p": batch_pool["p"],
             })
 
         elif self.param_sampling_mode == "fixed_pool":
@@ -850,26 +1115,204 @@ class PINNTrainer:
         )
         return y_var
 
-    def _sample_param_batch(self, batch_size, skip=0):
-        if self.param_sampler == "sobol":
+    def _k_horizon_tensor(self, a_batch, omega_batch):
+        problem_cfg = self.physics_cfg.get("problem", {})
+        M = float(problem_cfg.get("M", 1.0))
+        m_mode = int(problem_cfg.get("m", 2))
+        spin_gap = torch.sqrt(torch.clamp(M * M - a_batch * a_batch, min=1.0e-12))
+        r_plus_local = M + spin_gap
+        omega_h = a_batch / (r_plus_local * r_plus_local + a_batch * a_batch)
+        return omega_batch - m_mode * omega_h
+
+    def _draw_param_candidates(
+        self,
+        batch_size,
+        a_center,
+        a_range,
+        omega_center,
+        omega_range,
+        sampler,
+        sobol_seed=None,
+        sobol_skip=0,
+    ):
+        if sampler == "sobol":
             return sample_parameters_sobol(
                 batch_size=batch_size,
-                a_center=self.a_center,
-                a_range=self.curr_a_range,
-                omega_center=self.omega_center,
-                omega_range=self.curr_omega_range,
+                a_center=a_center,
+                a_range=a_range,
+                omega_center=omega_center,
+                omega_range=omega_range,
                 device=self.device,
                 dtype=self.dtype,
-                skip=skip,
+                seed=1234 if sobol_seed is None else sobol_seed,
+                skip=sobol_skip,
             )
         return sample_parameters(
+            batch_size=batch_size,
+            a_center=a_center,
+            a_range=a_range,
+            omega_center=omega_center,
+            omega_range=omega_range,
+            device=self.device,
+            dtype=self.dtype,
+        )
+
+    def _sample_valid_param_batch(
+        self,
+        batch_size,
+        a_center,
+        a_range,
+        omega_center,
+        omega_range,
+        sampler,
+        sobol_seed=None,
+        sobol_skip=0,
+        advance_main_skip=True,
+        return_next_skip=False,
+    ):
+        accepted_a = []
+        accepted_omega = []
+        next_skip = sobol_skip
+
+        for _ in range(self.param_resample_max_attempts):
+            if sum(x.numel() for x in accepted_a) >= batch_size:
+                break
+
+            need = batch_size - sum(x.numel() for x in accepted_a)
+            draw_size = max(need * self.param_resample_factor, need)
+            a_cand, omega_cand = self._draw_param_candidates(
+                batch_size=draw_size,
+                a_center=a_center,
+                a_range=a_range,
+                omega_center=omega_center,
+                omega_range=omega_range,
+                sampler=sampler,
+                sobol_seed=sobol_seed,
+                sobol_skip=next_skip,
+            )
+
+            if sampler == "sobol":
+                next_skip += draw_size
+
+            k_h = self._k_horizon_tensor(a_cand, omega_cand)
+            valid_mask = torch.abs(k_h) >= self.k_horizon_margin
+            if valid_mask.any():
+                accepted_a.append(a_cand[valid_mask])
+                accepted_omega.append(omega_cand[valid_mask])
+
+        n_accepted = sum(x.numel() for x in accepted_a)
+        if n_accepted < batch_size:
+            raise RuntimeError(
+                f"Unable to sample enough valid parameter points with |k_horizon| >= {self.k_horizon_margin}. "
+                f"Requested {batch_size}, got {n_accepted}."
+            )
+
+        a_batch = torch.cat(accepted_a, dim=0)[:batch_size]
+        omega_batch = torch.cat(accepted_omega, dim=0)[:batch_size]
+
+        if sampler == "sobol" and advance_main_skip:
+            self._param_sample_skip = next_skip
+
+        if return_next_skip:
+            return a_batch, omega_batch, next_skip
+        return a_batch, omega_batch
+
+    def _build_param_pool_with_metadata(
+        self,
+        target_size,
+        a_center,
+        a_range,
+        omega_center,
+        omega_range,
+        sampler,
+        cache,
+        sobol_seed=None,
+        sobol_skip=0,
+        advance_main_skip=True,
+    ):
+        accepted_a = []
+        accepted_omega = []
+        lambda_list = []
+        ramp_list = []
+        p_val = None
+        next_skip = sobol_skip
+        n_fail = 0
+
+        for _ in range(self.param_resample_max_attempts):
+            if len(lambda_list) >= target_size:
+                break
+
+            need = target_size - len(lambda_list)
+            a_batch, omega_batch, next_skip = self._sample_valid_param_batch(
+                batch_size=need,
+                a_center=a_center,
+                a_range=a_range,
+                omega_center=omega_center,
+                omega_range=omega_range,
+                sampler=sampler,
+                sobol_seed=sobol_seed,
+                sobol_skip=next_skip,
+                advance_main_skip=False,
+                return_next_skip=True,
+            )
+
+            for i in range(a_batch.shape[0]):
+                try:
+                    lam_i = get_lambda_from_cfg(
+                        self.physics_cfg, cache, a_batch[i], omega_batch[i]
+                    )
+                    p_i, ramp_i = get_ramp_and_p_from_cfg(
+                        self.physics_cfg, cache, a_batch[i], omega_batch[i]
+                    )
+                except Exception as exc:
+                    n_fail += 1
+                    print(
+                        f"[param_pool] skip invalid sample a={float(a_batch[i].detach().cpu().item()):.6f}, "
+                        f"omega={float(omega_batch[i].detach().cpu().item()):.6f}: {exc}"
+                    )
+                    continue
+
+                if p_val is None:
+                    p_val = int(p_i or 5)
+                elif int(p_i or 5) != p_val:
+                    raise ValueError("参数池中不同样本返回了不同的 p，当前实现不支持。")
+
+                accepted_a.append(a_batch[i])
+                accepted_omega.append(omega_batch[i])
+                lambda_list.append(lam_i)
+                ramp_list.append(ramp_i)
+
+                if len(lambda_list) >= target_size:
+                    break
+
+        if len(lambda_list) < target_size:
+            raise RuntimeError(
+                f"Unable to build a valid parameter pool. Requested {target_size}, "
+                f"built {len(lambda_list)}, skipped {n_fail} invalid samples."
+            )
+
+        if sampler == "sobol" and advance_main_skip:
+            self._param_sample_skip = next_skip
+
+        return {
+            "a_all": torch.stack(accepted_a[:target_size], dim=0),
+            "omega_all": torch.stack(accepted_omega[:target_size], dim=0),
+            "lambda_all": torch.stack(lambda_list[:target_size], dim=0),
+            "ramp_all": torch.stack(ramp_list[:target_size], dim=0),
+            "p": int(p_val or 5),
+        }
+
+    def _sample_param_batch(self, batch_size, skip=0):
+        base_skip = self._param_sample_skip if self.param_sampler == "sobol" else skip
+        return self._sample_valid_param_batch(
             batch_size=batch_size,
             a_center=self.a_center,
             a_range=self.curr_a_range,
             omega_center=self.omega_center,
             omega_range=self.curr_omega_range,
-            device=self.device,
-            dtype=self.dtype,
+            sampler=self.param_sampler,
+            sobol_skip=base_skip,
+            advance_main_skip=True,
         )
 
     
@@ -1039,8 +1482,133 @@ class PINNTrainer:
             wv = self.flat_var_weight if var_weight is None else var_weight
             total = total + wv * loss_var
 
-        return total
+        return total    
+    
+    def _compute_head_regularization(self):
+        """
+        头部正则：
+        - 对 nl_head 用更强的 L2 正则
+        - 对 a_head / omega_head 用较弱的 L2 正则
+        目的：
+        1. 初期先让一阶响应头学结构
+        2. 防止 nl_head 过早吞掉所有参数变化
+        """
+        if not self.head_reg_enabled:
+            zero = torch.zeros((), device=self.device, dtype=self.dtype)
+            return zero, {
+                "loss_head_reg": 0.0,
+                "loss_head_reg_nl": 0.0,
+                "loss_head_reg_resp": 0.0,
+            }
 
+        model = self.model
+
+        nl_sq = (
+            model.nl_head.weight.pow(2).mean()
+            + model.nl_head.bias.pow(2).mean()
+        )
+
+        resp_sq = (
+            model.a_head.weight.pow(2).mean()
+            + model.a_head.bias.pow(2).mean()
+            + model.omega_head.weight.pow(2).mean()
+            + model.omega_head.bias.pow(2).mean()
+        )
+
+        loss_nl = self.head_reg_weight_nl * nl_sq
+        loss_resp = self.head_reg_weight_resp * resp_sq
+        loss_total = loss_nl + loss_resp
+
+        info = {
+            "loss_head_reg": float(loss_total.detach().cpu().item()),
+            "loss_head_reg_nl": float(loss_nl.detach().cpu().item()),
+            "loss_head_reg_resp": float(loss_resp.detach().cpu().item()),
+        }
+        return loss_total, info
+    def _compute_param_curvature_regularization(self, a_batch, omega_batch, y_points):
+        """
+        用参数方向的二阶中心差分，约束局部曲率：
+            f(p+δ) + f(p-δ) - 2 f(p)
+
+        这里 δ 不是直接用物理单位，而是：
+        - a 方向：通过 delta_alpha 转成物理 da
+        - omega 方向：通过 delta_xi 转成对数频率扰动
+        """
+        if not self.param_curv_enabled:
+            zero = torch.zeros((), device=self.device, dtype=self.dtype)
+            return zero, {
+                "loss_param_curv": 0.0,
+                "loss_param_curv_a": 0.0,
+                "loss_param_curv_omega": 0.0,
+            }
+
+        # 只取一部分 y 点，减少额外开销
+        if y_points.numel() > self.param_curv_n_probe_points:
+            idx = torch.linspace(
+                0,
+                y_points.numel() - 1,
+                steps=self.param_curv_n_probe_points,
+                device=y_points.device,
+                dtype=torch.float64,
+            ).round().long()
+            y_probe = y_points[idx]
+        else:
+            y_probe = y_points
+
+        model = self.model
+        dtype = self.dtype
+        device = self.device
+
+        # 当前模型 patch 尺度
+        da = self.param_curv_delta_alpha * model.a_half_range_local
+
+        logw_min = math.log10(model.omega_min_local)
+        logw_max = math.log10(model.omega_max_local)
+        dlogw = 0.5 * (logw_max - logw_min) * self.param_curv_delta_xi
+
+        # 当前点
+        f0 = model(a_batch, omega_batch, y_probe)
+
+        # ---------- a 方向 ----------
+        a_plus = torch.clamp(a_batch + da, min=model.a_center_local - model.a_half_range_local,
+                             max=model.a_center_local + model.a_half_range_local)
+        a_minus = torch.clamp(a_batch - da, min=model.a_center_local - model.a_half_range_local,
+                              max=model.a_center_local + model.a_half_range_local)
+
+        f_a_plus = model(a_plus, omega_batch, y_probe)
+        f_a_minus = model(a_minus, omega_batch, y_probe)
+
+        curv_a = f_a_plus + f_a_minus - 2.0 * f0
+        loss_curv_a = torch.mean(torch.abs(curv_a) ** 2)
+
+        # ---------- omega 方向 ----------
+        logw = torch.log10(torch.clamp(omega_batch, min=1.0e-12))
+        logw_plus = torch.clamp(logw + dlogw, min=logw_min, max=logw_max)
+        logw_minus = torch.clamp(logw - dlogw, min=logw_min, max=logw_max)
+
+        omega_plus = torch.pow(
+            torch.tensor(10.0, device=device, dtype=dtype),
+            logw_plus
+        )
+        omega_minus = torch.pow(
+            torch.tensor(10.0, device=device, dtype=dtype),
+            logw_minus
+        )
+
+        f_w_plus = model(a_batch, omega_plus, y_probe)
+        f_w_minus = model(a_batch, omega_minus, y_probe)
+
+        curv_w = f_w_plus + f_w_minus - 2.0 * f0
+        loss_curv_w = torch.mean(torch.abs(curv_w) ** 2)
+
+        loss_total = self.param_curv_weight * (loss_curv_a + loss_curv_w)
+
+        info = {
+            "loss_param_curv": float(loss_total.detach().cpu().item()),
+            "loss_param_curv_a": float(loss_curv_a.detach().cpu().item()),
+            "loss_param_curv_omega": float(loss_curv_w.detach().cpu().item()),
+        }
+        return loss_total, info
 
     def _run_one_training_batch(self, batch, global_step):
         current_lr = self._current_lr(global_step)
@@ -1212,6 +1780,22 @@ class PINNTrainer:
             )
             anchor_weight = anchor_weight_sched * dynamic_mult
 
+
+
+        # =====================================================
+        # 新增：结构相关正则
+        # =====================================================
+        loss_head_reg, head_reg_info = self._compute_head_regularization()
+        info.update(head_reg_info)
+
+        loss_param_curv, param_curv_info = self._compute_param_curvature_regularization(
+            a_batch=a_batch,
+            omega_batch=omega_batch,
+            y_points=y_interior,
+        )
+        info.update(param_curv_info)
+
+
         total_loss = self._combine_losses(
             loss_pde,
             loss_seed=loss_seed,
@@ -1220,7 +1804,7 @@ class PINNTrainer:
             interior_weight=interior_weight,
             anchor_weight=anchor_weight,
             var_weight=var_weight,
-        )
+        ) + loss_head_reg + loss_param_curv
         info["weight_anchor_dynamic"] = float(anchor_weight)
         
         self.optimizer.zero_grad()
@@ -1321,6 +1905,9 @@ class PINNTrainer:
         """
         if not self.viz_enabled:
             return
+
+        if self.viz_start_time is None:
+            self.viz_start_time = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # ---- dtype / device ----
         model_param = next(self.model.parameters())
@@ -1553,7 +2140,9 @@ class PINNTrainer:
                 f"_a_{a_scalar:.6f}"
                 f"_omega_{omega_scalar:.6f}.png"
             )
-            save_path = self.viz_dir / filename
+            save_dir = self.viz_dir / self.viz_start_time
+            save_dir.mkdir(parents=True, exist_ok=True)
+            save_path = save_dir / filename
             fig.savefig(save_path, dpi=160, bbox_inches="tight")
             print(f"[viz] saved figure to {save_path}")
 
@@ -1567,50 +2156,103 @@ class PINNTrainer:
         self.model.train()
 
 
-    def validate(self, a_val=None, omega_val=None):
-        """在全r网格上验证"""
+    def _validate_single_case(
+        self,
+        a_val: torch.Tensor,
+        omega_val: torch.Tensor,
+        lambda_val: torch.Tensor | None = None,
+        ramp_val: torch.Tensor | None = None,
+        p_val: int | None = None,
+    ):
+        """在单个参数点上做 residual 验证。"""
+        was_training = self.model.training
         self.model.eval()
-        M = float(self.physics_cfg["problem"].get("M", 1.0))
-        if a_val is None:
-            a_val = torch.tensor(self.a_center, device=self.device, dtype=self.dtype)
-        if omega_val is None:
-            omega_val = torch.tensor(self.omega_center, device=self.device, dtype=self.dtype)
-        
-        
+        try:
+            M = float(self.physics_cfg["problem"].get("M", 1.0))
 
-        rp = r_plus(a_val, M)
-        r_min = float(rp) + 0.1
-        r_max = 100.0
+            rp = r_plus(a_val, M)
+            r_min = float(rp) + 0.1
+            r_max = 100.0
 
-        y_min = 2.0 * float(rp) / r_max - 1.0
-        y_max = 2.0 * float(rp) / r_min - 1.0
+            y_min = 2.0 * float(rp) / r_max - 1.0
+            y_max = 2.0 * float(rp) / r_min - 1.0
 
-        y_grid = sample_points_chebyshev_grid(
-            n_points=self.val_n_points,
-            y_min=y_min,
-            y_max=y_max,
-            device=self.device,
-            dtype=self.dtype,
-        )
-        y_grid = y_grid.clone().requires_grad_(True)
+            y_grid = sample_points_chebyshev_grid(
+                n_points=self.val_n_points,
+                y_min=y_min,
+                y_max=y_max,
+                device=self.device,
+                dtype=self.dtype,
+            )
+            y_grid = y_grid.clone().requires_grad_(True)
 
-        a_batch = a_val.unsqueeze(0)
-        omega_batch = omega_val.unsqueeze(0)
+            a_batch = a_val.unsqueeze(0)
+            omega_batch = omega_val.unsqueeze(0)
 
-        lam = get_lambda_from_cfg(self.physics_cfg, self.cache, a_val, omega_val)
-        p, ramp = get_ramp_and_p_from_cfg(self.physics_cfg, self.cache, a_val, omega_val)
+            if lambda_val is None or ramp_val is None or p_val is None:
+                lam = get_lambda_from_cfg(self.physics_cfg, self.cache, a_val, omega_val)
+                p, ramp = get_ramp_and_p_from_cfg(self.physics_cfg, self.cache, a_val, omega_val)
+            else:
+                lam = lambda_val
+                ramp = ramp_val
+                p = p_val
 
-        lambda_batch = lam.unsqueeze(0).to(device=self.device, dtype=torch.complex128)
-        ramp_batch = ramp.unsqueeze(0).to(device=self.device, dtype=torch.complex128)
+            lambda_batch = lam.unsqueeze(0).to(device=self.device, dtype=torch.complex128)
+            ramp_batch = ramp.unsqueeze(0).to(device=self.device, dtype=torch.complex128)
 
-        loss, _ = pinn_residual_loss(
-    self.model, self.physics_cfg, a_batch, omega_batch,
-    lambda_batch, ramp_batch, int(p or 5),
-    y_grid, torch.tensor([], device=self.device, dtype=self.dtype),
-    weight_interior=1.0, weight_boundary=0.0
-)
+            loss, _ = pinn_residual_loss(
+                self.model, self.physics_cfg, a_batch, omega_batch,
+                lambda_batch, ramp_batch, int(p or 5),
+                y_grid, torch.tensor([], device=self.device, dtype=self.dtype),
+                weight_interior=1.0, weight_boundary=0.0
+            )
 
-        return loss.detach().cpu().item()
+            return float(loss.detach().cpu().item())
+        finally:
+            if was_training:
+                self.model.train()
+
+    def validate(self, a_val=None, omega_val=None):
+        """
+        若传入 a_val / omega_val，则验证单点；
+        否则在固定验证池上做全参数空间验证并返回聚合指标。
+        """
+        if a_val is not None and omega_val is not None:
+            return self._validate_single_case(a_val=a_val, omega_val=omega_val)
+
+        if self._validation_pool is None:
+            self._validation_pool = self._build_validation_pool()
+
+        pool = self._validation_pool
+        losses = []
+        worst_idx = -1
+        worst_loss = -float("inf")
+
+        for i in range(pool["a_all"].shape[0]):
+            loss_i = self._validate_single_case(
+                a_val=pool["a_all"][i],
+                omega_val=pool["omega_all"][i],
+                lambda_val=pool["lambda_all"][i],
+                ramp_val=pool["ramp_all"][i],
+                p_val=pool["p"],
+            )
+            losses.append(loss_i)
+            if loss_i > worst_loss:
+                worst_loss = loss_i
+                worst_idx = i
+
+        val_mean = float(np.mean(losses)) if losses else float("inf")
+        metrics = {
+            "val_mean": val_mean,
+            "val_worst": float(worst_loss if losses else float("inf")),
+            "worst_a": float(pool["a_all"][worst_idx].detach().cpu().item()) if worst_idx >= 0 else None,
+            "worst_omega": float(pool["omega_all"][worst_idx].detach().cpu().item()) if worst_idx >= 0 else None,
+            "n_val_samples": int(len(losses)),
+        }
+        self.latest_val_metrics = metrics
+        self.val_loss_history.append(metrics["val_mean"])
+        self.val_worst_history.append(metrics["val_worst"])
+        return metrics
 
     def train_step(self):
         """单步训练"""
@@ -1806,9 +2448,15 @@ class PINNTrainer:
 
         self.viz_dir = self.output_dir / self.viz_subdir
         self.viz_dir.mkdir(parents=True, exist_ok=True)
-        best_val_loss = float('inf')
+        self.best_val_loss = float('inf')
         no_improve_count = 0
         global_step = 0
+        self._validation_pool = self._build_validation_pool()
+
+        def monitored_val(metrics):
+            if self.val_monitor == "worst":
+                return metrics["val_worst"]
+            return metrics["val_mean"]
 
         def save_checkpoint(path):
             torch.save({
@@ -1820,15 +2468,26 @@ class PINNTrainer:
                 'loss_history': self.loss_history,
                 'step_history': self.step_history,
                 'val_loss_history': self.val_loss_history,
-                'best_val_loss': best_val_loss,
+                'val_worst_history': self.val_worst_history,
+                'best_val_loss': self.best_val_loss,
+                'latest_val_metrics': self.latest_val_metrics,
                 'global_step': global_step,
             }, path)
+
+        def finalize_training(reason):
+            final_model_path = os.path.join(save_dir, "final_model.pt")
+            save_checkpoint(final_model_path)
+            print(f"[info] training finished ({reason})")
+            print(f"[info] final model saved to: {final_model_path}")
+            self.plot_loss_curve(save_dir)
 
         # fixed_pool 模式只初始化一次
         fixed_pool = None
         if self.param_sampling_mode == "fixed_pool":
             fixed_pool = self._build_fixed_param_pool()
             print(f"[info] Built fixed parameter pool with {fixed_pool['a_all'].shape[0]} samples")
+        print(f"[info] Built validation pool with {self._validation_pool['a_all'].shape[0]} samples")
+        self._plot_parameter_domain(save_dir=save_dir, fixed_pool=fixed_pool)
 
         # 计算总步数，用于 tqdm
         if self.param_sampling_mode == "fixed_pool":
@@ -1894,41 +2553,36 @@ class PINNTrainer:
                     pbar.set_postfix({
                         "total": f"{info['total_loss']:.3e}",
                         "int": f"{info.get('loss_interior_eff', 0.0):.3e}",
-                        "bd": f"{info.get('loss_boundary', 0.0):.3e}",
+                        # "bd": f"{info.get('loss_boundary', 0.0):.3e}",
                         "anchor": f"{info.get('loss_anchor_eff', 0.0):.3e}",
                         "grad": f"{info.get('grad_norm', 0.0):.3e}",
-                        "var": f"{info.get('loss_var_eff', 0.0):.3e}",
-                        "w_int": f"{info.get('weight_interior', 0.0):.2e}",
-                        "w_anch": f"{info.get('weight_anchor_sched', 0.0):.2e}",
-                        "w_var": f"{info.get('weight_var', 0.0):.2e}",
+                        # "var": f"{info.get('loss_var_eff', 0.0):.3e}",
+                        # "w_int": f"{info.get('weight_interior', 0.0):.2e}",
+                        # "w_anch": f"{info.get('weight_anchor_sched', 0.0):.2e}",
+                        # "w_var": f"{info.get('weight_var', 0.0):.2e}",
+                        "head": f"{info.get('loss_head_reg', 0.0):.3e}",
+                        "curv": f"{info.get('loss_param_curv', 0.0):.3e}",
+                        "grad": f"{info.get('grad_norm', 0.0):.3e}",
                     })
 
                     # 验证
                     if global_step % self.val_freq == 0:
-                        val_loss = self.validate()
+                        val_metrics = self.validate()
+                        val_metric = monitored_val(val_metrics)
                         pbar.set_postfix({
                             "total": f"{info['total_loss']:.3e}",
                             "int": f"{info.get('loss_interior_eff', 0.0):.3e}",
                             "bd": f"{info.get('loss_boundary', 0.0):.3e}",
                             "anchor": f"{info.get('loss_anchor_eff', 0.0):.3e}",
                             "var": f"{info.get('loss_var_eff', 0.0):.3e}",
-                            "val": f"{val_loss:.3e}",
+                            "val": f"{val_metrics['val_mean']:.3e}",
+                            "worst": f"{val_metrics['val_worst']:.3e}",
                         })
 
-                        if val_loss < best_val_loss - self.early_stop_threshold:
-                            best_val_loss = val_loss
+                        if val_metric < self.best_val_loss - self.early_stop_threshold:
+                            self.best_val_loss = val_metric
                             no_improve_count = 0
 
-                            # model_path = os.path.join(save_dir, "best_model.pt")
-                            # torch.save({
-                            #     'model_state_dict': self.model.state_dict(),
-                            #     'optimizer_state_dict': self.optimizer.state_dict(),
-                            #     'full_cfg': self.full_cfg,
-                            #     'physics_cfg': self.physics_cfg,
-                            #     'train_cfg': self.train_cfg,
-                            #     'loss_history': self.loss_history,
-                            #     'step_history': self.step_history,
-                            # }, model_path)
                             model_path = os.path.join(save_dir, "best_model.pt")
                             save_checkpoint(model_path)
                         else:
@@ -1936,20 +2590,13 @@ class PINNTrainer:
 
                         if no_improve_count >= self.early_stop_patience:
                             print("\n[info] early stopping triggered")
-                            final_model_path = os.path.join(save_dir, "final_model.pt")
-                            save_checkpoint(final_model_path)
-                            print(f"[info] final model saved to: {final_model_path}")
-                            self.plot_loss_curve(save_dir)
+                            finalize_training(reason="early_stop")
                             return
 
                 mean_epoch_loss = sum(epoch_losses) / len(epoch_losses)
                 # tqdm.write(f"[epoch {epoch+1}] mean_train_loss = {mean_epoch_loss:.6e}")
 
-        final_model_path = os.path.join(save_dir, "final_model.pt")
-        save_checkpoint(final_model_path)
-        print(f"[info] final model saved to: {final_model_path}")
-
-        self.plot_loss_curve(save_dir)
+        finalize_training(reason="max_epochs")
 
     def _grad_norm(self, loss):
         self.optimizer.zero_grad(set_to_none=True)

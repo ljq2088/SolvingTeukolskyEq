@@ -3,12 +3,26 @@ include:
 
 parameter_space:
   a:
-    center: 0.1
-    range: 0.00
+    center: 0.5
+    range: 0.49
   omega:
-    center: 0.1
-    range: 0.00
+    center: 0.4
+    range: 0.3999
+  domain:
+    k_horizon_margin: 1.0e-2
+    resample_factor: 4
+    max_attempts: 32
 
+initialization:
+  enabled: true
+  checkpoint: outputs/pinn/final_model_full_a_omega.pt
+  load_optimizer: false
+  strict: true
+# param_sampling:
+#   a_center: 0.125
+#   a_range: 0.075
+#   omega_center: 0.55
+#   omega_range: 0.45
 model:
   hidden_dims: [128, 128, 128, 128]
   activation: silu
@@ -18,12 +32,18 @@ model:
   use_film: true
   use_residual: true
 
+  # 当前小参数域 patch 
+  a_min_local: 0.0099
+  a_max_local: 0.991
+  omega_min_local: 0.000099 
+  omega_max_local: 1.0
+
 sampling:
   parameter_batch:
     mode: fixed_pool
     sampler: sobol
     batch_size: 4
-    n_param_samples: 1
+    n_param_samples: 32 
 
   collocation:
     interior:
@@ -75,8 +95,15 @@ training:
     eps: 1.0e-12
 
   validation:
+    mode: fixed_pool
     val_freq: 50
     val_n_points: 200
+    n_param_samples: 16
+    param_sampler: sobol
+    monitor: mean
+    track_worst: true
+    sobol_seed: 4321
+    sobol_skip: 0
     save_best_freq: 50
 
   early_stop:
@@ -160,11 +187,23 @@ regularization:
     warmup_steps: 3000
     decay_start: 500
     decay_rate: 0.9999
-    min_weight: 1.0e+7
+    min_weight: 1.0e-3
     steps: 50000
     use_dedicated_points: true
     strategy: chebyshev
     n_points: 64
+    
+  head_reg:
+    enabled: true
+    weight_nl: 1.0e-6
+    weight_resp: 1.0e-8
+
+  param_curvature:
+    enabled: true
+    weight: 1.0e-4
+    delta_alpha: 0.05
+    delta_xi: 0.05
+    n_probe_points: 32
 
 restart:
   enabled: false

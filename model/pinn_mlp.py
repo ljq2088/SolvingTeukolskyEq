@@ -135,14 +135,29 @@ class FiLMBlock(nn.Module):
         return h
 
 
+
 class PINN_MLP(nn.Module):
     """
-    改进版 PINN MLP:
-      - y 走 Fourier feature
-      - (a, ω) 走 parameter encoder
-      - hidden layers 使用 FiLM 条件调制
-      - 输出仍然是复数 f(y)
+    小范围变参数版 PINN:
+        f(y;a,ω) = f_base(y) + α f_a(y,p) + ξ f_omega(y,p) + (α^2+ξ^2) f_nl(y,p)
+
+    其中:
+        a ∈ [0.05, 0.2]
+        ω ∈ [0.1, 1.0]
+
+    设计思想：
+    1. y 仍然走 FourierFeature1D，保留对振荡结构的表达能力
+    2. 参数分支不只吃 (a, ω)，而是吃局部 patch 上更合理的物理特征 p(a,ω)
+    3. 主干拆成两条：
+       - base_trunk: 只依赖 y，学习参数无关的基解表示
+       - response_trunk: 依赖 y + 参数调制，学习参数响应表示
+    4. 输出拆成四头：
+       - base_head
+       - a_head
+       - omega_head
+       - nl_head
     """
+
     def __init__(
         self,
         hidden_dims=[128, 128, 128, 128],
@@ -153,6 +168,14 @@ class PINN_MLP(nn.Module):
         param_embed_dim: int = 64,
         use_film: bool = True,
         use_residual: bool = True,
+        # ---- 小参数域 patch 归一化参数 ----
+        a_center_local: float = 0.125,
+        a_half_range_local: float = 0.075,
+        omega_min_local: float = 0.1,
+        omega_max_local: float = 1.0,
+        # ---- 物理常数 ----
+        M: float = 1.0,
+        m_mode: int = 2,
     ):
         super().__init__()
 
@@ -165,6 +188,14 @@ class PINN_MLP(nn.Module):
         self.use_film = bool(use_film)
         self.use_residual = bool(use_residual)
 
+        self.a_center_local = float(a_center_local)
+        self.a_half_range_local = float(a_half_range_local)
+        self.omega_min_local = float(omega_min_local)
+        self.omega_max_local = float(omega_max_local)
+
+        self.M = float(M)
+        self.m_mode = int(m_mode)
+
         # ---- y 分支：Fourier feature ----
         self.y_encoder = FourierFeature1D(
             num_frequencies=fourier_num_freqs,
@@ -172,30 +203,59 @@ class PINN_MLP(nn.Module):
             include_input=True,
         )
 
-        # ---- 参数分支：(a, ω) -> latent code ----
+        # 参数特征:
+        # [alpha, xi, alpha^2, xi^2, alpha*xi, r_plus, sqrt(1-a^2/M^2), Omega_H, k, log(1+omega)]
+        self.param_in_dim = 10
+
+        # ---- 参数编码器 ----
         self.param_encoder = nn.Sequential(
-            nn.Linear(2, param_embed_dim),
+            nn.Linear(self.param_in_dim, param_embed_dim),
             _make_activation(activation),
             nn.Linear(param_embed_dim, param_embed_dim),
             _make_activation(activation),
         )
 
-        # ---- 输入投影 ----
-        self.input_proj = nn.Linear(self.y_encoder.out_dim, self.hidden_dims[0])
-        self.input_act = _make_activation(activation)
+        # =========================================================
+        # 1) base trunk: 只走 y 特征，不受参数调制
+        # =========================================================
+        self.base_input_proj = nn.Linear(self.y_encoder.out_dim, self.hidden_dims[0])
+        self.base_input_act = _make_activation(activation)
 
-        if self.use_film:
-            self.input_gamma = nn.Linear(param_embed_dim, self.hidden_dims[0])
-            self.input_beta = nn.Linear(param_embed_dim, self.hidden_dims[0])
-        else:
-            self.input_gamma = None
-            self.input_beta = None
-
-        # ---- 隐层 ----
-        blocks = []
+        base_blocks = []
         prev_dim = self.hidden_dims[0]
         for out_dim in self.hidden_dims[1:]:
-            blocks.append(
+            # base_trunk 不用 FiLM，只保留 residual
+            base_blocks.append(
+                FiLMBlock(
+                    in_dim=prev_dim,
+                    out_dim=out_dim,
+                    cond_dim=param_embed_dim,   # 占位即可，不会用到
+                    activation=activation,
+                    use_film=False,
+                    use_residual=self.use_residual,
+                )
+            )
+            prev_dim = out_dim
+        self.base_blocks = nn.ModuleList(base_blocks)
+        self.base_out_dim = prev_dim
+
+        # =========================================================
+        # 2) response trunk: y + 参数 FiLM 调制
+        # =========================================================
+        self.resp_input_proj = nn.Linear(self.y_encoder.out_dim, self.hidden_dims[0])
+        self.resp_input_act = _make_activation(activation)
+
+        if self.use_film:
+            self.resp_input_gamma = nn.Linear(param_embed_dim, self.hidden_dims[0])
+            self.resp_input_beta = nn.Linear(param_embed_dim, self.hidden_dims[0])
+        else:
+            self.resp_input_gamma = None
+            self.resp_input_beta = None
+
+        resp_blocks = []
+        prev_dim = self.hidden_dims[0]
+        for out_dim in self.hidden_dims[1:]:
+            resp_blocks.append(
                 FiLMBlock(
                     in_dim=prev_dim,
                     out_dim=out_dim,
@@ -206,10 +266,26 @@ class PINN_MLP(nn.Module):
                 )
             )
             prev_dim = out_dim
-        self.blocks = nn.ModuleList(blocks)
+        self.resp_blocks = nn.ModuleList(resp_blocks)
+        self.resp_out_dim = prev_dim
 
-        # ---- 输出层 ----
-        self.out_layer = nn.Linear(prev_dim, 2)
+        # =========================================================
+        # 3) 融合层：concat(base, resp) -> fusion
+        # =========================================================
+        fusion_in_dim = self.base_out_dim + self.resp_out_dim
+        self.fusion = nn.Sequential(
+            nn.Linear(fusion_in_dim, fusion_in_dim),
+            _make_activation(activation),
+        )
+        self.fusion_dim = fusion_in_dim
+
+        # =========================================================
+        # 4) 四个输出头
+        # =========================================================
+        self.base_head = nn.Linear(self.fusion_dim, 2)
+        self.a_head = nn.Linear(self.fusion_dim, 2)
+        self.omega_head = nn.Linear(self.fusion_dim, 2)
+        self.nl_head = nn.Linear(self.fusion_dim, 2)
 
         if self.output_activation == "tanh":
             self.out_act = nn.Tanh()
@@ -218,73 +294,181 @@ class PINN_MLP(nn.Module):
 
         self._init_weights()
 
+    # ---------------------------------------------------------
+    # 参数特征
+    # ---------------------------------------------------------
+    def _normalize_params(self, a: torch.Tensor, omega: torch.Tensor):
+        """
+        返回:
+            alpha: a 的局部线性归一化坐标
+            xi:    omega 的局部对数归一化坐标
+        """
+        alpha = (a - self.a_center_local) / self.a_half_range_local
+
+        omega_safe = torch.clamp(omega, min=1.0e-12)
+        logw = torch.log10(omega_safe)
+        logw_min = math.log10(self.omega_min_local)
+        logw_max = math.log10(self.omega_max_local)
+        xi = 2.0 * (logw - logw_min) / (logw_max - logw_min) - 1.0
+
+        return alpha, xi
+
+    def _build_param_features(self, a: torch.Tensor, omega: torch.Tensor):
+        """
+        p(a,ω) = [α, ξ, α², ξ², α ξ, r_+, sqrt(1-a²/M²), Ω_H, k, log(1+ω)]
+        """
+        alpha, xi = self._normalize_params(a, omega)
+
+        M = self.M
+        m_mode = self.m_mode
+
+        # 为避免极端情况下 sqrt 负数，做一次 clamp
+        spin_gap = torch.sqrt(torch.clamp(1.0 - (a / M) ** 2, min=1.0e-12))
+        r_plus = M * (1.0 + spin_gap)
+        Omega_H = a / (2.0 * M * r_plus)
+        k = omega - m_mode * Omega_H
+        log1p_omega = torch.log1p(torch.clamp(omega, min=1.0e-12))
+
+        feats = torch.cat(
+            [
+                alpha,
+                xi,
+                alpha ** 2,
+                xi ** 2,
+                alpha * xi,
+                r_plus,
+                spin_gap,
+                Omega_H,
+                k,
+                log1p_omega,
+            ],
+            dim=-1,
+        )
+        return feats, alpha, xi
+
+    # ---------------------------------------------------------
+    # 初始化
+    # ---------------------------------------------------------
     def _init_weights(self):
         """
         初始化策略：
-        - 普通线性层: Xavier
-        - 输出层: 更小 gain，避免初始复振幅太大
-        - FiLM gamma/beta: 全 0，使初始时接近“不调制”
+        1. 普通线性层 Xavier
+        2. 四个头：
+           - base_head 小幅 Xavier
+           - a_head / omega_head / nl_head 零初始化
+        3. 所有 FiLM gamma/beta 全零，保证初始时接近 identity modulation
         """
         for name, module in self.named_modules():
             if isinstance(module, nn.Linear):
-                if module is self.out_layer:
-                    nn.init.xavier_normal_(module.weight, gain=0.05)
+                if module in [self.base_head, self.a_head, self.omega_head, self.nl_head]:
+                    if module is self.base_head:
+                        nn.init.xavier_normal_(module.weight, gain=0.05)
+                    else:
+                        nn.init.zeros_(module.weight)
                     if module.bias is not None:
                         nn.init.zeros_(module.bias)
+
                 elif "gamma" in name or "beta" in name:
                     nn.init.zeros_(module.weight)
                     if module.bias is not None:
                         nn.init.zeros_(module.bias)
+
                 else:
                     nn.init.xavier_normal_(module.weight, gain=1.0)
                     if module.bias is not None:
                         nn.init.zeros_(module.bias)
 
+    # ---------------------------------------------------------
+    # forward
+    # ---------------------------------------------------------
     def forward(self, a, omega, y):
         """
         Args:
-            a:     (B,) 或 (B,1)
-            omega: (B,) 或 (B,1)
-            y:     (N,) 或 (B,N)
+            a:     (B,) or (B,1)
+            omega: (B,) or (B,1)
+            y:     (N,) or (B,N)
 
         Returns:
-            f_complex: (B,N) 复数张量
+            f_complex: (B,N) complex tensor
         """
+        # ---- 统一 device / dtype 到模型参数 ----
+        model_param = next(self.parameters())
+        target_device = model_param.device
+        target_dtype = model_param.dtype
+
+        a = a.to(device=target_device, dtype=target_dtype)
+        omega = omega.to(device=target_device, dtype=target_dtype)
+        y = y.to(device=target_device, dtype=target_dtype)
+
         if a.ndim == 1:
-            a = a.unsqueeze(-1)          # (B,1)
+            a = a.unsqueeze(-1)
         if omega.ndim == 1:
-            omega = omega.unsqueeze(-1)  # (B,1)
+            omega = omega.unsqueeze(-1)
 
         if y.ndim == 1:
-            y = y.unsqueeze(0).expand(a.shape[0], -1)  # (B,N)
+            y = y.unsqueeze(0).expand(a.shape[0], -1)
 
         B, N = y.shape
 
-        # ---- 参数编码 ----
-        param_in = torch.cat([a, omega], dim=-1)         # (B,2)
-        param_code = self.param_encoder(param_in)        # (B,C)
-        param_code = param_code.unsqueeze(1).expand(B, N, -1).reshape(B * N, -1)  # (B*N,C)
+        # ---- 参数特征 ----
+        param_feats, alpha, xi = self._build_param_features(a, omega)  # (B,10), (B,1), (B,1)
+        param_code = self.param_encoder(param_feats)                   # (B,C)
+        param_code = (
+            param_code.unsqueeze(1)
+            .expand(B, N, -1)
+            .reshape(B * N, -1)
+        )
 
-        # ---- y Fourier feature ----
-        y_flat = y.reshape(-1, 1)                        # (B*N,1)
-        y_feat = self.y_encoder(y_flat)                  # (B*N,F)
+        alpha = alpha.unsqueeze(1).expand(B, N, -1).reshape(B * N, 1)
+        xi = xi.unsqueeze(1).expand(B, N, -1).reshape(B * N, 1)
+        rho2 = alpha ** 2 + xi ** 2
 
-        # ---- 首层 ----
-        h = self.input_proj(y_feat)
+        # ---- y 特征 ----
+        y_flat = y.reshape(-1, 1)
+        y_feat = self.y_encoder(y_flat)
+
+        # =====================================================
+        # base trunk
+        # =====================================================
+        hb = self.base_input_proj(y_feat)
+        hb = self.base_input_act(hb)
+        for block in self.base_blocks:
+            hb = block(hb, param_code)   # use_film=False，所以 cond 不会被实际使用
+
+        # =====================================================
+        # response trunk
+        # =====================================================
+        hr = self.resp_input_proj(y_feat)
         if self.use_film:
-            gamma0 = 1.0 + 0.1 * torch.tanh(self.input_gamma(param_code))
-            beta0 = 0.1 * self.input_beta(param_code)
-            h = gamma0 * h + beta0
-        h = self.input_act(h)
+            gamma0 = 1.0 + 0.1 * torch.tanh(self.resp_input_gamma(param_code))
+            beta0 = 0.1 * self.resp_input_beta(param_code)
+            hr = gamma0 * hr + beta0
+        hr = self.resp_input_act(hr)
 
-        # ---- 隐层 ----
-        for block in self.blocks:
-            h = block(h, param_code)
+        for block in self.resp_blocks:
+            hr = block(hr, param_code)
 
-        # ---- 输出 ----
-        out = self.out_layer(h)
+        # =====================================================
+        # 融合
+        # =====================================================
+        h = torch.cat([hb, hr], dim=-1)
+        h = self.fusion(h)
+
+        # =====================================================
+        # 四头输出
+        # =====================================================
+        out_base = self.base_head(h)
+        out_a = self.a_head(h)
+        out_omega = self.omega_head(h)
+        out_nl = self.nl_head(h)
+
         if self.out_act is not None:
-            out = self.out_act(out)
+            out_base = self.out_act(out_base)
+            out_a = self.out_act(out_a)
+            out_omega = self.out_act(out_omega)
+            out_nl = self.out_act(out_nl)
+
+        out = out_base + alpha * out_a + xi * out_omega + rho2 * out_nl
 
         out = out.reshape(B, N, 2)
         f_re = out[..., 0]
@@ -292,3 +476,4 @@ class PINN_MLP(nn.Module):
         f_complex = torch.complex(f_re, f_im)
 
         return f_complex
+

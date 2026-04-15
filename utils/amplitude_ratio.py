@@ -1,6 +1,8 @@
 """计算 Kerr 黑洞引力波散射振幅比"""
 import sys
 import os
+import math
+import warnings
 
 # 添加 kerr_matcher 路径
 _KERR_MATCHER_PATH = "/home/ljq/code/radial_flow/spec_flow_method_Kerr/kerr_matcher_project/src"
@@ -46,12 +48,34 @@ def compute_amplitude_ratio(a, omega, l, m, lambda_sep=None, r_match=8.0, n_cheb
         lambda_sep=lambda_sep, r_match=r_match, n_cheb=n_cheb, flow_eps=1e-6
     )
 
-    result = solve_case(params)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        try:
+            result = solve_case(params)
+        except RuntimeWarning as exc:
+            raise FloatingPointError(
+                f"kerr_matcher flow failed for a={a}, omega={omega}, l={l}, m={m}: {exc}"
+            ) from exc
 
     # ratio_up_over_um = R_+/R_- = 反射/入射
     # 所以 B_inc/B_ref = 1/ratio_up_over_um
     ratio_ref_over_inc = result.spectral.ratio_up_over_um
+    if not (math.isfinite(ratio_ref_over_inc.real) and math.isfinite(ratio_ref_over_inc.imag)):
+        raise FloatingPointError(
+            f"kerr_matcher returned non-finite reflection/incidence ratio for "
+            f"a={a}, omega={omega}, l={l}, m={m}"
+        )
+    if abs(ratio_ref_over_inc) == 0.0:
+        raise FloatingPointError(
+            f"kerr_matcher returned zero reflection/incidence ratio for "
+            f"a={a}, omega={omega}, l={l}, m={m}"
+        )
     ratio_inc_over_ref = 1.0 / ratio_ref_over_inc
+    if not (math.isfinite(ratio_inc_over_ref.real) and math.isfinite(ratio_inc_over_ref.imag)):
+        raise FloatingPointError(
+            f"kerr_matcher returned non-finite incidence/reflection ratio for "
+            f"a={a}, omega={omega}, l={l}, m={m}"
+        )
 
     return {
         'ratio': ratio_inc_over_ref,
