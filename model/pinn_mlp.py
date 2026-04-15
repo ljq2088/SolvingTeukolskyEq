@@ -168,11 +168,26 @@ class PINN_MLP(nn.Module):
         param_embed_dim: int = 64,
         use_film: bool = True,
         use_residual: bool = True,
-        # ---- 小参数域 patch 归一化参数 ----
+
+        # =====================================================
+        # 局部坐标模式
+        #   raw_aw   : 旧模式，alpha/xi 从 raw (a, omega) 归一化得到
+        #   chart_uv : 新模式，alpha/xi 从 atlas patch 的 (u, v) 局部坐标得到
+        # =====================================================
+        local_coord_mode: str = "raw_aw",
+
+        # ---- 旧模式：raw (a, omega) 的局部归一化参数 ----
         a_center_local: float = 0.125,
         a_half_range_local: float = 0.075,
         omega_min_local: float = 0.1,
         omega_max_local: float = 1.0,
+
+        # ---- 新模式：chart patch 的局部中心与半宽 ----
+        u_center_local: float = 0.5,
+        v_center_local: float = 0.5,
+        u_half_range_local: float = 0.12,
+        v_half_range_local: float = 0.12,
+
         # ---- 物理常数 ----
         M: float = 1.0,
         m_mode: int = 2,
@@ -188,10 +203,24 @@ class PINN_MLP(nn.Module):
         self.use_film = bool(use_film)
         self.use_residual = bool(use_residual)
 
+        self.local_coord_mode = str(local_coord_mode)
+        if self.local_coord_mode not in ("raw_aw", "chart_uv"):
+            raise ValueError(
+                f"Unsupported local_coord_mode={self.local_coord_mode}, "
+                f"must be 'raw_aw' or 'chart_uv'."
+            )
+
+        # ---- 旧模式参数 ----
         self.a_center_local = float(a_center_local)
         self.a_half_range_local = float(a_half_range_local)
         self.omega_min_local = float(omega_min_local)
         self.omega_max_local = float(omega_max_local)
+
+        # ---- 新模式参数 ----
+        self.u_center_local = float(u_center_local)
+        self.v_center_local = float(v_center_local)
+        self.u_half_range_local = float(u_half_range_local)
+        self.v_half_range_local = float(v_half_range_local)
 
         self.M = float(M)
         self.m_mode = int(m_mode)
@@ -297,11 +326,11 @@ class PINN_MLP(nn.Module):
     # ---------------------------------------------------------
     # 参数特征
     # ---------------------------------------------------------
-    def _normalize_params(self, a: torch.Tensor, omega: torch.Tensor):
+    def _normalize_params_raw_aw(self, a: torch.Tensor, omega: torch.Tensor):
         """
-        返回:
-            alpha: a 的局部线性归一化坐标
-            xi:    omega 的局部对数归一化坐标
+        旧模式：
+            alpha 从 a 的局部线性归一化得到
+            xi    从 omega 的局部对数归一化得到
         """
         alpha = (a - self.a_center_local) / self.a_half_range_local
 
@@ -313,11 +342,51 @@ class PINN_MLP(nn.Module):
 
         return alpha, xi
 
-    def _build_param_features(self, a: torch.Tensor, omega: torch.Tensor):
+
+    def _normalize_params_chart_uv(self, u: torch.Tensor, v: torch.Tensor):
+        """
+        新模式：
+            alpha = (u - u_c) / h_u
+            xi    = (v - v_c) / h_v
+        """
+        alpha = (u - self.u_center_local) / self.u_half_range_local
+        xi = (v - self.v_center_local) / self.v_half_range_local
+        return alpha, xi
+
+
+    def compute_local_coords(
+        self,
+        a: torch.Tensor,
+        omega: torch.Tensor,
+        u: torch.Tensor | None = None,
+        v: torch.Tensor | None = None,
+    ):
+        """
+        统一入口：
+        - raw_aw   -> 从 raw (a, omega) 算 alpha, xi
+        - chart_uv -> 从 (u, v) 算 alpha, xi
+        """
+        if self.local_coord_mode == "raw_aw":
+            return self._normalize_params_raw_aw(a, omega)
+
+        if u is None or v is None:
+            raise ValueError(
+                "local_coord_mode='chart_uv' requires u and v to be provided."
+            )
+
+        return self._normalize_params_chart_uv(u, v)
+
+    def _build_param_features(
+        self,
+        a: torch.Tensor,
+        omega: torch.Tensor,
+        u: torch.Tensor | None = None,
+        v: torch.Tensor | None = None,
+    ):
         """
         p(a,ω) = [α, ξ, α², ξ², α ξ, r_+, sqrt(1-a²/M²), Ω_H, k, log(1+ω)]
         """
-        alpha, xi = self._normalize_params(a, omega)
+        alpha, xi = self.compute_local_coords(a=a, omega=omega, u=u, v=v)
 
         M = self.M
         m_mode = self.m_mode
@@ -381,7 +450,7 @@ class PINN_MLP(nn.Module):
     # ---------------------------------------------------------
     # forward
     # ---------------------------------------------------------
-    def forward(self, a, omega, y):
+    def forward(self, a, omega, y, u=None, v=None):
         """
         Args:
             a:     (B,) or (B,1)
@@ -399,7 +468,10 @@ class PINN_MLP(nn.Module):
         a = a.to(device=target_device, dtype=target_dtype)
         omega = omega.to(device=target_device, dtype=target_dtype)
         y = y.to(device=target_device, dtype=target_dtype)
-
+        if u is not None:
+            u = u.to(device=target_device, dtype=target_dtype)
+        if v is not None:
+            v = v.to(device=target_device, dtype=target_dtype)
         if a.ndim == 1:
             a = a.unsqueeze(-1)
         if omega.ndim == 1:
@@ -407,11 +479,19 @@ class PINN_MLP(nn.Module):
 
         if y.ndim == 1:
             y = y.unsqueeze(0).expand(a.shape[0], -1)
-
+        if u is not None and u.ndim == 1:
+            u = u.unsqueeze(-1)
+        if v is not None and v.ndim == 1:
+            v = v.unsqueeze(-1)
         B, N = y.shape
 
         # ---- 参数特征 ----
-        param_feats, alpha, xi = self._build_param_features(a, omega)  # (B,10), (B,1), (B,1)
+        param_feats, alpha, xi = self._build_param_features(
+            a=a,
+            omega=omega,
+            u=u,
+            v=v,
+        )
         param_code = self.param_encoder(param_feats)                   # (B,C)
         param_code = (
             param_code.unsqueeze(1)

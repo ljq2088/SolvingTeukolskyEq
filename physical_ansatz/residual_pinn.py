@@ -16,7 +16,14 @@ from .prefactor import *
 from .transform_y import transform_coeffs_x_to_y, g_factor,h_factor
 
 
-def compute_Rprime_derivatives_autograd(model, a_batch, omega_batch, y_points):
+def compute_Rprime_derivatives_autograd(
+        model,
+        a_batch,
+        omega_batch,
+        y_points,
+        u_batch=None,
+        v_batch=None,
+    ):
     """
     使用自动微分计算 R', R'_y, R'_yy
 
@@ -35,7 +42,10 @@ def compute_Rprime_derivatives_autograd(model, a_batch, omega_batch, y_points):
         y_points = y_points.clone().requires_grad_(True)
 
     # 前向传播得到 R'
-    Rprime = model(a_batch, omega_batch, y_points)  # (B, N)
+    if u_batch is None and v_batch is None:
+        Rprime = model(a_batch, omega_batch, y_points)  # (B, N)
+    else:
+        Rprime = model(a_batch, omega_batch, y_points, u=u_batch, v=v_batch)  # (B, N)
 
     # 分离实部和虚部
     Rprime_re = Rprime.real
@@ -105,6 +115,8 @@ def compute_pointwise_pde_residual(
     y_interior,
     normalize=False,
     eps=1e-12,
+    u_batch=None,
+    v_batch=None,
 ):
     device = a_batch.device
     M = float(cfg["problem"].get("M", 1.0))
@@ -112,7 +124,12 @@ def compute_pointwise_pde_residual(
     m = int(cfg["problem"].get("m", 2))
 
     Rprime_int, Rprime_y_int, Rprime_yy_int = compute_Rprime_derivatives_autograd(
-        model, a_batch, omega_batch, y_interior
+        model,
+        a_batch,
+        omega_batch,
+        y_interior,
+        u_batch=u_batch,
+        v_batch=v_batch,
     )
 
     x_int = (y_interior + 1.0) / 2.0
@@ -268,6 +285,8 @@ def pinn_residual_loss(
     normalize_residual=False,
     residual_scale_eps=1e-12,
     return_pointwise=False,
+    u_batch=None,
+    v_batch=None,
 ):
     residual_int, pointwise_interior = compute_pointwise_pde_residual(
         model=model,
@@ -280,6 +299,8 @@ def pinn_residual_loss(
         y_interior=y_interior,
         normalize=normalize_residual,
         eps=residual_scale_eps,
+        u_batch=u_batch,
+        v_batch=v_batch,
     )
 
     loss_interior = torch.mean(pointwise_interior)
@@ -290,7 +311,12 @@ def pinn_residual_loss(
         )
     else:
         Rprime_bd, _, _ = compute_Rprime_derivatives_autograd(
-            model, a_batch, omega_batch, y_boundary
+            model,
+            a_batch,
+            omega_batch,
+            y_boundary,
+            u_batch=u_batch,
+            v_batch=v_batch,
         )
         loss_boundary = torch.mean(torch.abs(Rprime_bd) ** 2)
 
@@ -375,13 +401,20 @@ def compute_data_anchor_loss(
     R_mma_anchors,
     relative=False,
     eps=1e-12,
+    u_batch=None,
+    v_batch=None,
 ):
     M = float(cfg["problem"].get("M", 1.0))
     s = int(cfg["problem"].get("s", -2))
     m = int(cfg["problem"].get("m", 2))
 
     Rprime_pred, _, _ = compute_Rprime_derivatives_autograd(
-        model, a_batch, omega_batch, y_anchors
+        model,
+        a_batch,
+        omega_batch,
+        y_anchors,
+        u_batch=u_batch,
+        v_batch=v_batch,
     )
 
     x_anchors = (y_anchors + 1.0) / 2.0
@@ -422,6 +455,8 @@ def compute_variance_regularizer(
     kappa=20.0,
     eps=1.0e-12,
     m=2.0,
+    u_batch=None,
+    v_batch=None,
 ):
     """
     用于惩罚“输出几乎为常数”的伪平凡解。
@@ -438,7 +473,10 @@ def compute_variance_regularizer(
     """
 
     # 模型输出: [B, N] complex
-    f_pred = model(a_batch, omega_batch, y_points)
+    if u_batch is None and v_batch is None:
+        f_pred = model(a_batch, omega_batch, y_points)
+    else:
+        f_pred = model(a_batch, omega_batch, y_points, u=u_batch, v=v_batch)
 
     h=h_factor(a_batch,omega_batch,m)
 
