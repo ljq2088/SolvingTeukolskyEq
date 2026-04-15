@@ -241,14 +241,13 @@ class AtlasPatchTrainer:
             rp_i = r_plus(a_batch[i], M)
             r_i = r_from_x(x_anchors, rp_i).detach().cpu().numpy()
 
-            Rin_i = self.mma_sampler.interpolate_rin(
+            Rin_i = self.mma_sampler.evaluate_rin_at_points(
                 s=s,
                 l=l,
                 m=m,
                 a=a_i,
                 omega=omega_i,
                 r_query=r_i,
-                n_grid=self.mma_interp_n_grid,
             )
             rows.append(Rin_i)
 
@@ -296,13 +295,13 @@ class AtlasPatchTrainer:
     def train_one_step(self):
         self.model.train()
         self.optimizer.zero_grad()
-
+        print("Sampling parameter batch...")
         a_batch, omega_batch, u_batch, v_batch = self.sample_param_batch()
         lambda_batch, ramp_batch, p = self.resolve_aux_batch(a_batch, omega_batch)
 
         y_interior = self.sample_y_interior()
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
-
+        print("Computing residual loss...")
         loss_pde, info_pde = pinn_residual_loss(
             model=self.model,
             cfg=self.physics_cfg,
@@ -327,6 +326,7 @@ class AtlasPatchTrainer:
         info["loss_anchor"] = 0.0
 
         if self.anchor_enabled:
+            print("Sampling anchor batch...")
             y_anchor = self.sample_y_anchor()
             R_mma_anchors = self.query_mma_Rin_batch(
                 a_batch=a_batch,
@@ -349,7 +349,7 @@ class AtlasPatchTrainer:
 
             total_loss = loss_pde + self.anchor_weight * loss_anchor
             info["loss_anchor"] = float(loss_anchor.detach().cpu().item())
-
+        print("Backwarding...")
         total_loss.backward()
 
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
