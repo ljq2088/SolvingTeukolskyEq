@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import sys
+sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky")
 import argparse
 import math
 import numpy as np

@@ -13,7 +13,9 @@ from dataset.sampling import sample_points_chebyshev_grid
 from physical_ansatz.residual import AuxCache, get_lambda_from_cfg, get_ramp_and_p_from_cfg
 from physical_ansatz.residual_pinn import pinn_residual_loss
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
-
+from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss
+from physical_ansatz.mapping import r_plus, r_from_x
+from mma.rin_sampler import MathematicaRinSampler
 
 def _get_dtype(dtype_name: str):
     if dtype_name == "float32":
@@ -40,6 +42,10 @@ class AtlasPatchTrainer:
         patch_json: str,
         patch_id: int,
         device: str = "cpu",
+        anchor_enabled: bool = False,
+        anchor_weight: float = 1.0,
+        n_anchor_y: int = 16,
+        mma_interp_n_grid: int = 1200,
     ):
         self.device = torch.device(device)
 
@@ -147,6 +153,30 @@ class AtlasPatchTrainer:
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.cache = AuxCache()
+        # ---------------------------------------------------------
+        # Mathematica anchor
+        # ---------------------------------------------------------
+        self.anchor_enabled = bool(anchor_enabled)
+        self.anchor_weight = float(anchor_weight)
+        self.n_anchor_y = int(n_anchor_y)
+        self.mma_interp_n_grid = int(mma_interp_n_grid)
+
+        mma_cfg = self.cfg.get("mathematica", {})
+        self.mma_kernel_path = mma_cfg.get("kernel_path", None)
+        self.mma_wl_path_win = mma_cfg.get("wl_path_win", None)
+
+        if self.anchor_enabled:
+            if self.mma_kernel_path is None or self.mma_wl_path_win is None:
+                raise ValueError(
+                    "anchor_enabled=True requires cfg['mathematica']['kernel_path'] "
+                    "and cfg['mathematica']['wl_path_win']"
+                )
+            self.mma_sampler = MathematicaRinSampler(
+                kernel_path=self.mma_kernel_path,
+                wl_path_win=self.mma_wl_path_win,
+            )
+        else:
+            self.mma_sampler = None
 
     # ---------------------------------------------------------
     # patch 参数池采样
@@ -179,7 +209,51 @@ class AtlasPatchTrainer:
             dtype=self.dtype,
         )
         return y.clone().requires_grad_(True)
+    def sample_y_anchor(self):
+        y = sample_points_chebyshev_grid(
+            n_points=self.n_anchor_y,
+            y_min=-0.99,
+            y_max=0.99,
+            device=self.device,
+            dtype=self.dtype,
+        )
+        return y
 
+    def query_mma_Rin_batch(self, a_batch, omega_batch, y_anchors):
+        """
+        对 batch 内每个 (a, omega)，在 y_anchors 对应的 r 点上查询 Mathematica 的 R_in。
+        返回:
+            R_mma_anchors: (B, N_anchor) complex128 torch tensor
+        """
+        problem_cfg = self.physics_cfg["problem"]
+        M = float(problem_cfg.get("M", 1.0))
+        s = int(problem_cfg.get("s", -2))
+        l = int(problem_cfg.get("l", 2))
+        m = int(problem_cfg.get("m", 2))
+
+        x_anchors = 0.5 * (y_anchors + 1.0)
+
+        rows = []
+        for i in range(a_batch.shape[0]):
+            a_i = float(a_batch[i].detach().cpu().item())
+            omega_i = float(omega_batch[i].detach().cpu().item())
+
+            rp_i = r_plus(a_batch[i], M)
+            r_i = r_from_x(x_anchors, rp_i).detach().cpu().numpy()
+
+            Rin_i = self.mma_sampler.interpolate_rin(
+                s=s,
+                l=l,
+                m=m,
+                a=a_i,
+                omega=omega_i,
+                r_query=r_i,
+                n_grid=self.mma_interp_n_grid,
+            )
+            rows.append(Rin_i)
+
+        arr = np.stack(rows, axis=0)   # (B, N_anchor)
+        return torch.as_tensor(arr, device=self.device, dtype=torch.complex128)
     # ---------------------------------------------------------
     # 解析 lambda / ramp
     # ---------------------------------------------------------
@@ -229,7 +303,7 @@ class AtlasPatchTrainer:
         y_interior = self.sample_y_interior()
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
 
-        loss, info = pinn_residual_loss(
+        loss_pde, info_pde = pinn_residual_loss(
             model=self.model,
             cfg=self.physics_cfg,
             a_batch=a_batch,
@@ -248,11 +322,40 @@ class AtlasPatchTrainer:
             v_batch=v_batch,
         )
 
-        loss.backward()
+        total_loss = loss_pde
+        info = dict(info_pde)
+        info["loss_anchor"] = 0.0
+
+        if self.anchor_enabled:
+            y_anchor = self.sample_y_anchor()
+            R_mma_anchors = self.query_mma_Rin_batch(
+                a_batch=a_batch,
+                omega_batch=omega_batch,
+                y_anchors=y_anchor,
+            )
+
+            loss_anchor = compute_data_anchor_loss(
+                model=self.model,
+                cfg=self.physics_cfg,
+                a_batch=a_batch,
+                omega_batch=omega_batch,
+                y_anchors=y_anchor,
+                R_mma_anchors=R_mma_anchors,
+                relative=False,
+                eps=1.0e-12,
+                u_batch=u_batch,
+                v_batch=v_batch,
+            )
+
+            total_loss = loss_pde + self.anchor_weight * loss_anchor
+            info["loss_anchor"] = float(loss_anchor.detach().cpu().item())
+
+        total_loss.backward()
 
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
 
+        info["total_loss"] = float(total_loss.detach().cpu().item())
         info["grad_norm"] = float(grad_norm.detach().cpu().item())
         info["patch_id"] = int(self.patch.patch_id)
         info["patch_component_id"] = int(self.patch.component_id)

@@ -224,3 +224,7 @@ visualization:
 
 runtime:
   dtype: float64
+  
+mathematica:
+  kernel_path: "/mnt/f/mma/WolframKernel.exe"
+  wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
