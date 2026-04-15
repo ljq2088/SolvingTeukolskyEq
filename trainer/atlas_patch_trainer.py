@@ -178,6 +178,11 @@ class AtlasPatchTrainer:
         else:
             self.mma_sampler = None
 
+    def close(self):
+        if self.mma_sampler is not None:
+            self.mma_sampler.close()
+            self.mma_sampler = None
+
     # ---------------------------------------------------------
     # patch 参数池采样
     # ---------------------------------------------------------
@@ -238,18 +243,22 @@ class AtlasPatchTrainer:
             a_i = float(a_batch[i].detach().cpu().item())
             omega_i = float(omega_batch[i].detach().cpu().item())
 
-            rp_i = r_plus(a_batch[i], M)
-            r_i = r_from_x(x_anchors, rp_i).detach().cpu().numpy()
+            try:
+                rp_i = r_plus(a_batch[i], M)
+                r_i = r_from_x(x_anchors, rp_i).detach().cpu().numpy()
 
-            Rin_i = self.mma_sampler.evaluate_rin_at_points(
-                s=s,
-                l=l,
-                m=m,
-                a=a_i,
-                omega=omega_i,
-                r_query=r_i,
-            )
-            rows.append(Rin_i)
+                Rin_i = self.mma_sampler.evaluate_rin_at_points_direct(
+                    s=s,
+                    l=l,
+                    m=m,
+                    a=a_i,
+                    omega=omega_i,
+                    r_query=r_i,
+                )
+                rows.append(Rin_i)
+            except Exception as e:
+                print(f"[anchor] FAILED at a={a_i:.8f}, omega={omega_i:.8f}: {e}")
+                raise
 
         arr = np.stack(rows, axis=0)   # (B, N_anchor)
         return torch.as_tensor(arr, device=self.device, dtype=torch.complex128)

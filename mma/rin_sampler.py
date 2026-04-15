@@ -158,14 +158,22 @@ class MathematicaConfig:
 
 
 class MathematicaRinSampler:
-    """
-    用 Mathematica 的 SampleRinOnGrid[...] 生成 R_in(r) 的稠密样本，
-    再对任意查询 r 做插值。
-    """
     def __init__(self, kernel_path: str, wl_path_win: str):
         self.kernel_path = str(kernel_path)
         self.wl_path_win = str(wl_path_win)
-        self._cache: Dict[Tuple, Tuple[np.ndarray, np.ndarray]] = {}
+        self._cache = {}
+        self._session = None
+
+    def _get_session(self):
+        if self._session is None:
+            self._session = WolframLanguageSession(kernel=self.kernel_path)
+            self._session.evaluate(wlexpr(rf'Get["{self.wl_path_win}"]'))
+        return self._session
+
+    def close(self):
+        if self._session is not None:
+            self._session.terminate()
+            self._session = None
 
     def sample_rin_on_grid(
         self,
@@ -189,47 +197,40 @@ class MathematicaRinSampler:
         if key in self._cache:
             return self._cache[key]
 
-        session = WolframLanguageSession(kernel=self.kernel_path)
+        session = self._get_session()
+        expr = (
+            f"SampleRinOnGrid[{int(s)}, {int(l)}, {int(m)}, "
+            f"{_wl_num(a)}, {_wl_num(omega)}, "
+            f"{_wl_num(rmin)}, {_wl_num(rmax)}, {int(npts)}]"
+        )
+        result = session.evaluate(wlexpr(expr))
+
+        # ---------------------------------------------------------
+        # 快速路径：如果已经是 PackedArray / ndarray 数值表，直接解析
+        # ---------------------------------------------------------
+        parsed = _try_parse_numeric_table_fast(result)
+        if parsed is not None:
+            r, Rin = parsed
+            self._cache[key] = (r, Rin)
+            return r, Rin
+
+        # ---------------------------------------------------------
+        # 慢速鲁棒路径：逐行解析更复杂的 Mathematica 返回格式
+        # ---------------------------------------------------------
         try:
-            session.evaluate(wlexpr(rf'Get["{self.wl_path_win}"]'))
-            expr = (
-                f"SampleRinOnGrid[{int(s)}, {int(l)}, {int(m)}, "
-                f"{_wl_num(a)}, {_wl_num(omega)}, "
-                f"{_wl_num(rmin)}, {_wl_num(rmax)}, {int(npts)}]"
-            )
-            result = session.evaluate(wlexpr(expr))
-
-            # ---------------------------------------------------------
-            # 快速路径：如果已经是 PackedArray / ndarray 数值表，直接解析
-            # ---------------------------------------------------------
-            parsed = _try_parse_numeric_table_fast(result)
-            if parsed is not None:
-                r, Rin = parsed
-                self._cache[key] = (r, Rin)
-                return r, Rin
-
-            # ---------------------------------------------------------
-            # 慢速鲁棒路径：逐行解析更复杂的 Mathematica 返回格式
-            # ---------------------------------------------------------
+            r, Rin = _parse_sample_rin_result(result)
+        except Exception as e:
             try:
-                r, Rin = _parse_sample_rin_result(result)
-            except Exception as e:
-                try:
-                    preview = np.asarray(result, dtype=object)[:3]
-                except Exception:
-                    preview = result
-                raise ValueError(
-                    f"Failed to parse Mathematica SampleRinOnGrid output. "
-                    f"Preview of result[:3] = {preview!r}"
-                ) from e
+                preview = np.asarray(result, dtype=object)[:3]
+            except Exception:
+                preview = result
+            raise ValueError(
+                f"Failed to parse Mathematica SampleRinOnGrid output. "
+                f"Preview of result[:3] = {preview!r}"
+            ) from e
 
-            self._cache[key] = (r, Rin)
-            return r, Rin
-
-            self._cache[key] = (r, Rin)
-            return r, Rin
-        finally:
-            session.terminate()
+        self._cache[key] = (r, Rin)
+        return r, Rin
 
     def interpolate_rin(
         self,
@@ -328,3 +329,50 @@ class MathematicaRinSampler:
         re = np.interp(r_query, r_grid, Rin_grid.real)
         im = np.interp(r_query, r_grid, Rin_grid.imag)
         return re + 1j * im
+    def evaluate_rin_at_points_direct(
+        self,
+        s: int,
+        l: int,
+        m: int,
+        a: float,
+        omega: float,
+        r_query: np.ndarray,
+    ) -> np.ndarray:
+        session = self._get_session()
+
+        r_query = np.asarray(r_query, dtype=float).reshape(-1)
+        rlist_str = ", ".join(f"{float(r):.16g}" for r in r_query)
+
+        expr = (
+            f"SampleRinAtPoints[{int(s)}, {int(l)}, {int(m)}, "
+            f"{_wl_num(a)}, {_wl_num(omega)}, "
+            f"{{{rlist_str}}}]"
+        )
+
+        result = session.evaluate(wlexpr(expr))
+        parsed = _try_parse_numeric_table_fast(result)
+        if parsed is not None:
+            r_eval, Rin = parsed
+        else:
+            try:
+                r_eval, Rin = _parse_sample_rin_result(result)
+            except Exception as e:
+                try:
+                    preview = np.asarray(result, dtype=object)[:3]
+                except Exception:
+                    preview = result
+                raise ValueError(
+                    f"Failed to parse Mathematica SampleRinAtPoints output. "
+                    f"Preview of result[:3] = {preview!r}"
+                ) from e
+
+        if len(r_eval) != len(r_query):
+            raise ValueError(
+                f"Length mismatch: returned {len(r_eval)} points, expected {len(r_query)}"
+            )
+
+        max_diff = np.max(np.abs(r_eval - r_query))
+        if max_diff > 1e-10:
+            raise ValueError(f"r mismatch, max diff = {max_diff:.3e}")
+
+        return Rin

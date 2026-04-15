@@ -7,7 +7,13 @@ import numpy as np
 
 from trainer.atlas_patch_trainer import AtlasPatchTrainer
 
+import random
+import torch
+import numpy as np
 
+random.seed(1234)
+np.random.seed(1234)
+torch.manual_seed(1234)
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", type=str, default="config/pinn_config.yaml")
@@ -35,61 +41,64 @@ def main():
         mma_interp_n_grid=args.mma_interp_n_grid,
     )
 
-    print("=" * 80)
-    print(f"Patch id       : {trainer.patch.patch_id}")
-    print(f"Component id   : {trainer.patch.component_id}")
-    print(f"Patch center   : (u,v)=({trainer.patch.u_center:.6f}, {trainer.patch.v_center:.6f})")
-    print(f"Patch phys ctr : (a,omega)=({trainer.patch.a_center:.6f}, {trainer.patch.omega_center:.6f})")
-    print(f"Patch pool size: {len(trainer.patch_aw)}")
-    print(f"Anchor enabled : {trainer.anchor_enabled}")
-    print(f"Anchor weight  : {trainer.anchor_weight}")
-    print("=" * 80)
+    try:
+        print("=" * 80)
+        print(f"Patch id       : {trainer.patch.patch_id}")
+        print(f"Component id   : {trainer.patch.component_id}")
+        print(f"Patch center   : (u,v)=({trainer.patch.u_center:.6f}, {trainer.patch.v_center:.6f})")
+        print(f"Patch phys ctr : (a,omega)=({trainer.patch.a_center:.6f}, {trainer.patch.omega_center:.6f})")
+        print(f"Patch pool size: {len(trainer.patch_aw)}")
+        print(f"Anchor enabled : {trainer.anchor_enabled}")
+        print(f"Anchor weight  : {trainer.anchor_weight}")
+        print("=" * 80)
 
-    hist_total = []
-    hist_pde = []
-    hist_anchor = []
+        hist_total = []
+        hist_pde = []
+        hist_anchor = []
 
-    for step in range(1, args.steps + 1):
-        info = trainer.train_one_step()
+        for step in range(1, args.steps + 1):
+            info = trainer.train_one_step()
 
-        loss_pde = float(info["loss_interior"])
-        loss_anchor = float(info["loss_anchor"])
-        loss_total = float(info["total_loss"])
+            loss_pde = float(info["loss_interior"])
+            loss_anchor = float(info["loss_anchor"])
+            loss_total = float(info["total_loss"])
 
-        if not math.isfinite(loss_pde):
-            raise RuntimeError(f"Non-finite PDE loss at step {step}: {loss_pde}")
-        if not math.isfinite(loss_anchor):
-            raise RuntimeError(f"Non-finite anchor loss at step {step}: {loss_anchor}")
-        if not math.isfinite(loss_total):
-            raise RuntimeError(f"Non-finite total loss at step {step}: {loss_total}")
-        if not math.isfinite(info["grad_norm"]):
-            raise RuntimeError(f"Non-finite grad_norm at step {step}: {info['grad_norm']}")
+            if not math.isfinite(loss_pde):
+                raise RuntimeError(f"Non-finite PDE loss at step {step}: {loss_pde}")
+            if not math.isfinite(loss_anchor):
+                raise RuntimeError(f"Non-finite anchor loss at step {step}: {loss_anchor}")
+            if not math.isfinite(loss_total):
+                raise RuntimeError(f"Non-finite total loss at step {step}: {loss_total}")
+            if not math.isfinite(info["grad_norm"]):
+                raise RuntimeError(f"Non-finite grad_norm at step {step}: {info['grad_norm']}")
 
-        hist_pde.append(loss_pde)
-        hist_anchor.append(loss_anchor)
-        hist_total.append(loss_total)
+            hist_pde.append(loss_pde)
+            hist_anchor.append(loss_anchor)
+            hist_total.append(loss_total)
 
-        print(
-            f"[step {step:04d}] "
-            f"pde={loss_pde:.6e}, "
-            f"anchor={loss_anchor:.6e}, "
-            f"total={loss_total:.6e}, "
-            f"grad={info['grad_norm']:.6e}"
-        )
+            print(
+                f"[step {step:04d}] "
+                f"pde={loss_pde:.6e}, "
+                f"anchor={loss_anchor:.6e}, "
+                f"total={loss_total:.6e}, "
+                f"grad={info['grad_norm']:.6e}"
+            )
 
-    hist_total = np.asarray(hist_total, dtype=float)
-    hist_pde = np.asarray(hist_pde, dtype=float)
-    hist_anchor = np.asarray(hist_anchor, dtype=float)
+        hist_total = np.asarray(hist_total, dtype=float)
+        hist_pde = np.asarray(hist_pde, dtype=float)
+        hist_anchor = np.asarray(hist_anchor, dtype=float)
 
-    print("=" * 80)
-    print(f"initial total  = {hist_total[0]:.6e}")
-    print(f"final total    = {hist_total[-1]:.6e}")
-    print(f"initial pde    = {hist_pde[0]:.6e}")
-    print(f"final pde      = {hist_pde[-1]:.6e}")
-    print(f"initial anchor = {hist_anchor[0]:.6e}")
-    print(f"final anchor   = {hist_anchor[-1]:.6e}")
-    print("[check] atlas patch + anchor smoke test passed.")
-    print("=" * 80)
+        print("=" * 80)
+        print(f"initial total  = {hist_total[0]:.6e}")
+        print(f"final total    = {hist_total[-1]:.6e}")
+        print(f"initial pde    = {hist_pde[0]:.6e}")
+        print(f"final pde      = {hist_pde[-1]:.6e}")
+        print(f"initial anchor = {hist_anchor[0]:.6e}")
+        print(f"final anchor   = {hist_anchor[-1]:.6e}")
+        print("[check] atlas patch + anchor smoke test passed.")
+        print("=" * 80)
+    finally:
+        trainer.close()
 
 
 if __name__ == "__main__":
