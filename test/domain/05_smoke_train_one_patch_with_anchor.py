@@ -10,7 +10,7 @@ from trainer.atlas_patch_trainer import AtlasPatchTrainer
 import random
 import torch
 import numpy as np
-
+from tqdm.auto import trange
 random.seed(1234)
 np.random.seed(1234)
 torch.manual_seed(1234)
@@ -52,14 +52,14 @@ def main():
         print(f"Anchor weight  : {trainer.anchor_weight}")
         print("=" * 80)
 
-        hist_total = []
-        hist_pde = []
-        hist_anchor = []
+        history = []
+        pbar = trange(1, args.steps + 1, desc=f"patch {args.patch_id}", dynamic_ncols=True)
 
-        for step in range(1, args.steps + 1):
+        for step in pbar:
+            trainer.global_step = step
             info = trainer.train_one_step()
-
-            loss_pde = float(info["loss_interior"])
+            history.append(info)
+            loss_pde = float(info["loss_pde"])
             loss_anchor = float(info["loss_anchor"])
             loss_total = float(info["total_loss"])
 
@@ -72,21 +72,19 @@ def main():
             if not math.isfinite(info["grad_norm"]):
                 raise RuntimeError(f"Non-finite grad_norm at step {step}: {info['grad_norm']}")
 
-            hist_pde.append(loss_pde)
-            hist_anchor.append(loss_anchor)
-            hist_total.append(loss_total)
+            pbar.set_postfix({
+                "tot": f"{info['total_loss']:.2e}",
+                "pde": f"{info['loss_pde']:.2e}",
+                "anc": f"{info.get('loss_anchor', 0.0):.2e}",
+                "aw": f"{info.get('anchor_weight_eff', 0.0):.2e}",
+                "ok": f"{info.get('anchor_success_count', 0)}",
+                "fail": f"{info.get('anchor_failed_count', 0)}",
+                "g": f"{info['grad_norm']:.2e}",
+            })
 
-            print(
-                f"[step {step:04d}] "
-                f"pde={loss_pde:.6e}, "
-                f"anchor={loss_anchor:.6e}, "
-                f"total={loss_total:.6e}, "
-                f"grad={info['grad_norm']:.6e}"
-            )
-
-        hist_total = np.asarray(hist_total, dtype=float)
-        hist_pde = np.asarray(hist_pde, dtype=float)
-        hist_anchor = np.asarray(hist_anchor, dtype=float)
+        hist_total = np.asarray([float(item["total_loss"]) for item in history], dtype=float)
+        hist_pde = np.asarray([float(item["loss_pde"]) for item in history], dtype=float)
+        hist_anchor = np.asarray([float(item.get("loss_anchor", 0.0)) for item in history], dtype=float)
 
         print("=" * 80)
         print(f"initial total  = {hist_total[0]:.6e}")

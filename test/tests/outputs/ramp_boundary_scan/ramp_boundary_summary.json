@@ -1,0 +1,100 @@
+{
+  "settings": {
+    "l": 2,
+    "m": 2,
+    "s": -2,
+    "a_min": 1e-05,
+    "a_max": 0.999999,
+    "n_a": 64,
+    "omega_min": 1e-06,
+    "n_omega": 96,
+    "omega_scale": 1.0,
+    "eta_max": 0.995,
+    "k_margin": 0.01,
+    "r_match": 8.0,
+    "n_cheb": 32,
+    "fill_gap_bins": 1
+  },
+  "counts": {
+    "lambda": {
+      "ok": 6144
+    },
+    "ramp": {
+      "ok": 1208,
+      "ramp_floating_point": 4936
+    }
+  },
+  "failure_examples": {
+    "lambda": {},
+    "ramp": {
+      "ramp_floating_point": [
+        {
+          "a": 0.9422035298643817,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9535844726764416,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.962724346804074,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9700644503832297,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9759591837023512,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9806931606181866,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9844949504916936,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9875481141423132,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9900000666666819,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.991969195042928,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9935505741779648,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        },
+        {
+          "a": 0.9948205573841878,
+          "omega": 1e-06,
+          "code": "ramp_floating_point"
+        }
+      ]
+    }
+  },
+  "boundary": {
+    "n_valid_columns": 45,
+    "n_invalid_columns": 19
+  },
+  "output_png": "/home/ljq/code/PINN/SolvingTeukolsky/test/tests/outputs/ramp_boundary_scan/ramp_boundary_scan.png",
+  "output_npz": "/home/ljq/code/PINN/SolvingTeukolsky/test/tests/outputs/ramp_boundary_scan/ramp_boundary_data.npz"
+}

@@ -158,9 +158,10 @@ class MathematicaConfig:
 
 
 class MathematicaRinSampler:
-    def __init__(self, kernel_path: str, wl_path_win: str):
+    def __init__(self, kernel_path: str, wl_path_win: str, timeout_sec: float = 20.0):
         self.kernel_path = str(kernel_path)
         self.wl_path_win = str(wl_path_win)
+        self.timeout_sec = float(timeout_sec)
         self._cache = {}
         self._session = None
 
@@ -341,15 +342,31 @@ class MathematicaRinSampler:
         session = self._get_session()
 
         r_query = np.asarray(r_query, dtype=float).reshape(-1)
-        rlist_str = ", ".join(f"{float(r):.16g}" for r in r_query)
+        r_list = ", ".join(_wl_num(float(r)) for r in r_query)
 
         expr = (
+            "Quiet["
+            "Block[{$Messages = {}}, "
+            "Check["
+            "TimeConstrained["
             f"SampleRinAtPoints[{int(s)}, {int(l)}, {int(m)}, "
             f"{_wl_num(a)}, {_wl_num(omega)}, "
-            f"{{{rlist_str}}}]"
+            f"{{{r_list}}}], {_wl_num(self.timeout_sec)}, $Aborted], "
+            "$Failed]"
+            "], "
+            "{NDSolveValue::sss, Divide::indet, General::stop, Power::infy, Infinity::indet}"
+            "]"
         )
 
         result = session.evaluate(wlexpr(expr))
+        result_str = str(result)
+        if result_str == "$Failed":
+            raise RuntimeError("Mathematica evaluation returned $Failed")
+        if result_str == "$Aborted":
+            raise TimeoutError(
+                f"Mathematica evaluation timed out after {self.timeout_sec} s"
+            )
+
         parsed = _try_parse_numeric_table_fast(result)
         if parsed is not None:
             r_eval, Rin = parsed
