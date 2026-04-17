@@ -167,6 +167,19 @@ class MultiPatchAtlasTrainer:
         candidates.sort(key=lambda x: x[0])
         return candidates[0][1]
 
+    def _find_resume_run(self, patch_id: int):
+        pattern = f"*_patch_{int(patch_id):03d}_comp_*"
+        run_dirs = [p for p in self.patch_runs_root.glob(pattern) if p.is_dir()]
+        if len(run_dirs) == 0:
+            return None, None
+
+        run_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for run_dir in run_dirs:
+            latest_ckpt = run_dir / "checkpoints" / "latest_model.pt"
+            if latest_ckpt.exists():
+                return str(latest_ckpt), str(run_dir)
+        return None, None
+
     def _save_registry(self):
         with open(self.registry_path, "w", encoding="utf-8") as f:
             json.dump(self.registry, f, ensure_ascii=False, indent=2)
@@ -199,11 +212,16 @@ class MultiPatchAtlasTrainer:
                     self._vprint(f"[multipatch] skip patch {patch.patch_id}: existing best model found.")
                     continue
 
-            init_ckpt = self._find_warmstart_checkpoint(patch)
-            if init_ckpt is not None:
-                self._vprint(f"[multipatch] patch {patch.patch_id}: warm start from {init_ckpt}")
+            resume_ckpt, resume_run_dir = self._find_resume_run(int(patch.patch_id))
+            init_ckpt = None
+            if resume_ckpt is not None and resume_run_dir is not None:
+                self._vprint(f"[multipatch] patch {patch.patch_id}: resume from {resume_ckpt}")
             else:
-                self._vprint(f"[multipatch] patch {patch.patch_id}: cold start")
+                init_ckpt = self._find_warmstart_checkpoint(patch)
+                if init_ckpt is not None:
+                    self._vprint(f"[multipatch] patch {patch.patch_id}: warm start from {init_ckpt}")
+                else:
+                    self._vprint(f"[multipatch] patch {patch.patch_id}: cold start")
 
             trainer = AtlasPatchTrainer(
                 cfg_path=str(self.cfg_path),
@@ -218,6 +236,8 @@ class MultiPatchAtlasTrainer:
                 output_root=str(self.patch_runs_root),
                 init_checkpoint=init_ckpt,
                 init_load_optimizer=False,
+                resume_checkpoint=resume_ckpt,
+                resume_run_dir=resume_run_dir,
             )
 
             try:

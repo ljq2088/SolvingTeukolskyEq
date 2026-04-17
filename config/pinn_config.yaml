@@ -244,7 +244,7 @@ atlas_training:
   save_every: 200
   ckpt_every: 200
   viz_every: 200
-  viz_num_points: 100
+  viz_num_points: 400
   viz_r_min: 2.0
   viz_r_max: 1000.0
 

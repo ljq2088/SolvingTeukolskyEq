@@ -1,0 +1,675 @@
+{
+  "settings": {
+    "l": 2,
+    "m": 2,
+    "s": -2,
+    "a_min": 1e-05,
+    "a_max": 0.999999,
+    "n_a": 48,
+    "omega_min": 1e-06,
+    "n_omega": 72,
+    "omega_scale": 1.0,
+    "eta_max": 0.995,
+    "k_margin": 0.01,
+    "r_match": 8.0,
+    "n_cheb": 32,
+    "rin_ref_mode": "relative",
+    "mma_kernel_path": "/mnt/f/mma/WolframKernel.exe",
+    "mma_wl_path_win": "F:/EMRI/Radial_flow/Radial_Function.wl",
+    "mma_timeout_sec": 2.0,
+    "pybhpt_timeout_sec": 2.0
+  },
+  "output_png": "/home/ljq/code/PINN/SolvingTeukolsky/pybhpt/outputs/safe_domain_scan/safe_domain_five_modes.png",
+  "counts": {
+    "lambda": {
+      "ok": 3456
+    },
+    "ramp": {
+      "ok": 681,
+      "ramp:FloatingPointError": 2775
+    },
+    "mma_num": {
+      "mma_num_k_horizon_margin": 22,
+      "mma_num:RuntimeError": 1578,
+      "ok": 1299,
+      "mma_num:TimeoutError": 557
+    },
+    "mma_mst": {
+      "mma_mst_k_horizon_margin": 22,
+      "mma_mst:RuntimeError": 1581,
+      "ok": 1300,
+      "mma_mst:TimeoutError": 553
+    },
+    "pybhpt": {
+      "pybhpt_k_horizon_margin": 22,
+      "ok": 2263,
+      "pybhpt:HardTimeoutError": 1162,
+      "pybhpt_nonfinite": 9
+    }
+  },
+  "failure_examples": {
+    "lambda": {},
+    "ramp": {
+      "ramp:FloatingPointError": [
+        {
+          "a": 0.9471066789300541,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9605777548479555,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9706179649643715,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.978101095472739,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9836783933137178,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9878352433342011,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9909334106879029,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9932425247777174,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9949635447456701,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.996246248680983,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9972022686088777,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        },
+        {
+          "a": 0.9979148056779316,
+          "omega": 1e-06,
+          "code": "ramp:FloatingPointError"
+        }
+      ]
+    },
+    "mma_num": {
+      "mma_num_k_horizon_margin": [
+        {
+          "a": 1e-05,
+          "omega": 1e-06,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.2546913271439013,
+          "omega": 0.13285400838360517,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.5859839182860738,
+          "omega": 0.3183292103371845,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.6914271378680895,
+          "omega": 0.39273337604036734,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.7700156698017554,
+          "omega": 0.47110572756828945,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.8285889699719469,
+          "omega": 0.5260792536121569,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.872244595142846,
+          "omega": 0.5836614168594745,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.9047818365740865,
+          "omega": 0.6442829754429398,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.9290323673089103,
+          "omega": 0.6758872913512792,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.9471066789300541,
+          "omega": 0.7084464160623051,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.9605777548479555,
+          "omega": 0.7420373314739295,
+          "code": "mma_num_k_horizon_margin"
+        },
+        {
+          "a": 0.9706179649643715,
+          "omega": 0.7767440456483898,
+          "code": "mma_num_k_horizon_margin"
+        }
+      ],
+      "mma_num:RuntimeError": [
+        {
+          "a": 0.2546913271439013,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.4445094272597523,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.5859839182860738,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.6914271378680895,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.7700156698017554,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.8285889699719469,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.872244595142846,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.9047818365740865,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.9290323673089103,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.9471066789300541,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.9605777548479555,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        },
+        {
+          "a": 0.9706179649643715,
+          "omega": 1e-06,
+          "code": "mma_num:RuntimeError"
+        }
+      ],
+      "mma_num:TimeoutError": [
+        {
+          "a": 0.9997336024912032,
+          "omega": 0.2704810029779668,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.999852017215434,
+          "omega": 0.5545188324505314,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999177961362071,
+          "omega": 0.6442829754429398,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999387321346942,
+          "omega": 0.6758872913512792,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999986582874499,
+          "omega": 1.6014743683682442,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.999999,
+          "omega": 1.6014743683682442,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999981998074331,
+          "omega": 1.6828265791356953,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999986582874499,
+          "omega": 1.6828265791356953,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.999999,
+          "omega": 1.6828265791356953,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999975846590405,
+          "omega": 1.7704390112228756,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999981998074331,
+          "omega": 1.7704390112228756,
+          "code": "mma_num:TimeoutError"
+        },
+        {
+          "a": 0.9999986582874499,
+          "omega": 1.7704390112228756,
+          "code": "mma_num:TimeoutError"
+        }
+      ]
+    },
+    "mma_mst": {
+      "mma_mst_k_horizon_margin": [
+        {
+          "a": 1e-05,
+          "omega": 1e-06,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.2546913271439013,
+          "omega": 0.13285400838360517,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.5859839182860738,
+          "omega": 0.3183292103371845,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.6914271378680895,
+          "omega": 0.39273337604036734,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.7700156698017554,
+          "omega": 0.47110572756828945,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.8285889699719469,
+          "omega": 0.5260792536121569,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.872244595142846,
+          "omega": 0.5836614168594745,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.9047818365740865,
+          "omega": 0.6442829754429398,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.9290323673089103,
+          "omega": 0.6758872913512792,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.9471066789300541,
+          "omega": 0.7084464160623051,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.9605777548479555,
+          "omega": 0.7420373314739295,
+          "code": "mma_mst_k_horizon_margin"
+        },
+        {
+          "a": 0.9706179649643715,
+          "omega": 0.7767440456483898,
+          "code": "mma_mst_k_horizon_margin"
+        }
+      ],
+      "mma_mst:RuntimeError": [
+        {
+          "a": 0.2546913271439013,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.4445094272597523,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.5859839182860738,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.6914271378680895,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.7700156698017554,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.8285889699719469,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.872244595142846,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.9047818365740865,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.9290323673089103,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.9471066789300541,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.9605777548479555,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        },
+        {
+          "a": 0.9706179649643715,
+          "omega": 1e-06,
+          "code": "mma_mst:RuntimeError"
+        }
+      ],
+      "mma_mst:TimeoutError": [
+        {
+          "a": 0.9999986582874499,
+          "omega": 1.6014743683682442,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.999999,
+          "omega": 1.6014743683682442,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999981998074331,
+          "omega": 1.6828265791356953,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999986582874499,
+          "omega": 1.6828265791356953,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.999999,
+          "omega": 1.6828265791356953,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999975846590405,
+          "omega": 1.7704390112228756,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999981998074331,
+          "omega": 1.7704390112228756,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999986582874499,
+          "omega": 1.7704390112228756,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.999999,
+          "omega": 1.7704390112228756,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 1e-05,
+          "omega": 1.8651586428356395,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999975846590405,
+          "omega": 1.8651586428356395,
+          "code": "mma_mst:TimeoutError"
+        },
+        {
+          "a": 0.9999981998074331,
+          "omega": 1.8651586428356395,
+          "code": "mma_mst:TimeoutError"
+        }
+      ]
+    },
+    "pybhpt": {
+      "pybhpt_k_horizon_margin": [
+        {
+          "a": 1e-05,
+          "omega": 1e-06,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.2546913271439013,
+          "omega": 0.13285400838360517,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.5859839182860738,
+          "omega": 0.3183292103371845,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.6914271378680895,
+          "omega": 0.39273337604036734,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.7700156698017554,
+          "omega": 0.47110572756828945,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.8285889699719469,
+          "omega": 0.5260792536121569,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.872244595142846,
+          "omega": 0.5836614168594745,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.9047818365740865,
+          "omega": 0.6442829754429398,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.9290323673089103,
+          "omega": 0.6758872913512792,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.9471066789300541,
+          "omega": 0.7084464160623051,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.9605777548479555,
+          "omega": 0.7420373314739295,
+          "code": "pybhpt_k_horizon_margin"
+        },
+        {
+          "a": 0.9706179649643715,
+          "omega": 0.7767440456483898,
+          "code": "pybhpt_k_horizon_margin"
+        }
+      ],
+      "pybhpt:HardTimeoutError": [
+        {
+          "a": 0.9999387321346942,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999543360719809,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999659659380701,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999746338648098,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999810942103879,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999859092101271,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999894979070794,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999921726207893,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999941661280498,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999956519211585,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999967593067222,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        },
+        {
+          "a": 0.9999975846590405,
+          "omega": 1e-06,
+          "code": "pybhpt:HardTimeoutError"
+        }
+      ],
+      "pybhpt_nonfinite": [
+        {
+          "a": 0.9290323673089103,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9471066789300541,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9949635447456701,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9999543360719809,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9999659659380701,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9999810942103879,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9999894979070794,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.9999956519211585,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        },
+        {
+          "a": 0.999999,
+          "omega": 127.32133646887188,
+          "code": "pybhpt_nonfinite"
+        }
+      ]
+    }
+  },
+  "normalization_note": "For modes 'mma_num', 'mma_mst', and 'pybhpt', the scan only tests whether R_in can be computed as finite values at shared reference radii. It does not compare absolute normalization.",
+  "omega_tick_examples": [
+    1e-06,
+    0.0001,
+    0.01,
+    1.0,
+    10.0,
+    100.0
+  ]
+}

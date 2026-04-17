@@ -204,7 +204,11 @@ class MathematicaRinSampler:
             f"{_wl_num(a)}, {_wl_num(omega)}, "
             f"{_wl_num(rmin)}, {_wl_num(rmax)}, {int(npts)}]"
         )
-        result = session.evaluate(wlexpr(expr))
+        try:
+            result = session.evaluate(wlexpr(expr))
+        except Exception:
+            self.close()
+            raise
 
         # ---------------------------------------------------------
         # 快速路径：如果已经是 PackedArray / ndarray 数值表，直接解析
@@ -338,6 +342,7 @@ class MathematicaRinSampler:
         a: float,
         omega: float,
         r_query: np.ndarray,
+        function_name: str = "SampleRinAtPoints",
     ) -> np.ndarray:
         session = self._get_session()
 
@@ -346,19 +351,21 @@ class MathematicaRinSampler:
 
         expr = (
             "Quiet["
-            "Block[{$Messages = {}}, "
+            "Block[{$Messages = {}, $MessageList = {}}, "
             "Check["
             "TimeConstrained["
-            f"SampleRinAtPoints[{int(s)}, {int(l)}, {int(m)}, "
+            f"{function_name}[{int(s)}, {int(l)}, {int(m)}, "
             f"{_wl_num(a)}, {_wl_num(omega)}, "
             f"{{{r_list}}}], {_wl_num(self.timeout_sec)}, $Aborted], "
             "$Failed]"
-            "], "
-            "{NDSolveValue::sss, Divide::indet, General::stop, Power::infy, Infinity::indet}"
-            "]"
+            "]]"
         )
 
-        result = session.evaluate(wlexpr(expr))
+        try:
+            result = session.evaluate(wlexpr(expr))
+        except Exception:
+            self.close()
+            raise
         result_str = str(result)
         if result_str == "$Failed":
             raise RuntimeError("Mathematica evaluation returned $Failed")
@@ -379,7 +386,7 @@ class MathematicaRinSampler:
                 except Exception:
                     preview = result
                 raise ValueError(
-                    f"Failed to parse Mathematica SampleRinAtPoints output. "
+                    f"Failed to parse Mathematica {function_name} output. "
                     f"Preview of result[:3] = {preview!r}"
                 ) from e
 

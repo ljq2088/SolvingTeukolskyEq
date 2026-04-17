@@ -54,12 +54,14 @@ class AtlasPatchTrainer:
         patch_json: str,
         patch_id: int,
         device: str = "cpu",
-        anchor_enabled: bool = True,
+        anchor_enabled: bool = False,
         n_anchor_y: int = 4,
         verbose: bool = False,
         output_root: str | None = None,
         init_checkpoint: str | None = None,
         init_load_optimizer: bool = False,
+        resume_checkpoint: str | None = None,
+        resume_run_dir: str | None = None,
     ):
         self.device = torch.device(device)
 
@@ -113,6 +115,7 @@ class AtlasPatchTrainer:
         self.viz_num_points = int(atlas_train_cfg.get("viz_num_points", 128))
         self.viz_r_min = float(atlas_train_cfg.get("viz_r_min", 2.0))
         self.viz_r_max = float(atlas_train_cfg.get("viz_r_max", 80.0))
+        self.viz_mma_enabled = bool(atlas_train_cfg.get("viz_mma_enabled", True))
 
         self.anchor_enabled = bool(anchor_enabled)
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
@@ -128,16 +131,21 @@ class AtlasPatchTrainer:
         self.mma_kernel_path = mma_cfg.get("kernel_path", None)
         self.mma_wl_path_win = mma_cfg.get("wl_path_win", None)
 
-        if self.anchor_enabled:
+        needs_mma = self.anchor_enabled or self.viz_mma_enabled
+        if needs_mma:
             if self.mma_kernel_path is None or self.mma_wl_path_win is None:
-                raise ValueError(
-                    "anchor_enabled=True requires cfg['mathematica']['kernel_path'] "
-                    "and cfg['mathematica']['wl_path_win']"
+                if self.anchor_enabled:
+                    raise ValueError(
+                        "anchor_enabled=True requires cfg['mathematica']['kernel_path'] "
+                        "and cfg['mathematica']['wl_path_win']"
+                    )
+                self.mma_sampler = None
+                self._vprint("[viz] Mathematica config missing; visualization will use model-only plots.")
+            else:
+                self.mma_sampler = MathematicaRinSampler(
+                    kernel_path=self.mma_kernel_path,
+                    wl_path_win=self.mma_wl_path_win,
                 )
-            self.mma_sampler = MathematicaRinSampler(
-                kernel_path=self.mma_kernel_path,
-                wl_path_win=self.mma_wl_path_win,
-            )
         else:
             self.mma_sampler = None
 
@@ -209,16 +217,14 @@ class AtlasPatchTrainer:
         self.cache = AuxCache()
         self.init_checkpoint = init_checkpoint
         self.init_load_optimizer = bool(init_load_optimizer)
+        self.resume_checkpoint = resume_checkpoint
+        self.resume_run_dir = Path(resume_run_dir) if resume_run_dir is not None else None
 
-        if self.init_checkpoint is not None:
-            ckpt = torch.load(self.init_checkpoint, map_location=self.device)
-            state_dict = ckpt.get("model_state_dict", ckpt)
-            self.model.load_state_dict(state_dict, strict=True)
+        self.global_step = 0
+        self.best_val_mean = float("inf")
+        self.history = []
+        self.anchor_fail_history = []
 
-            if self.init_load_optimizer and "optimizer_state_dict" in ckpt:
-                self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-
-            self._vprint(f"[init] loaded checkpoint: {self.init_checkpoint}")
         # ---------------------------------------------------------
         # validation metadata
         # ---------------------------------------------------------
@@ -227,13 +233,13 @@ class AtlasPatchTrainer:
         # ---------------------------------------------------------
         # output dirs
         # ---------------------------------------------------------
-        self.global_step = 0
-        self.best_val_mean = float("inf")
-        self.history = []
-        self.anchor_fail_history = []
-
         self._init_run_dirs()
         self._save_config_snapshot()
+
+        if self.resume_checkpoint is not None:
+            self._load_resume_checkpoint()
+        elif self.init_checkpoint is not None:
+            self._load_init_checkpoint()
 
         # reference sample for visualization
         self.ref_sample = self._choose_reference_sample()
@@ -311,6 +317,19 @@ class AtlasPatchTrainer:
         }
 
     def _init_run_dirs(self):
+        if self.resume_run_dir is not None:
+            self.run_dir = self.resume_run_dir
+            self.ckpt_dir = self.run_dir / "checkpoints"
+            self.fig_dir = self.run_dir / "figures"
+            self.log_dir = self.run_dir / "logs"
+            self.ckpt_dir.mkdir(parents=True, exist_ok=True)
+            self.fig_dir.mkdir(parents=True, exist_ok=True)
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.anchor_fail_log = self.log_dir / self.anchor_fail_log_name
+            self.history_jsonl = self.log_dir / "history.jsonl"
+            self.summary_json = self.log_dir / "summary.json"
+            return
+
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_name = (
             f"{ts}"
@@ -331,6 +350,31 @@ class AtlasPatchTrainer:
         self.anchor_fail_log = self.log_dir / self.anchor_fail_log_name
         self.history_jsonl = self.log_dir / "history.jsonl"
         self.summary_json = self.log_dir / "summary.json"
+
+    def _load_init_checkpoint(self):
+        ckpt = torch.load(self.init_checkpoint, map_location=self.device)
+        state_dict = ckpt.get("model_state_dict", ckpt)
+        self.model.load_state_dict(state_dict, strict=True)
+
+        if self.init_load_optimizer and "optimizer_state_dict" in ckpt:
+            self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+
+        self._vprint(f"[init] loaded checkpoint: {self.init_checkpoint}")
+
+    def _load_resume_checkpoint(self):
+        ckpt = torch.load(self.resume_checkpoint, map_location=self.device)
+        state_dict = ckpt.get("model_state_dict", ckpt)
+        self.model.load_state_dict(state_dict, strict=True)
+
+        if "optimizer_state_dict" in ckpt:
+            self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+
+        self.global_step = int(ckpt.get("step", 0))
+        self.best_val_mean = float(ckpt.get("best_val_mean", float("inf")))
+        self._vprint(
+            f"[resume] loaded checkpoint: {self.resume_checkpoint} "
+            f"(step={self.global_step}, best_val_mean={self.best_val_mean:.6e})"
+        )
 
     def _save_config_snapshot(self):
         snapshot_path = self.run_dir / "config_snapshot.yaml"
@@ -671,9 +715,6 @@ class AtlasPatchTrainer:
         return g_val * f_pred + h
 
     def visualize_reference(self, step: int):
-        if self.mma_sampler is None:
-            return
-
         problem_cfg = self.physics_cfg["problem"]
         M = float(problem_cfg.get("M", 1.0))
         l = int(problem_cfg.get("l", 2))
@@ -732,82 +773,95 @@ class AtlasPatchTrainer:
             )
             U_y, _, _ = U_prefactor(P_y, P_y_1, P_y_2, Q_y, Q_y_1, Q_y_2)
 
-        try:
-            R_mma_r = self.mma_sampler.evaluate_rin_at_points_direct(
-                s=s, l=l, m=m,
-                a=float(a_t.detach().cpu().item()),
-                omega=float(omega_t.detach().cpu().item()),
-                r_query=r_grid_uniform.detach().cpu().numpy(),
-            )
-            R_mma_y = self.mma_sampler.evaluate_rin_at_points_direct(
-                s=s, l=l, m=m,
-                a=float(a_t.detach().cpu().item()),
-                omega=float(omega_t.detach().cpu().item()),
-                r_query=r_grid_from_y.detach().cpu().numpy(),
-            )
-        except Exception as e:
-            # 可视化不阻塞训练
-            with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
-                f.write(json.dumps({
-                    "step": int(step),
-                    "a": float(a_t.detach().cpu().item()),
-                    "omega": float(omega_t.detach().cpu().item()),
-                    "err": str(e),
-                }, ensure_ascii=False) + "\n")
-            return
+        mma_available = False
+        mma_status = "model-only"
+        R_mma_r = None
+        Rprime_from_mma_y_np = None
 
-        R_mma_r_t = torch.as_tensor(R_mma_r, device=self.device, dtype=torch.complex128)
-        R_mma_y_t = torch.as_tensor(R_mma_y, device=self.device, dtype=torch.complex128)
-        Rprime_from_mma_y = R_mma_y_t / U_y
+        if self.viz_mma_enabled and self.mma_sampler is not None:
+            try:
+                R_mma_r = self.mma_sampler.evaluate_rin_at_points_direct(
+                    s=s, l=l, m=m,
+                    a=float(a_t.detach().cpu().item()),
+                    omega=float(omega_t.detach().cpu().item()),
+                    r_query=r_grid_uniform.detach().cpu().numpy(),
+                )
+                R_mma_y = self.mma_sampler.evaluate_rin_at_points_direct(
+                    s=s, l=l, m=m,
+                    a=float(a_t.detach().cpu().item()),
+                    omega=float(omega_t.detach().cpu().item()),
+                    r_query=r_grid_from_y.detach().cpu().numpy(),
+                )
+                R_mma_r_t = torch.as_tensor(R_mma_r, device=self.device, dtype=torch.complex128)
+                R_mma_y_t = torch.as_tensor(R_mma_y, device=self.device, dtype=torch.complex128)
+                Rprime_from_mma_y = R_mma_y_t / U_y
+                Rprime_from_mma_y_np = Rprime_from_mma_y.detach().cpu().numpy()
+                mma_available = True
+                mma_status = "mma-ok"
+            except Exception as e:
+                mma_status = "mma-failed"
+                with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "step": int(step),
+                        "a": float(a_t.detach().cpu().item()),
+                        "omega": float(omega_t.detach().cpu().item()),
+                        "err": str(e),
+                    }, ensure_ascii=False) + "\n")
 
         r_uniform_np = r_grid_uniform.detach().cpu().numpy()
         y_cheb_np = y_grid_cheb.detach().cpu().numpy()
         R_pred_r_np = R_pred_r.detach().cpu().numpy()
         Rprime_pred_y_np = Rprime_pred_y.detach().cpu().numpy()
-        Rprime_from_mma_y_np = Rprime_from_mma_y.detach().cpu().numpy()
 
         fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=False)
 
         axes[0, 0].plot(r_uniform_np, np.real(R_pred_r_np), label="Pred Re(R)", lw=1.6)
-        axes[0, 0].plot(r_uniform_np, np.real(R_mma_r), "--", label="MMA Re(R)", lw=1.0)
+        if mma_available:
+            axes[0, 0].plot(r_uniform_np, np.real(R_mma_r), "--", label="MMA Re(R)", lw=1.0)
         axes[0, 0].set_ylabel("Re(R)")
         axes[0, 0].legend()
         axes[0, 0].grid(alpha=0.3)
 
         axes[1, 0].plot(r_uniform_np, np.imag(R_pred_r_np), label="Pred Im(R)", lw=1.6)
-        axes[1, 0].plot(r_uniform_np, np.imag(R_mma_r), "--", label="MMA Im(R)", lw=1.0)
+        if mma_available:
+            axes[1, 0].plot(r_uniform_np, np.imag(R_mma_r), "--", label="MMA Im(R)", lw=1.0)
         axes[1, 0].set_ylabel("Im(R)")
         axes[1, 0].legend()
         axes[1, 0].grid(alpha=0.3)
 
         axes[2, 0].plot(r_uniform_np, np.abs(R_pred_r_np), label="Pred |R|", lw=1.6)
-        axes[2, 0].plot(r_uniform_np, np.abs(R_mma_r), "--", label="MMA |R|", lw=1.0)
+        if mma_available:
+            axes[2, 0].plot(r_uniform_np, np.abs(R_mma_r), "--", label="MMA |R|", lw=1.0)
         axes[2, 0].set_ylabel("|R|")
         axes[2, 0].set_xlabel("r")
         axes[2, 0].legend()
         axes[2, 0].grid(alpha=0.3)
 
         axes[0, 1].plot(y_cheb_np, np.real(Rprime_pred_y_np), label="Pred Re(R')", lw=1.6)
-        axes[0, 1].plot(y_cheb_np, np.real(Rprime_from_mma_y_np), "--", label="MMA Re(R')", lw=1.0)
+        if mma_available:
+            axes[0, 1].plot(y_cheb_np, np.real(Rprime_from_mma_y_np), "--", label="MMA Re(R')", lw=1.0)
         axes[0, 1].set_ylabel("Re(R')")
         axes[0, 1].legend()
         axes[0, 1].grid(alpha=0.3)
 
         axes[1, 1].plot(y_cheb_np, np.imag(Rprime_pred_y_np), label="Pred Im(R')", lw=1.6)
-        axes[1, 1].plot(y_cheb_np, np.imag(Rprime_from_mma_y_np), "--", label="MMA Im(R')", lw=1.0)
+        if mma_available:
+            axes[1, 1].plot(y_cheb_np, np.imag(Rprime_from_mma_y_np), "--", label="MMA Im(R')", lw=1.0)
         axes[1, 1].set_ylabel("Im(R')")
         axes[1, 1].legend()
         axes[1, 1].grid(alpha=0.3)
 
         axes[2, 1].plot(y_cheb_np, np.abs(Rprime_pred_y_np), label="Pred |R'|", lw=1.6)
-        axes[2, 1].plot(y_cheb_np, np.abs(Rprime_from_mma_y_np), "--", label="MMA |R'|", lw=1.0)
+        if mma_available:
+            axes[2, 1].plot(y_cheb_np, np.abs(Rprime_from_mma_y_np), "--", label="MMA |R'|", lw=1.0)
         axes[2, 1].set_ylabel("|R'|")
         axes[2, 1].set_xlabel("y")
         axes[2, 1].legend()
         axes[2, 1].grid(alpha=0.3)
 
         fig.suptitle(
-            f"patch={self.patch.patch_id}, step={step}, a={float(a_t):.6f}, omega={float(omega_t):.6f}",
+            f"patch={self.patch.patch_id}, step={step}, a={float(a_t):.6f}, "
+            f"omega={float(omega_t):.6f}, {mma_status}",
             fontsize=12
         )
         fig.tight_layout()
@@ -868,7 +922,22 @@ class AtlasPatchTrainer:
         steps = int(self.steps_default if steps is None else steps)
 
         final_val = None
-        pbar = trange(1, steps + 1, desc=f"patch {self.patch.patch_id}", dynamic_ncols=True)
+        start_step = int(self.global_step) + 1
+        if start_step > steps:
+            self._vprint(
+                f"[patch {self.patch.patch_id}] checkpoint step={self.global_step} "
+                f"already reached target steps={steps}; skipping train loop."
+            )
+            final_val = self.validate()
+            self._save_checkpoint(self.ckpt_dir / "latest_model.pt", val_metrics=final_val)
+            self._write_summary(final_val)
+            return {
+                "run_dir": str(self.run_dir),
+                "best_val_mean": self.best_val_mean,
+                "final_val": final_val,
+            }
+
+        pbar = trange(start_step, steps + 1, desc=f"patch {self.patch.patch_id}", dynamic_ncols=True)
 
         try:
             for step in pbar:
