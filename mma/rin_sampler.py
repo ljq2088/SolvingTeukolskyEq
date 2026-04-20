@@ -176,6 +176,13 @@ class MathematicaRinSampler:
             self._session.terminate()
             self._session = None
 
+    def _looks_like_unevaluated_call(self, result, function_name: str) -> bool:
+        try:
+            text = str(result)
+        except Exception:
+            return False
+        return function_name in text
+
     def sample_rin_on_grid(
         self,
         s: int,
@@ -343,6 +350,7 @@ class MathematicaRinSampler:
         omega: float,
         r_query: np.ndarray,
         function_name: str = "SampleRinAtPoints",
+        _retry: bool = True,
     ) -> np.ndarray:
         session = self._get_session()
 
@@ -372,6 +380,22 @@ class MathematicaRinSampler:
         if result_str == "$Aborted":
             raise TimeoutError(
                 f"Mathematica evaluation timed out after {self.timeout_sec} s"
+            )
+        if self._looks_like_unevaluated_call(result, function_name):
+            if _retry:
+                self.close()
+                return self.evaluate_rin_at_points_direct(
+                    s=s,
+                    l=l,
+                    m=m,
+                    a=a,
+                    omega=omega,
+                    r_query=r_query,
+                    function_name=function_name,
+                    _retry=False,
+                )
+            raise RuntimeError(
+                f"Mathematica returned unevaluated {function_name}[...] expression"
             )
 
         parsed = _try_parse_numeric_table_fast(result)

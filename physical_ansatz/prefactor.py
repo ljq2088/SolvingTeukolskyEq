@@ -3,7 +3,8 @@ import torch
 import math
 from .mapping import r_plus, r_minus
 
-#后续优化速度可以在导数中传入原来的数据，如r_star_r_r计算的时候用到r_star_r的结果，避免重复计算r_star_r
+#后续优化速度可以在导数中传入原来的数据，如r_star_r_r计算的时候用到r_star_r的结果，避免重复计算r_star_r,
+#优化2: 使用KerrMode类来传递参数，避免每次调用都传入一大堆参数
 def q(a: torch.Tensor, M: float = 1.0) -> torch.Tensor:
     return a/M
 
