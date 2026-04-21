@@ -176,9 +176,32 @@ class MultiPatchAtlasTrainer:
         run_dirs.sort(key=lambda p: p.stat().st_mtime, reverse=True)
         for run_dir in run_dirs:
             latest_ckpt = run_dir / "checkpoints" / "latest_model.pt"
-            if latest_ckpt.exists():
+            if not latest_ckpt.exists():
+                continue
+            if self._resume_run_is_healthy(run_dir):
                 return str(latest_ckpt), str(run_dir)
+            self._vprint(f"[multipatch] patch {patch_id}: skip unhealthy resume run {run_dir}")
         return None, None
+
+    def _resume_run_is_healthy(self, run_dir: Path) -> bool:
+        history_path = run_dir / "logs" / "history.jsonl"
+        if not history_path.exists():
+            return True
+
+        try:
+            tail = history_path.read_text(encoding="utf-8")[-8192:]
+        except Exception:
+            return True
+
+        unhealthy_tokens = (
+            '"total_loss": NaN',
+            '"loss_pde": NaN',
+            '"grad_norm": NaN',
+            '"total_loss": Infinity',
+            '"loss_pde": Infinity',
+            '"grad_norm": Infinity',
+        )
+        return not any(tok in tail for tok in unhealthy_tokens)
 
     def _save_registry(self):
         with open(self.registry_path, "w", encoding="utf-8") as f:

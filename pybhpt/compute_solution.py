@@ -44,7 +44,7 @@ def _worker(queue, a, omega, ell, m, r_grid):
         queue.put({'ok': False, 'err': str(e)[:120]})
 
 
-def compute_pybhpt_solution(a, omega, ell=2, m=2, r_grid=None, timeout=30.0):
+def compute_pybhpt_solution(a, omega, ell=2, m=2, r_grid=None, timeout=10.0):
     """
     Compute pybhpt In-mode radial solution R_in(r) for Kerr s=-2 Teukolsky.
 
@@ -105,7 +105,7 @@ def compute_pybhpt_solution(a, omega, ell=2, m=2, r_grid=None, timeout=30.0):
     return r_grid, R_in
 
 
-def plot_solution_on_x_grid(
+def plot_solution_on_r_grid(
     a: float,
     omega: float,
     ell: int = 2,
@@ -118,38 +118,56 @@ def plot_solution_on_x_grid(
 ):
     import matplotlib.pyplot as plt
 
+    # Generate Chebyshev grid in x, convert to r
     x_grid = build_chebyshev_x_grid(n_points=n_points, x_min=x_min, x_max=x_max)
-    r_grid = x_to_r_grid(x_grid, a)
+    r_grid_unsorted = x_to_r_grid(x_grid, a)
+
+    # Sort r_grid to be monotonically increasing (horizon to infinity)
+    order = np.argsort(r_grid_unsorted)
+    r_grid = r_grid_unsorted[order]
+
+    # Compute R_in on the SORTED r_grid (so pybhpt gets monotonic input)
     _, R_in = compute_pybhpt_solution(a, omega, ell=ell, m=m, r_grid=r_grid, timeout=timeout)
 
-    fig, axes = plt.subplots(3, 1, figsize=(9, 10), sharex=True)
-    axes[0].plot(x_grid, R_in.real, lw=1.0)
-    axes[0].set_ylabel("Re(R_in)")
+    # Now r_grid and R_in are aligned: both sorted from horizon to infinity
+    rp = 1.0 + math.sqrt(1.0 - a * a)
+
+    fig, axes = plt.subplots(3, 1, figsize=(10, 10), sharex=True)
+
+    # Plot 1: |R_in|
+    axes[0].plot(r_grid, np.abs(R_in), 'b-', lw=1.5)
+    axes[0].axvline(rp, color='r', linestyle='--', alpha=0.5, label=f'r+ = {rp:.3f}')
+    axes[0].set_ylabel("|R_in|")
+    axes[0].legend()
     axes[0].grid(alpha=0.3)
 
-    axes[1].plot(x_grid, R_in.imag, lw=1.0)
-    axes[1].set_ylabel("Im(R_in)")
+    # Plot 2: Re(R_in)
+    axes[1].plot(r_grid, R_in.real, 'g-', lw=1.5)
+    axes[1].axvline(rp, color='r', linestyle='--', alpha=0.5)
+    axes[1].set_ylabel("Re(R_in)")
     axes[1].grid(alpha=0.3)
 
-    axes[2].plot(x_grid, np.abs(R_in), lw=1.0)
-    axes[2].set_xlabel(r"$x=r_+/r$")
-    axes[2].set_ylabel(r"$|R_{in}|$")
+    # Plot 3: Im(R_in)
+    axes[2].plot(r_grid, R_in.imag, 'm-', lw=1.5)
+    axes[2].axvline(rp, color='r', linestyle='--', alpha=0.5)
+    axes[2].set_ylabel("Im(R_in)")
+    axes[2].set_xlabel(r"$r$")
     axes[2].grid(alpha=0.3)
 
     fig.suptitle(
-        f"pybhpt R_in on Chebyshev x-grid\n"
-        f"a={a}, omega={omega}, l={ell}, m={m}, n={n_points}, x∈[{x_min}, {x_max}]"
+        f"pybhpt R_in solution (Chebyshev-sampled r-grid)\n"
+        f"a={a}, ω={omega}, l={ell}, m={m}, n={n_points}, x∈[{x_min}, {x_max}]"
     )
     fig.tight_layout()
     fig.savefig(out_path, dpi=180)
     plt.close(fig)
-    return x_grid, r_grid, R_in, out_path
+    return r_grid, R_in, out_path
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument("--a", type=float, default=0.5)
-    parser.add_argument("--omega", type=float, default=0.3)
+    parser.add_argument("--a", type=float, default=0.1)
+    parser.add_argument("--omega", type=float, default=0.1)
     parser.add_argument("--ell", type=int, default=2)
     parser.add_argument("--m", type=int, default=2)
     parser.add_argument("--timeout", type=float, default=30.0)
@@ -161,7 +179,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.plot_x_cheb:
-        x, r, R, out_path = plot_solution_on_x_grid(
+        r, R, out_path = plot_solution_on_r_grid(
             a=args.a,
             omega=args.omega,
             ell=args.ell,
@@ -173,8 +191,8 @@ if __name__ == '__main__':
             out_path=args.out,
         )
         print(
-            f"a={args.a}, omega={args.omega}: plotted {len(x)} Chebyshev x-points, "
-            f"x∈[{x[0]:.6e}, {x[-1]:.6e}], saved -> {out_path}"
+            f"a={args.a}, omega={args.omega}: plotted {len(r)} Chebyshev-sampled r-points, "
+            f"r∈[{r.min():.6e}, {r.max():.6e}], saved -> {out_path}"
         )
     else:
         r, R = compute_pybhpt_solution(args.a, args.omega, ell=args.ell, m=args.m, timeout=args.timeout)

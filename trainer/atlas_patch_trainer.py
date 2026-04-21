@@ -1,5 +1,8 @@
 from __future__ import annotations
+import sys
 
+sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky")
+sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky/pybhpt")
 import json
 import math
 import random
@@ -25,6 +28,7 @@ from physical_ansatz.mapping import r_plus, r_from_x
 from physical_ansatz.transform_y import g_factor, h_factor
 from physical_ansatz.prefactor import Leaver_prefactors, prefactor_Q, U_prefactor, build_prefactor_primitives
 from mma.rin_sampler import MathematicaRinSampler
+from compute_solution import compute_pybhpt_solution
 
 
 def _get_dtype(dtype_name: str):
@@ -115,39 +119,52 @@ class AtlasPatchTrainer:
         self.viz_num_points = int(atlas_train_cfg.get("viz_num_points", 128))
         self.viz_r_min = float(atlas_train_cfg.get("viz_r_min", 2.0))
         self.viz_r_max = float(atlas_train_cfg.get("viz_r_max", 80.0))
-        self.viz_mma_enabled = bool(atlas_train_cfg.get("viz_mma_enabled", True))
+        self.anchor_backend = str(atlas_train_cfg.get("anchor_backend", "pybhpt")).lower()
+        if self.anchor_backend not in ("pybhpt", "mma"):
+            raise ValueError(
+                f"Unsupported atlas_training.anchor_backend={self.anchor_backend}; "
+                "must be one of {'pybhpt','mma'}."
+            )
+
+        self.viz_benchmark_backend = str(atlas_train_cfg.get("viz_benchmark_backend", "pybhpt")).lower()
+        if self.viz_benchmark_backend not in ("none", "pybhpt", "mma"):
+            raise ValueError(
+                f"Unsupported atlas_training.viz_benchmark_backend={self.viz_benchmark_backend}; "
+                "must be one of {'none','pybhpt','mma'}."
+            )
+        self.viz_pybhpt_timeout = float(atlas_train_cfg.get("viz_pybhpt_timeout", 10.0))
+        self.anchor_pybhpt_timeout = float(atlas_train_cfg.get("anchor_pybhpt_timeout", self.viz_pybhpt_timeout))
+        self.viz_mma_enabled = bool(atlas_train_cfg.get("viz_mma_enabled", False))
 
         self.anchor_enabled = bool(anchor_enabled)
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
         self.lr = float(self.cfg.get("training", {}).get("optimizer", {}).get("lr", 1.0e-3))
         self.verbose = bool(verbose)
+        if "viz_mma_enabled" in atlas_train_cfg and self.verbose:
+            self._vprint(
+                "[viz] atlas_training.viz_mma_enabled is deprecated; "
+                "viz_benchmark_backend takes precedence."
+            )
 
         self.train_seed = int(atlas_train_cfg.get("train_seed", 1234))
         self.output_root = Path(output_root) if output_root is not None else Path(cfg_output_root)
         self.anchor_fail_log_name = str(atlas_train_cfg.get("anchor_fail_log_name", "anchor_failures.jsonl"))
 
-        # Mathematica
-        mma_cfg = self.cfg.get("mathematica", {})
-        self.mma_kernel_path = mma_cfg.get("kernel_path", None)
-        self.mma_wl_path_win = mma_cfg.get("wl_path_win", None)
-
-        needs_mma = self.anchor_enabled or self.viz_mma_enabled
-        if needs_mma:
-            if self.mma_kernel_path is None or self.mma_wl_path_win is None:
-                if self.anchor_enabled:
-                    raise ValueError(
-                        "anchor_enabled=True requires cfg['mathematica']['kernel_path'] "
-                        "and cfg['mathematica']['wl_path_win']"
-                    )
-                self.mma_sampler = None
-                self._vprint("[viz] Mathematica config missing; visualization will use model-only plots.")
-            else:
-                self.mma_sampler = MathematicaRinSampler(
-                    kernel_path=self.mma_kernel_path,
-                    wl_path_win=self.mma_wl_path_win,
+        self.anchor_mma_sampler = None
+        self.viz_mma_sampler = None
+        if self.anchor_enabled or self.viz_benchmark_backend == "mma":
+            mathematica_cfg = full_cfg.get("mathematica", {})
+            self._mathematica_cfg = mathematica_cfg
+            if self.anchor_enabled and self.anchor_backend == "mma":
+                self.anchor_mma_sampler = MathematicaRinSampler(
+                    mathematica_cfg,
+                    timeout_sec=float(atlas_train_cfg.get("anchor_mma_timeout", 20.0)),
                 )
-        else:
-            self.mma_sampler = None
+            if self.viz_benchmark_backend == "mma":
+                self.viz_mma_sampler = MathematicaRinSampler(
+                    mathematica_cfg,
+                    timeout_sec=float(atlas_train_cfg.get("viz_mma_timeout", 20.0)),
+                )
 
         # ---------------------------------------------------------
         # patch cover + valid chart points
@@ -254,9 +271,10 @@ class AtlasPatchTrainer:
         torch.manual_seed(seed)
 
     def close(self):
-        if self.mma_sampler is not None:
-            self.mma_sampler.close()
-            self.mma_sampler = None
+        if self.anchor_mma_sampler is not None:
+            self.anchor_mma_sampler.close()
+        if self.viz_mma_sampler is not None and self.viz_mma_sampler is not self.anchor_mma_sampler:
+            self.viz_mma_sampler.close()
 
     # =========================================================
     # setup
@@ -498,14 +516,24 @@ class AtlasPatchTrainer:
                 rp_i = r_plus(a_batch[i], M)
                 r_i = r_from_x(x_anchors, rp_i).detach().cpu().numpy()
 
-                Rin_i = self.mma_sampler.evaluate_rin_at_points_direct(
-                    s=s,
-                    l=l,
-                    m=m,
-                    a=a_i,
-                    omega=omega_i,
-                    r_query=r_i,
-                )
+                if self.anchor_backend == "pybhpt":
+                    _, Rin_i = compute_pybhpt_solution(
+                        a=a_i,
+                        omega=omega_i,
+                        ell=l,
+                        m=m,
+                        r_grid=r_i,
+                        timeout=self.anchor_pybhpt_timeout,
+                    )
+                else:
+                    Rin_i = self.anchor_mma_sampler.evaluate_rin_at_points_direct(
+                        s=s,
+                        l=l,
+                        m=m,
+                        a=a_i,
+                        omega=omega_i,
+                        r_query=r_i,
+                    )
                 rows.append(Rin_i)
                 ok_idx.append(i)
 
@@ -799,38 +827,74 @@ class AtlasPatchTrainer:
             )
             U_y, _, _ = U_prefactor(P_y, P_y_1, P_y_2, Q_y, Q_y_1, Q_y_2)
 
-        mma_available = False
-        mma_status = "model-only"
-        R_mma_r = None
-        Rprime_from_mma_y_np = None
+        benchmark_available = False
+        benchmark_status = "benchmark=none"
+        R_ref_r = None
+        Rprime_from_ref_y_np = None
 
-        if self.viz_mma_enabled and self.mma_sampler is not None:
+        a_scalar = float(a_t.detach().cpu().item())
+        omega_scalar = float(omega_t.detach().cpu().item())
+
+        if self.viz_benchmark_backend == "pybhpt":
             try:
-                R_mma_r = self.mma_sampler.evaluate_rin_at_points_direct(
-                    s=s, l=l, m=m,
-                    a=float(a_t.detach().cpu().item()),
-                    omega=float(omega_t.detach().cpu().item()),
-                    r_query=r_grid_uniform.detach().cpu().numpy(),
+                _, R_ref_r = compute_pybhpt_solution(
+                    a=a_scalar,
+                    omega=omega_scalar,
+                    ell=l,
+                    m=m,
+                    r_grid=r_grid_uniform.detach().cpu().numpy(),
+                    timeout=self.viz_pybhpt_timeout,
                 )
-                R_mma_y = self.mma_sampler.evaluate_rin_at_points_direct(
-                    s=s, l=l, m=m,
-                    a=float(a_t.detach().cpu().item()),
-                    omega=float(omega_t.detach().cpu().item()),
-                    r_query=r_grid_from_y.detach().cpu().numpy(),
+                _, R_ref_y = compute_pybhpt_solution(
+                    a=a_scalar,
+                    omega=omega_scalar,
+                    ell=l,
+                    m=m,
+                    r_grid=r_grid_from_y.detach().cpu().numpy(),
+                    timeout=self.viz_pybhpt_timeout,
                 )
-                R_mma_r_t = torch.as_tensor(R_mma_r, device=self.device, dtype=torch.complex128)
-                R_mma_y_t = torch.as_tensor(R_mma_y, device=self.device, dtype=torch.complex128)
-                Rprime_from_mma_y = R_mma_y_t / U_y
-                Rprime_from_mma_y_np = Rprime_from_mma_y.detach().cpu().numpy()
-                mma_available = True
-                mma_status = "mma-ok"
+                R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
+                Rprime_from_ref_y = R_ref_y_t / U_y
+                Rprime_from_ref_y_np = Rprime_from_ref_y.detach().cpu().numpy()
+                benchmark_available = True
+                benchmark_status = "benchmark=pybhpt-ok"
             except Exception as e:
-                mma_status = "mma-failed"
+                benchmark_status = "benchmark=pybhpt-failed"
                 with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
                     f.write(json.dumps({
                         "step": int(step),
-                        "a": float(a_t.detach().cpu().item()),
-                        "omega": float(omega_t.detach().cpu().item()),
+                        "backend": "pybhpt",
+                        "a": a_scalar,
+                        "omega": omega_scalar,
+                        "err": str(e),
+                    }, ensure_ascii=False) + "\n")
+        elif self.viz_benchmark_backend == "mma" and self.viz_mma_sampler is not None:
+            try:
+                R_ref_r = self.viz_mma_sampler.evaluate_rin_at_points_direct(
+                    s=s, l=l, m=m,
+                    a=a_scalar,
+                    omega=omega_scalar,
+                    r_query=r_grid_uniform.detach().cpu().numpy(),
+                )
+                R_ref_y = self.viz_mma_sampler.evaluate_rin_at_points_direct(
+                    s=s, l=l, m=m,
+                    a=a_scalar,
+                    omega=omega_scalar,
+                    r_query=r_grid_from_y.detach().cpu().numpy(),
+                )
+                R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
+                Rprime_from_ref_y = R_ref_y_t / U_y
+                Rprime_from_ref_y_np = Rprime_from_ref_y.detach().cpu().numpy()
+                benchmark_available = True
+                benchmark_status = "benchmark=mma-ok"
+            except Exception as e:
+                benchmark_status = "benchmark=mma-failed"
+                with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "step": int(step),
+                        "backend": "mma",
+                        "a": a_scalar,
+                        "omega": omega_scalar,
                         "err": str(e),
                     }, ensure_ascii=False) + "\n")
 
@@ -842,44 +906,44 @@ class AtlasPatchTrainer:
         fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=False)
 
         axes[0, 0].plot(r_uniform_np, np.real(R_pred_r_np), label="Pred Re(R)", lw=1.6)
-        if mma_available:
-            axes[0, 0].plot(r_uniform_np, np.real(R_mma_r), "--", label="MMA Re(R)", lw=1.0)
+        if benchmark_available:
+            axes[0, 0].plot(r_uniform_np, np.real(R_ref_r), "--", label="ref Re(R)", lw=1.0)
         axes[0, 0].set_ylabel("Re(R)")
         axes[0, 0].legend()
         axes[0, 0].grid(alpha=0.3)
 
         axes[1, 0].plot(r_uniform_np, np.imag(R_pred_r_np), label="Pred Im(R)", lw=1.6)
-        if mma_available:
-            axes[1, 0].plot(r_uniform_np, np.imag(R_mma_r), "--", label="MMA Im(R)", lw=1.0)
+        if benchmark_available:
+            axes[1, 0].plot(r_uniform_np, np.imag(R_ref_r), "--", label="ref Im(R)", lw=1.0)
         axes[1, 0].set_ylabel("Im(R)")
         axes[1, 0].legend()
         axes[1, 0].grid(alpha=0.3)
 
         axes[2, 0].plot(r_uniform_np, np.abs(R_pred_r_np), label="Pred |R|", lw=1.6)
-        if mma_available:
-            axes[2, 0].plot(r_uniform_np, np.abs(R_mma_r), "--", label="MMA |R|", lw=1.0)
+        if benchmark_available:
+            axes[2, 0].plot(r_uniform_np, np.abs(R_ref_r), "--", label="ref |R|", lw=1.0)
         axes[2, 0].set_ylabel("|R|")
         axes[2, 0].set_xlabel("r")
         axes[2, 0].legend()
         axes[2, 0].grid(alpha=0.3)
 
         axes[0, 1].plot(y_cheb_np, np.real(Rprime_pred_y_np), label="Pred Re(R')", lw=1.6)
-        if mma_available:
-            axes[0, 1].plot(y_cheb_np, np.real(Rprime_from_mma_y_np), "--", label="MMA Re(R')", lw=1.0)
+        if benchmark_available:
+            axes[0, 1].plot(y_cheb_np, np.real(Rprime_from_ref_y_np), "--", label="ref Re(R')", lw=1.0)
         axes[0, 1].set_ylabel("Re(R')")
         axes[0, 1].legend()
         axes[0, 1].grid(alpha=0.3)
 
         axes[1, 1].plot(y_cheb_np, np.imag(Rprime_pred_y_np), label="Pred Im(R')", lw=1.6)
-        if mma_available:
-            axes[1, 1].plot(y_cheb_np, np.imag(Rprime_from_mma_y_np), "--", label="MMA Im(R')", lw=1.0)
+        if benchmark_available:
+            axes[1, 1].plot(y_cheb_np, np.imag(Rprime_from_ref_y_np), "--", label="ref Im(R')", lw=1.0)
         axes[1, 1].set_ylabel("Im(R')")
         axes[1, 1].legend()
         axes[1, 1].grid(alpha=0.3)
 
         axes[2, 1].plot(y_cheb_np, np.abs(Rprime_pred_y_np), label="Pred |R'|", lw=1.6)
-        if mma_available:
-            axes[2, 1].plot(y_cheb_np, np.abs(Rprime_from_mma_y_np), "--", label="MMA |R'|", lw=1.0)
+        if benchmark_available:
+            axes[2, 1].plot(y_cheb_np, np.abs(Rprime_from_ref_y_np), "--", label="ref |R'|", lw=1.0)
         axes[2, 1].set_ylabel("|R'|")
         axes[2, 1].set_xlabel("y")
         axes[2, 1].legend()
@@ -887,7 +951,7 @@ class AtlasPatchTrainer:
 
         fig.suptitle(
             f"patch={self.patch.patch_id}, step={step}, a={float(a_t):.6f}, "
-            f"omega={float(omega_t):.6f}, {mma_status}",
+            f"omega={float(omega_t):.6f}, {benchmark_status}",
             fontsize=12
         )
         fig.tight_layout()
