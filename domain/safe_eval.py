@@ -7,6 +7,7 @@ import traceback
 
 from utils.compute_lambda import compute_lambda
 from utils.amplitude_ratio import compute_amplitude_ratio
+from utils.mode import KerrMode
 
 
 @dataclass
@@ -100,16 +101,8 @@ def try_compute_ramp_status(
 ) -> SolverStatus:
     try:
         lam_use = None if lambda_sep is None else complex(lambda_sep).real
-        out = compute_amplitude_ratio(
-            a=a,
-            omega=omega,
-            l=l,
-            m=m,
-            lambda_sep=lam_use,
-            r_match=r_match,
-            n_cheb=n_cheb,
-            s=s,
-        )
+        mode = KerrMode(M=1.0, a=a, omega=omega, ell=l, m=m, lam=lam_use, s=s)
+        out = compute_amplitude_ratio(mode=mode, r_match=r_match, n_cheb=n_cheb)
         ratio = complex(out["ratio"])
         if not _is_finite_complex(ratio):
             return SolverStatus(

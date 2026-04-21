@@ -7,8 +7,8 @@ from typing import Dict, Tuple, Any, Optional
 
 import torch
 
-from utils.compute_lambda import compute_lambda
-from utils.amplitude_ratio import compute_amplitude_ratio
+from utils.amplitude import TeukRadAmplitudeIn
+from utils.mode import KerrMode
 
 @dataclass
 class AuxCache:
@@ -54,10 +54,10 @@ def get_lambda_from_cfg(
         if abs(ww.imag) > 0:
             raise ValueError("当前 compute_lambda 接口只接受实频 omega；请先把 omega.imag 固定为 0 或改造外部接口。")
 
-        key = ("lambda", round(aa, 12), round(ww.real, 12), l, m, s)
+        mode_obj = KerrMode(M=1.0, a=aa, omega=ww.real, ell=l, m=m, lam=None, s=s)
+        key = ("lambda", round(mode_obj.a, 12), round(mode_obj.omega, 12), mode_obj.ell, mode_obj.m, mode_obj.s)
         if key not in cache.lambda_cache:
-            lam_val = compute_lambda(aa, ww.real, l, m, s)
-            cache.lambda_cache[key] = complex(lam_val)
+            cache.lambda_cache[key] = complex(mode_obj.lambda_value)
         lam = cache.lambda_cache[key]
         return torch.tensor(lam, dtype=torch.complex128, device=a.device)
 
@@ -99,17 +99,52 @@ def get_ramp_and_p_from_cfg(
         r_match = float(ccfg.get("r_match", 8.0))
         n_cheb = int(ccfg.get("n_cheb", 32))
 
-        # 尝试从 cache 获取已计算的 lambda，避免重复计算
-        lambda_key = ("lambda", round(aa, 12), round(ww.real, 12), l, m, s)
+        mode_obj = KerrMode(
+            M=1.0,
+            a=aa,
+            omega=ww.real,
+            ell=l,
+            m=m,
+            lam=None,
+            s=s,
+        )
+        lambda_key = ("lambda", round(mode_obj.a, 12), round(mode_obj.omega, 12), mode_obj.ell, mode_obj.m, mode_obj.s)
         lambda_sep = cache.lambda_cache.get(lambda_key, None)
+        if lambda_sep is not None:
+            mode_obj = KerrMode(
+                M=mode_obj.M,
+                a=mode_obj.a,
+                omega=mode_obj.omega,
+                ell=mode_obj.ell,
+                m=mode_obj.m,
+                lam=lambda_sep,
+                s=mode_obj.s,
+            )
 
-        key = ("ramp", round(aa, 12), round(ww.real, 12), l, m, s, p, r_match, n_cheb)
+        key = (
+            "ramp",
+            round(mode_obj.a, 12),
+            round(mode_obj.omega, 12),
+            mode_obj.ell,
+            mode_obj.m,
+            mode_obj.s,
+            round(mode_obj.lambda_value.real, 12),
+            round(mode_obj.lambda_value.imag, 12),
+            p,
+            r_match,
+            n_cheb,
+        )
         if key not in cache.ramp_cache:
-            out = compute_amplitude_ratio(aa, ww.real, l, m, lambda_sep=lambda_sep, r_match=r_match, n_cheb=n_cheb, s=s)
-            cache.ramp_cache[key] = complex(out["ratio"])
-            # 同时缓存 lambda（如果之前没有）
-            if lambda_key not in cache.lambda_cache:
-                cache.lambda_cache[lambda_key] = complex(out["lambda"])
+            z_m = mode_obj.rp / r_match
+            amp = TeukRadAmplitudeIn(mode_obj, N_in=n_cheb, N_out=n_cheb, z_m=z_m)
+            result = amp.result
+            if result.ratio_inc_over_ref is None:
+                raise FloatingPointError(
+                    f"TeukRadAmplitudeIn returned singular incidence/reflection ratio "
+                    f"for a={aa}, omega={ww.real}, l={l}, m={m}"
+                )
+            cache.ramp_cache[key] = complex(result.ratio_inc_over_ref)
+            cache.lambda_cache[lambda_key] = complex(mode_obj.lambda_value)
         ramp = cache.ramp_cache[key]
         return p, torch.tensor(ramp, dtype=torch.complex128, device=a.device)
 

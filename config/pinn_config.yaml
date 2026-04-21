@@ -4,10 +4,10 @@ include:
 parameter_space:
   a:
     center: 0.5
-    range: 0.49
+    range: 0.499
   omega:
-    center: 0.4
-    range: 0.3999
+    center: 5.00005
+    range: 4.99995
   domain:
     k_horizon_margin: 1.0e-2
     resample_factor: 4
@@ -32,11 +32,10 @@ model:
   use_film: true
   use_residual: true
 
-  # 当前小参数域 patch 
-  a_min_local: 0.0099
-  a_max_local: 0.991
-  omega_min_local: 0.000099 
-  omega_max_local: 1.0
+  a_min_local: 0.001
+  a_max_local: 0.999
+  omega_min_local: 0.0001
+  omega_max_local: 10.0
 
 sampling:
   parameter_batch:
@@ -272,10 +271,10 @@ multipatch_training:
   patch_steps: null
 
   # 输出总目录
-  output_root: outputs/atlas_multipatch_train
+  output_root: outputs/atlas_multipatch_train_coarse040
 
   # registry 文件名
-  registry_name: atlas_registry.json
+  registry_name: atlas_registry_coarse040.json
 
   # 训练完成后，是否把 best/latest checkpoint 复制到统一模型目录
   export_flat_models: true

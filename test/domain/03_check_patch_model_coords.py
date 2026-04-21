@@ -24,15 +24,15 @@ def main():
         use_residual=True,
         local_coord_mode="raw_aw",
         a_center_local=0.5,
-        a_half_range_local=0.25,
-        omega_min_local=1.0e-2,
-        omega_max_local=1.0,
+        a_half_range_local=0.499,
+        omega_min_local=1.0e-4,
+        omega_max_local=10.0,
         M=1.0,
         m_mode=2,
     ).to(device=device, dtype=dtype)
 
     a = torch.tensor([[0.5]], dtype=dtype)
-    omega = torch.tensor([[1.0e-1]], dtype=dtype)
+    omega = torch.tensor([[1.0]], dtype=dtype)
 
     alpha_raw, xi_raw = model_raw.compute_local_coords(a=a, omega=omega)
     print("=" * 80)

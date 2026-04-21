@@ -425,8 +425,9 @@ def compute_data_anchor_loss(
         rp = r_plus(a_batch[i], M)
         r_i = r_from_x(x_anchors, rp)
         p_i, ramp_i = get_ramp_and_p_from_cfg(cfg, cache, a_batch[i], omega_batch[i])
-        P, P_r, P_rr = Leaver_prefactors(r_i, a_batch[i], omega_batch[i],m,M,s)
-        Q, Q_r, Q_rr = prefactor_Q(r_i, a_batch[i], omega_batch[i],p_i,ramp_i,M,s)
+        rp_pref, rm_pref, rs_pref, rs_r_pref, rs_rr_pref = build_prefactor_primitives(r_i, a_batch[i], M=M)
+        P, P_r, P_rr = Leaver_prefactors(r_i, a_batch[i], omega_batch[i],m,M,s, rp=rp_pref, rm=rm_pref)
+        Q, Q_r, Q_rr = prefactor_Q(r_i, a_batch[i], omega_batch[i],p_i,ramp_i,M,s, rp=rp_pref, rs=rs_pref, rs_r=rs_r_pref, rs_rr=rs_rr_pref)
         U_i,_,_ =U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr)
         U_list.append(U_i)
 

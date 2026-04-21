@@ -23,7 +23,7 @@ from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_ancho
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
 from physical_ansatz.mapping import r_plus, r_from_x
 from physical_ansatz.transform_y import g_factor, h_factor
-from physical_ansatz.prefactor import Leaver_prefactors, prefactor_Q, U_prefactor
+from physical_ansatz.prefactor import Leaver_prefactors, prefactor_Q, U_prefactor, build_prefactor_primitives
 from mma.rin_sampler import MathematicaRinSampler
 
 
@@ -200,8 +200,8 @@ class AtlasPatchTrainer:
             # backward compatibility fields
             a_center_local=model_cfg.get("a_center_local", 0.125),
             a_half_range_local=model_cfg.get("a_half_range_local", 0.075),
-            omega_min_local=model_cfg.get("omega_min_local", 0.1),
-            omega_max_local=model_cfg.get("omega_max_local", 1.0),
+            omega_min_local=model_cfg.get("omega_min_local", 1.0e-4),
+            omega_max_local=model_cfg.get("omega_max_local", 10.0),
 
             # actual patch-local chart coords
             u_center_local=self.patch.u_center,
@@ -758,18 +758,44 @@ class AtlasPatchTrainer:
         with torch.no_grad():
             # prediction on r-grid
             Rprime_pred_r = self._predict_Rprime(a_t, omega_t, u_t, v_t, y_grid_from_r)
-            P_r, P_r_1, P_r_2 = Leaver_prefactors(r_grid_uniform, a_t, omega_t, m=m, M=M, s=s)
+            rp_r, rm_r, rs_r, rs_r_1, rs_r_2 = build_prefactor_primitives(r_grid_uniform, a_t, M=M)
+            P_r, P_r_1, P_r_2 = Leaver_prefactors(
+                r_grid_uniform, a_t, omega_t, m=m, M=M, s=s, rp=rp_r, rm=rm_r
+            )
             Q_r, Q_r_1, Q_r_2 = prefactor_Q(
-                r_grid_uniform, a_t, omega_t, p=int(p), R_amp=ramp_t, M=M, s=s
+                r_grid_uniform,
+                a_t,
+                omega_t,
+                p=int(p),
+                R_amp=ramp_t,
+                M=M,
+                s=s,
+                rp=rp_r,
+                rs=rs_r,
+                rs_r=rs_r_1,
+                rs_rr=rs_r_2,
             )
             U_r, _, _ = U_prefactor(P_r, P_r_1, P_r_2, Q_r, Q_r_1, Q_r_2)
             R_pred_r = U_r * Rprime_pred_r
 
             # prediction on y-grid
             Rprime_pred_y = self._predict_Rprime(a_t, omega_t, u_t, v_t, y_grid_cheb)
-            P_y, P_y_1, P_y_2 = Leaver_prefactors(r_grid_from_y, a_t, omega_t, m=m, M=M, s=s)
+            rp_y, rm_y, rs_y, rs_y_1, rs_y_2 = build_prefactor_primitives(r_grid_from_y, a_t, M=M)
+            P_y, P_y_1, P_y_2 = Leaver_prefactors(
+                r_grid_from_y, a_t, omega_t, m=m, M=M, s=s, rp=rp_y, rm=rm_y
+            )
             Q_y, Q_y_1, Q_y_2 = prefactor_Q(
-                r_grid_from_y, a_t, omega_t, p=int(p), R_amp=ramp_t, M=M, s=s
+                r_grid_from_y,
+                a_t,
+                omega_t,
+                p=int(p),
+                R_amp=ramp_t,
+                M=M,
+                s=s,
+                rp=rp_y,
+                rs=rs_y,
+                rs_r=rs_y_1,
+                rs_rr=rs_y_2,
             )
             U_y, _, _ = U_prefactor(P_y, P_y_1, P_y_2, Q_y, Q_y_1, Q_y_2)
 

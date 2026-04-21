@@ -141,9 +141,9 @@ class PINN_MLP(nn.Module):
     小范围变参数版 PINN:
         f(y;a,ω) = f_base(y) + α f_a(y,p) + ξ f_omega(y,p) + (α^2+ξ^2) f_nl(y,p)
 
-    其中:
-        a ∈ [0.05, 0.2]
-        ω ∈ [0.1, 1.0]
+    其中当前目标物理范围:
+        a ∈ [0.001, 0.999]
+        ω ∈ [1e-4, 10]
 
     设计思想：
     1. y 仍然走 FourierFeature1D，保留对振荡结构的表达能力
@@ -177,10 +177,10 @@ class PINN_MLP(nn.Module):
         local_coord_mode: str = "raw_aw",
 
         # ---- 旧模式：raw (a, omega) 的局部归一化参数 ----
-        a_center_local: float = 0.125,
-        a_half_range_local: float = 0.075,
-        omega_min_local: float = 0.1,
-        omega_max_local: float = 1.0,
+        a_center_local: float = 0.5,
+        a_half_range_local: float = 0.499,
+        omega_min_local: float = 1.0e-4,
+        omega_max_local: float = 10.0,
 
         # ---- 新模式：chart patch 的局部中心与半宽 ----
         u_center_local: float = 0.5,
@@ -233,7 +233,7 @@ class PINN_MLP(nn.Module):
         )
 
         # 参数特征:
-        # [alpha, xi, alpha^2, xi^2, alpha*xi, r_plus, sqrt(1-a^2/M^2), Omega_H, k, log(1+omega)]
+        # [alpha, xi, alpha^2, xi^2, alpha*xi, r_plus, sqrt(1-a^2/M^2), Omega_H, k, log10_omega]
         self.param_in_dim = 10
 
         # ---- 参数编码器 ----
@@ -330,7 +330,11 @@ class PINN_MLP(nn.Module):
         """
         旧模式：
             alpha 从 a 的局部线性归一化得到
-            xi    从 omega 的局部对数归一化得到
+            xi    从 omega 的对数域归一化得到
+
+        当前默认目标范围:
+            a ∈ [0.001, 0.999]
+            ω ∈ [1e-4, 10]
         """
         alpha = (a - self.a_center_local) / self.a_half_range_local
 
@@ -384,7 +388,11 @@ class PINN_MLP(nn.Module):
         v: torch.Tensor | None = None,
     ):
         """
-        p(a,ω) = [α, ξ, α², ξ², α ξ, r_+, sqrt(1-a²/M²), Ω_H, k, log(1+ω)]
+        p(a,ω) = [α, ξ, α², ξ², α ξ, r_+, sqrt(1-a²/M²), Ω_H, k, log10(ω)]
+
+        说明:
+        - local_coord_mode='chart_uv' 时，alpha/xi 来自 patch 的 (u, v)
+        - 物理特征中的 omega 仍使用新的 log10_omega，以统一宽频率范围拟合
         """
         alpha, xi = self.compute_local_coords(a=a, omega=omega, u=u, v=v)
 
@@ -396,7 +404,8 @@ class PINN_MLP(nn.Module):
         r_plus = M * (1.0 + spin_gap)
         Omega_H = a / (2.0 * M * r_plus)
         k = omega - m_mode * Omega_H
-        log1p_omega = torch.log1p(torch.clamp(omega, min=1.0e-12))
+        omega_safe = torch.clamp(omega, min=1.0e-12)
+        log10_omega = torch.log10(omega_safe)
 
         feats = torch.cat(
             [
@@ -409,7 +418,7 @@ class PINN_MLP(nn.Module):
                 spin_gap,
                 Omega_H,
                 k,
-                log1p_omega,
+                log10_omega,
             ],
             dim=-1,
         )
@@ -556,4 +565,3 @@ class PINN_MLP(nn.Module):
         f_complex = torch.complex(f_re, f_im)
 
         return f_complex
-

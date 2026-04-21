@@ -6,6 +6,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.amplitude_ratio import compute_amplitude_ratio
+from utils.mode import KerrMode
 
 def test_amplitude_ratio():
     """测试计算振幅比值"""
@@ -18,7 +19,8 @@ def test_amplitude_ratio():
     print(f"测试参数: a={a}, ω={omega}, l={l}, m={m}")
 
     try:
-        result = compute_amplitude_ratio(a, omega, l, m)
+        mode = KerrMode(M=1.0, a=a, omega=omega, ell=l, m=m, lam=None, s=-2)
+        result = compute_amplitude_ratio(mode=mode)
         print(f"✓ 成功计算振幅比值")
         print(f"  λ = {result['lambda']}")
         print(f"  B_inc/B_ref = {result['ratio']}")

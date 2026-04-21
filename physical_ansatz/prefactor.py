@@ -76,6 +76,32 @@ def rprime_r_r(r: torch.Tensor, a: torch.Tensor, M: float = 1.0) -> torch.Tensor
 
     return term2 + term3
 
+
+def build_prefactor_primitives(
+    r: torch.Tensor,
+    a: torch.Tensor,
+    M: float = 1.0,
+    *,
+    need_rs: bool = True,
+):
+    """
+    Build reusable prefactor primitives for repeated P/Q evaluations on the same
+    (r, a) grid.
+
+    Returns
+    -------
+    rp, rm, rs, rs_r, rs_rr
+        If ``need_rs`` is False, the last three entries are returned as None.
+    """
+    rp = r_plus(a, M)
+    rm = r_minus(a, M)
+    if not need_rs:
+        return rp, rm, None, None, None
+    rs = r_star(r, a, M)
+    rs_r = r_star_r(r, a, M)
+    rs_rr = r_star_r_r(r, a, M)
+    return rp, rm, rs, rs_r, rs_rr
+
 # def prefactor_Q(r: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, p: int, R_amp: torch.Tensor, M: float = 1.0, s: int = -2) -> torch.Tensor:
 #     """
 #     Your extra (1 + S) factor:
@@ -139,6 +165,10 @@ def prefactor_Q(
     R_amp: torch.Tensor,
     M: float = 1.0,
     s: int = -2,
+    rp: torch.Tensor | None = None,
+    rs: torch.Tensor | None = None,
+    rs_r: torch.Tensor | None = None,
+    rs_rr: torch.Tensor | None = None,
 ):
     """
     Q(r) = 1 + S(r),
@@ -152,14 +182,18 @@ def prefactor_Q(
     Q_rr  : second derivative wrt r
     """
     i = 1j
-    rp = r_plus(a, M)
+    if rp is None:
+        rp = r_plus(a, M)
 
     alpha = -p + 2 * s
     drp = r - rp
 
-    rs = r_star(r, a, M)
-    rs_r = r_star_r(r, a, M)
-    rs_rr = r_star_r_r(r, a, M)
+    if rs is None:
+        rs = r_star(r, a, M)
+    if rs_r is None:
+        rs_r = r_star_r(r, a, M)
+    if rs_rr is None:
+        rs_rr = r_star_r_r(r, a, M)
 
     # S(r)
     S = R_amp * (r ** alpha) * (drp ** p) * torch.exp(-2.0 * i * omega * rs)
@@ -200,9 +234,13 @@ def Leaver_prefactors(
     m: int,
     M: float = 1.0,
     s: int = -2,
+    rp: torch.Tensor | None = None,
+    rm: torch.Tensor | None = None,
 ):
-    rp = r_plus(a, M)
-    rm = r_minus(a, M)
+    if rp is None:
+        rp = r_plus(a, M)
+    if rm is None:
+        rm = r_minus(a, M)
 
     sigma_p = (2 * omega * rp - m * a) / (rp - rm)
     pp = -s - 1j * sigma_p
@@ -340,4 +378,3 @@ def U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr):
     
 #     # return d2P_dr2 * Q + 2.0 * dP_dr * dQ_dr + P * d2Q_dr2
 #     return d2Q_dr2 * I + 2.0 * dI_dr * dQ_dr + Q * d2I_dr2
-

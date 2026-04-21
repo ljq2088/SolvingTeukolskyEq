@@ -1,85 +1,81 @@
-"""计算 Kerr 黑洞引力波散射振幅比"""
-import sys
-import os
+"""Backward-compatible amplitude-ratio wrapper built on KerrMode / TeukRadAmplitudeIn."""
+
+from __future__ import annotations
+
 import math
-import warnings
 
-# 添加 kerr_matcher 路径
-_KERR_MATCHER_PATH = "/home/ljq/code/radial_flow/spec_flow_method_Kerr/kerr_matcher_project/src"
-if _KERR_MATCHER_PATH not in sys.path:
-    sys.path.insert(0, _KERR_MATCHER_PATH)
+from .amplitude import TeukRadAmplitudeIn
+from .mode import KerrMode
 
-from .compute_lambda import compute_lambda
 
-def compute_amplitude_ratio(a, omega, l, m, lambda_sep=None, r_match=8.0, n_cheb=32, s=-2):
-    """
-    计算Kerr黑洞引力波散射振幅比
+def _ratio_arg(z: complex) -> float:
+    denom = abs(z)
+    if denom == 0.0:
+        return 0.0
+    return z.real / denom
 
-    参数:
-        a: 自旋参数 (0 <= a < M, M=1)
-        omega: 频率
-        l: 角量子数 (l >= 2)
-        m: 方位角量子数 (|m| <= l)
-        lambda_sep: 球旋分离常数 (None则自动计算)
-        r_match: 匹配半径
-        n_cheb: Chebyshev多项式阶数
-        s: 自旋权重 (默认 -2)
 
-    返回:
-        dict: {
-            'ratio': complex,  # B_inc/B_ref (入射/反射)
-            'lambda': float,  # 分离常数
-            'ratio_abs': float,  # |ratio|
-            'ratio_arg': float   # arg(ratio)
-        }
-    """
-    # 如果未提供 lambda_sep，则自动计算
-    if lambda_sep is None:
-        lambda_sep = compute_lambda(a, omega, l, m, s)
-
-    try:
-        from kerr_matcher.params import SolverParams
-        from kerr_matcher.solver import solve_case
-    except ImportError as e:
-        raise ImportError(f"无法导入 kerr_matcher 模块: {e}")
-
-    params = SolverParams(
-        M=1.0, a=a, omega=omega, ell=l, m_mode=m,
-        lambda_sep=lambda_sep, r_match=r_match, n_cheb=n_cheb, flow_eps=1e-6
-    )
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("error", RuntimeWarning)
-        try:
-            result = solve_case(params)
-        except RuntimeWarning as exc:
-            raise FloatingPointError(
-                f"kerr_matcher flow failed for a={a}, omega={omega}, l={l}, m={m}: {exc}"
-            ) from exc
-
-    # ratio_up_over_um = R_+/R_- = 反射/入射
-    # 所以 B_inc/B_ref = 1/ratio_up_over_um
-    ratio_ref_over_inc = result.spectral.ratio_up_over_um
-    if not (math.isfinite(ratio_ref_over_inc.real) and math.isfinite(ratio_ref_over_inc.imag)):
+def _build_ratio_dict(result) -> dict:
+    ratio = result.ratio_inc_over_ref
+    if ratio is None:
         raise FloatingPointError(
-            f"kerr_matcher returned non-finite reflection/incidence ratio for "
-            f"a={a}, omega={omega}, l={l}, m={m}"
+            f"Cannot form incidence/reflection ratio because B_ref is too small: "
+            f"B_inc={result.B_inc}, B_ref={result.B_ref}"
         )
-    if abs(ratio_ref_over_inc) == 0.0:
+
+    if not (math.isfinite(ratio.real) and math.isfinite(ratio.imag)):
         raise FloatingPointError(
-            f"kerr_matcher returned zero reflection/incidence ratio for "
-            f"a={a}, omega={omega}, l={l}, m={m}"
-        )
-    ratio_inc_over_ref = 1.0 / ratio_ref_over_inc
-    if not (math.isfinite(ratio_inc_over_ref.real) and math.isfinite(ratio_inc_over_ref.imag)):
-        raise FloatingPointError(
-            f"kerr_matcher returned non-finite incidence/reflection ratio for "
-            f"a={a}, omega={omega}, l={l}, m={m}"
+            f"Non-finite incidence/reflection ratio: {ratio}"
         )
 
     return {
-        'ratio': ratio_inc_over_ref,
-        'lambda': params.lambda_value,
-        'ratio_abs': abs(ratio_inc_over_ref),
-        'ratio_arg': ratio_inc_over_ref.real / abs(ratio_inc_over_ref) if abs(ratio_inc_over_ref) > 0 else 0
+        "ratio": ratio,
+        "lambda": result.lam,
+        "ratio_abs": abs(ratio),
+        "ratio_arg": _ratio_arg(ratio),
+        "B_inc": result.B_inc,
+        "B_ref": result.B_ref,
+        "B_trans": result.B_trans,
+        "ratio_ref_over_inc": result.ratio_ref_over_inc,
+        "ratio_inc_over_ref": result.ratio_inc_over_ref,
     }
+
+
+def compute_amplitude_ratio(
+    a=None,
+    omega=None,
+    l=None,
+    m=None,
+    lambda_sep=None,
+    r_match: float = 8.0,
+    n_cheb: int = 32,
+    s: int = -2,
+    mode: KerrMode | None = None,
+):
+    """Compute B_inc/B_ref-style amplitude information.
+
+    Preferred usage:
+        compute_amplitude_ratio(mode=my_mode, r_match=..., n_cheb=...)
+
+    Backward-compatible usage:
+        compute_amplitude_ratio(a, omega, l, m, lambda_sep=None, r_match=..., n_cheb=..., s=-2)
+    """
+    if mode is None and isinstance(a, KerrMode):
+        mode = a
+
+    if mode is None:
+        if None in (a, omega, l, m):
+            raise ValueError("Either provide mode=KerrMode or provide a, omega, l, m.")
+        mode = KerrMode(
+            M=1.0,
+            a=float(a),
+            omega=float(omega),
+            ell=int(l),
+            m=int(m),
+            lam=None if lambda_sep is None else complex(lambda_sep),
+            s=int(s),
+        )
+
+    z_m = mode.rp / float(r_match)
+    amp = TeukRadAmplitudeIn(mode=mode, N_in=int(n_cheb), N_out=int(n_cheb), z_m=z_m)
+    return _build_ratio_dict(amp.result)

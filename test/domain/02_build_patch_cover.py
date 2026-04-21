@@ -39,8 +39,8 @@ def main():
         default="outputs/domain/patch_cover_l2_m2.png",
     )
     parser.add_argument("--component-id", type=int, default=0)
-    parser.add_argument("--h-u", type=float, default=0.12)
-    parser.add_argument("--h-v", type=float, default=0.12)
+    parser.add_argument("--h-u", type=float, default=0.40)
+    parser.add_argument("--h-v", type=float, default=0.40)
     args = parser.parse_args()
 
     uv_points, aw_points = load_valid_chart_points(

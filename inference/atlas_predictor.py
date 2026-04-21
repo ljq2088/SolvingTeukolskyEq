@@ -76,8 +76,8 @@ class AtlasPredictor:
 
             a_center_local=self.model_cfg.get("a_center_local", 0.125),
             a_half_range_local=self.model_cfg.get("a_half_range_local", 0.075),
-            omega_min_local=self.model_cfg.get("omega_min_local", 0.1),
-            omega_max_local=self.model_cfg.get("omega_max_local", 1.0),
+            omega_min_local=self.model_cfg.get("omega_min_local", 1.0e-4),
+            omega_max_local=self.model_cfg.get("omega_max_local", 10.0),
 
             u_center_local=float(patch.u_center),
             v_center_local=float(patch.v_center),

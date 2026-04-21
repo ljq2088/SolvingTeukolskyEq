@@ -33,6 +33,7 @@ for path in (PROJECT_ROOT, MATCHER_ROOT, MATCHER_SRC_ROOT):
 from mma.rin_sampler import MathematicaRinSampler
 from utils.amplitude_ratio import compute_amplitude_ratio
 from utils.compute_lambda import compute_lambda
+from utils.mode import KerrMode
 
 
 @dataclass
@@ -284,16 +285,8 @@ def classify_ramp(
         lam = complex(compute_lambda(a, omega, l, m, s))
         if not (math.isfinite(lam.real) and math.isfinite(lam.imag)):
             return False, "lambda_nonfinite"
-        out = compute_amplitude_ratio(
-            a,
-            omega,
-            l,
-            m,
-            lambda_sep=lam,
-            r_match=r_match,
-            n_cheb=n_cheb,
-            s=s,
-        )
+        mode = KerrMode(M=1.0, a=a, omega=omega, ell=l, m=m, lam=lam, s=s)
+        out = compute_amplitude_ratio(mode=mode, r_match=r_match, n_cheb=n_cheb)
         ratio = complex(out["ratio"])
         if not (math.isfinite(ratio.real) and math.isfinite(ratio.imag)):
             return False, "ramp_nonfinite"

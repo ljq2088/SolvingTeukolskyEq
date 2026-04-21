@@ -1,50 +1,16 @@
 from __future__ import annotations
-import sys
-sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky")
-from utils.compute_lambda import compute_lambda
-from dataclasses import dataclass
 import math
 from typing import Dict, Tuple
 
 import numpy as np
 
+from utils.mode import InAmplitudesResult, KerrMode
 
-@dataclass(frozen=True)
-class KerrMode:
-    M: float
-    a: float
-    omega: float
-    ell: int
-    m: int
-    lam: complex | None
-    s: int = -2
 
-    @property
-    def rp(self) -> float:
-        return self.M + math.sqrt(self.M * self.M - self.a * self.a)
-
-    @property
-    def rm(self) -> float:
-        return self.M - math.sqrt(self.M * self.M - self.a * self.a)
-
-    @property
-    def delta_h(self) -> float:
-        return self.rp - self.rm
-
-    @property
-    def Omega_H(self) -> float:
-        return self.a / (self.rp * self.rp + self.a * self.a)
-
-    @property
-    def k_hor(self) -> float:
-        return self.omega - self.m * self.Omega_H
-
-    @property
-    def lambda_value(self) -> complex:
-        if self.lam is None:
-            value = compute_lambda(self.a, self.omega, self.ell, self.m, self.s)
-            object.__setattr__(self, "lam", complex(value))
-        return complex(self.lam)
+def _safe_complex_ratio(numer: complex, denom: complex, *, tol: float = 1.0e-30) -> complex | None:
+    if abs(denom) <= tol:
+        return None
+    return numer / denom
 
 
 def Delta(r, mode: KerrMode):
@@ -346,31 +312,22 @@ def compute_smatrix(mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float 
     Cin_down, Cin_up   = np.linalg.solve(Mmatch, np.array([R_in_m,  Rr_in_m],  dtype=complex))
     Cout_down, Cout_up = np.linalg.solve(Mmatch, np.array([R_out_m, Rr_out_m], dtype=complex))
 
+    b_inc = complex(Cin_down)
+    b_ref = complex(Cin_up)
+    b_trans = 1.0 + 0.0j
+    ratio_ref_over_inc = _safe_complex_ratio(b_ref, b_inc)
+    ratio_inc_over_ref = _safe_complex_ratio(b_inc, b_ref)
+
     return {
         'S': np.array([[Cin_down, Cin_up], [Cout_down, Cout_up]], dtype=complex),
-        'B_inc': Cin_down,
-        'B_ref': Cin_up,
-        'B_trans': 1.0 + 0.0j,
-        'B_trans_over_B_inc': 1.0 / Cin_down,
-        'B_ref_over_B_inc': Cin_up / Cin_down,
+        'B_inc': b_inc,
+        'B_ref': b_ref,
+        'B_trans': b_trans,
+        'ratio_ref_over_inc': ratio_ref_over_inc,
+        'ratio_inc_over_ref': ratio_inc_over_ref,
+        'B_trans_over_B_inc': _safe_complex_ratio(b_trans, b_inc),
+        'B_ref_over_B_inc': ratio_ref_over_inc,
     }
-
-
-# if __name__ == '__main__':
-#     M=1.0
-#     a=0.2
-#     ell=2
-#     m=2
-#     omega=100
-#     mode = KerrMode(M=M, a=a, omega=omega, ell=ell, m=m, lam=compute_lambda(a, omega, ell, m))
-#     res = compute_smatrix(mode, N_in=100, N_out=100, z_m=0.4)
-#     print('=== FAST Kerr s=-2 null-cheb ===')
-#     print(f"mode = {mode}")
-#     print(res['S'])
-#     print(f"B_inc = {res['B_inc']}")
-#     print(f"B_ref = {res['B_ref']}")
-#     print(f"B_trans/B_inc = {res['B_trans_over_B_inc']}")
-#     print(f"B_ref/B_inc = {res['B_ref_over_B_inc']}")
 
 class TeukRadAmplitudeIn(object):
     def __init__(self, mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3):
@@ -385,20 +342,64 @@ class TeukRadAmplitudeIn(object):
         self.N_out = N_out
         self.z_m = z_m
         self.lam = mode.lambda_value
-        self.smatrix = compute_smatrix(mode, N_in=self.N_in, N_out=self.N_out, z_m=self.z_m)
+        self._smatrix: Dict[str, complex | np.ndarray | None] | None = None
+        self._result: InAmplitudesResult | None = None
 
     def __call__(self) -> InAmplitudesResult:
-        return InAmplitudesResult(
-            l=self.mode.ell,
-            m=self.mode.m,
-            s=self.mode.s,
-            a=self.a,
-            omega=self.omega,
-            lam=self.lam,
-            B_inc=self.smatrix['B_inc'],
-            B_ref=self.smatrix['B_ref'],
-            B_trans=self.smatrix['B_trans'],
-            N_in=self.N_in,
-            N_out=self.N_out,
-            z_m=self.z_m,
+        return self.to_result()
+
+    @property
+    def smatrix(self) -> Dict[str, complex | np.ndarray | None]:
+        if self._smatrix is None:
+            self._smatrix = compute_smatrix(self.mode, N_in=self.N_in, N_out=self.N_out, z_m=self.z_m)
+        return self._smatrix
+
+    @property
+    def B_inc(self) -> complex:
+        return complex(self.smatrix["B_inc"])
+
+    @property
+    def B_ref(self) -> complex:
+        return complex(self.smatrix["B_ref"])
+
+    @property
+    def B_trans(self) -> complex:
+        return complex(self.smatrix["B_trans"])
+
+    @property
+    def ratio_ref_over_inc(self) -> complex | None:
+        return self.smatrix["ratio_ref_over_inc"]
+
+    @property
+    def ratio_inc_over_ref(self) -> complex | None:
+        return self.smatrix["ratio_inc_over_ref"]
+
+    def to_result(self) -> InAmplitudesResult:
+        if self._result is None:
+            self._result = InAmplitudesResult(
+                l=self.mode.ell,
+                m=self.mode.m,
+                s=self.mode.s,
+                a=self.a,
+                omega=self.omega,
+                lam=self.lam,
+                B_inc=self.B_inc,
+                B_ref=self.B_ref,
+                B_trans=self.B_trans,
+                N_in=self.N_in,
+                N_out=self.N_out,
+                z_m=self.z_m,
+                ratio_ref_over_inc=self.ratio_ref_over_inc,
+                ratio_inc_over_ref=self.ratio_inc_over_ref,
+            )
+        return self._result
+
+    @property
+    def result(self) -> InAmplitudesResult:
+        return self.to_result()
+
+    def __repr__(self) -> str:
+        return (
+            f"TeukRadAmplitudeIn(l={self.ell}, m={self.m}, a={self.a}, omega={self.omega}, "
+            f"N_in={self.N_in}, N_out={self.N_out}, z_m={self.z_m})"
         )
