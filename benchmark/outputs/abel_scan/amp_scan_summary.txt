@@ -1,0 +1,29 @@
+a in [0.001, 0.999], n_a=50
+omega in [0.0001, 10.0], n_omega=50
+N_list = [24, 32, 48, 64, 80, 128]
+z_m = 0.3
+N_ref = 128
+(ell, m, s) = (2, 2, -2)
+
+Highest-order Abel residual summary:
+  median outer residual = 1.544968e-08
+  max    outer residual = 4.759223e+03
+  median inner residual = 1.229711e-09
+  max    inner residual = 3.351337e-07
+  median detS  residual = 7.163020e-08
+  max    detS  residual = 1.568029e+02
+
+Amplitude convergence against highest N_ref:
+N=  24: med/max err B_inc = 1.088563e-05/2.017376e+00, med/max err B_ref = 2.897043e-01/2.695226e+06, med/max err ratio = 1.350167e-03/2.695227e+06
+N=  32: med/max err B_inc = 3.262614e-06/2.900820e+00, med/max err B_ref = 8.915553e-03/8.043735e+03, med/max err ratio = 3.539638e-04/8.043735e+03
+N=  48: med/max err B_inc = 2.971210e-06/5.471116e+01, med/max err B_ref = 2.680167e-04/5.539094e+01, med/max err ratio = 2.255456e-04/1.368136e+01
+N=  64: med/max err B_inc = 3.056470e-06/5.076109e+00, med/max err B_ref = 6.891173e-05/9.679663e+00, med/max err ratio = 2.334017e-04/1.398211e+01
+N=  80: med/max err B_inc = 2.726135e-06/6.504437e+00, med/max err B_ref = 6.055705e-05/2.233783e+01, med/max err ratio = 2.307979e-04/2.233783e+01
+
+Abel residual summary by spectral order:
+N=  24: med/max outer = 9.886042e-06/3.148337e+09, med/max inner = 3.724740e-05/7.875430e-03, med/max detS  = 1.369688e-04/2.029321e+00
+N=  32: med/max outer = 8.741282e-07/2.872095e+09, med/max inner = 1.397671e-08/2.804218e-05, med/max detS  = 9.244504e-07/3.840354e+00
+N=  48: med/max outer = 7.528219e-09/3.175377e+07, med/max inner = 8.971082e-11/4.482753e-06, med/max detS  = 2.669355e-08/1.896680e+02
+N=  64: med/max outer = 3.697972e-09/7.427700e+06, med/max inner = 9.635516e-11/1.283122e-05, med/max detS  = 2.365350e-08/3.559561e+02
+N=  80: med/max outer = 4.899777e-09/7.257111e+05, med/max inner = 1.673907e-10/7.102502e-06, med/max detS  = 3.081000e-08/2.815672e+02
+N= 128: med/max outer = 1.544968e-08/4.759223e+03, med/max inner = 1.229711e-09/3.351337e-07, med/max detS  = 7.163020e-08/1.568029e+02

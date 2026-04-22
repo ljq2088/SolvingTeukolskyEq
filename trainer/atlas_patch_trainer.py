@@ -32,7 +32,7 @@ from physical_ansatz.transform_y import (
 )
 from physical_ansatz.prefactor import Leaver_prefactors, build_prefactor_primitives
 from mma.rin_sampler import MathematicaRinSampler
-from compute_solution import compute_pybhpt_solution
+from pybhpt_usage.compute_solution import compute_pybhpt_solution
 
 
 def _get_dtype(dtype_name: str):

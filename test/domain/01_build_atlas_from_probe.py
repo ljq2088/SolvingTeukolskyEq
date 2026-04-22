@@ -2,10 +2,16 @@ from __future__ import annotations
 import sys
 
 sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky")
+import os
 import argparse
 from pathlib import Path
 import random
 
+os.environ.setdefault("MPLBACKEND", "Agg")
+os.environ.setdefault("MPLCONFIGDIR", "/tmp/mpl-pinn")
+
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
