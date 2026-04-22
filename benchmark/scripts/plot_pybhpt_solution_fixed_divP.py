@@ -1,7 +1,7 @@
 from __future__ import annotations
 import sys
 sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky")
-sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky/pybhpt")
+
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 
 from config.config_loader import load_pinn_full_config
-from compute_solution import compute_pybhpt_solution
+from pybhpt_usage.compute_solution import compute_pybhpt_solution
 from mma.rin_sampler import MathematicaRinSampler
 from physical_ansatz.prefactor import (
     build_prefactor_primitives,
@@ -90,7 +90,7 @@ def main():
     # -----------------------------
     # 可视化网格
     # 左列: R(r) 用均匀 r 网格
-    # 右列: R/U 用 y 上的 Chebyshev 网格
+    # 右列: R/P用 y 上的 Chebyshev 网格
     # -----------------------------
     dtype = torch.float64
     device = torch.device("cpu")
@@ -155,9 +155,7 @@ def main():
     )
     ramp_t = ramp_val.to(device=device, dtype=torch.complex128)
     print("E: after ramp")
-    # -----------------------------
-    # 构造 U = P * Q
-    # -----------------------------
+
     rp_p, rm_p, rs_p, rs_r_p, rs_rr_p = build_prefactor_primitives(r_t, a_t, M=M)
 
     P, P_r, P_rr = Leaver_prefactors(
@@ -171,26 +169,12 @@ def main():
         rm=rm_p,
     )
 
-    Q, Q_r, Q_rr = prefactor_Q(
-        r_t,
-        a_t,
-        omega_t,
-        p=int(p_val),
-        R_amp=ramp_t,
-        M=M,
-        s=s,
-        rp=rp_p,
-        rs=rs_p,
-        rs_r=rs_r_p,
-        rs_rr=rs_rr_p,
-    )
 
-    U, _, _ = U_prefactor(P, P_r, P_rr, Q, Q_r, Q_rr)
 
     # -----------------------------
-    # 除以 U_factor
+    # 除以P_factor
     # -----------------------------
-    R_div_U = R_pybhpt_y_t / U
+    R_div_P = R_pybhpt_y_t / P
 
     # -----------------------------
     # 画图
@@ -208,17 +192,17 @@ def main():
     axes[2, 0].set_ylabel("|R|")
     axes[2, 0].set_xlabel("r")
 
-    # 右列：除以 U 之后
-    R_div_U_np = R_div_U.detach().cpu().numpy()
-    U_np = U.detach().cpu().numpy()
+    # 右列：除以 P 之后
+    R_div_P_np = R_div_P.detach().cpu().numpy()
+    P_np = P.detach().cpu().numpy()
 
-    axes[0, 1].plot(y_grid, np.real(R_div_U_np), label="Re(R/U)")
-    axes[1, 1].plot(y_grid, np.imag(R_div_U_np), label="Im(R/U)")
-    axes[2, 1].plot(y_grid, np.abs(R_div_U_np), label="|R/U|")
+    axes[0, 1].plot(y_grid, np.real(R_div_P_np), label="Re(R/P)")
+    axes[1, 1].plot(y_grid, np.imag(R_div_P_np), label="Im(R/P)")
+    axes[2, 1].plot(y_grid, np.abs(R_div_P_np), label="|R/P|")
 
-    axes[0, 1].set_ylabel("Re(R/U)")
-    axes[1, 1].set_ylabel("Im(R/U)")
-    axes[2, 1].set_ylabel("|R/U|")
+    axes[0, 1].set_ylabel("Re(R/P)")
+    axes[1, 1].set_ylabel("Im(R/P)")
+    axes[2, 1].set_ylabel("|R/P|")
     axes[2, 1].set_xlabel("y")
 
     for ax in axes.ravel():
@@ -226,12 +210,12 @@ def main():
         ax.legend()
 
     fig.suptitle(
-        f"pybhpt solution and pybhpt/U\n"
+        f"pybhpt solution and pybhpt/P\n"
         f"a={a_val}, omega={omega_val}, ell={ell}, m={m}, p={p_val}"
     )
     fig.tight_layout()
 
-    out_path = Path(__file__).resolve().parents[1] / "outputs" / "pybhpt_solution_fixed_divU.png"
+    out_path = Path(__file__).resolve().parents[1] / "outputs" / "pybhpt_solution_fixed_divP.png"
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     fig.savefig(out_path, dpi=180, bbox_inches="tight")
@@ -266,8 +250,8 @@ def main():
         print("H: after mma")
 
         R_mma_y_t = torch.as_tensor(R_mma_y, device=device, dtype=torch.complex128)
-        R_mma_div_U = R_mma_y_t / U
-        R_mma_div_U_np = R_mma_div_U.detach().cpu().numpy()
+        R_mma_div_P = R_mma_y_t / P
+        R_mma_div_P_np = R_mma_div_P.detach().cpu().numpy()
 
         fig_mma, axes_mma = plt.subplots(3, 2, figsize=(12, 10), sharex="col")
 
@@ -280,13 +264,13 @@ def main():
         axes_mma[2, 0].set_ylabel("|R|")
         axes_mma[2, 0].set_xlabel("r")
 
-        axes_mma[0, 1].plot(y_grid, np.real(R_mma_div_U_np), label="Re(R_mma/U)")
-        axes_mma[1, 1].plot(y_grid, np.imag(R_mma_div_U_np), label="Im(R_mma/U)")
-        axes_mma[2, 1].plot(y_grid, np.abs(R_mma_div_U_np), label="|R_mma/U|")
+        axes_mma[0, 1].plot(y_grid, np.real(R_mma_div_P_np), label="Re(R_mma/P)")
+        axes_mma[1, 1].plot(y_grid, np.imag(R_mma_div_P_np), label="Im(R_mma/P)")
+        axes_mma[2, 1].plot(y_grid, np.abs(R_mma_div_P_np), label="|R_mma/P|")
 
-        axes_mma[0, 1].set_ylabel("Re(R/U)")
-        axes_mma[1, 1].set_ylabel("Im(R/U)")
-        axes_mma[2, 1].set_ylabel("|R/U|")
+        axes_mma[0, 1].set_ylabel("Re(R/P)")
+        axes_mma[1, 1].set_ylabel("Im(R/P)")
+        axes_mma[2, 1].set_ylabel("|R/P|")
         axes_mma[2, 1].set_xlabel("y")
 
         for ax in axes_mma.ravel():
@@ -294,12 +278,12 @@ def main():
             ax.legend()
 
         fig_mma.suptitle(
-            f"mma solution and mma/U\n"
+            f"mma solution and mma/P\n"
             f"a={a_val}, omega={omega_val}, ell={ell}, m={m}, p={p_val}"
         )
         fig_mma.tight_layout()
 
-        out_path_mma = Path(__file__).resolve().parents[1] / "outputs" / "mma_solution_fixed_divU.png"
+        out_path_mma = Path(__file__).resolve().parents[1] / "outputs" / "mma_solution_fixed_divP.png"
         out_path_mma.parent.mkdir(parents=True, exist_ok=True)
         fig_mma.savefig(out_path_mma, dpi=180, bbox_inches="tight")
         plt.close(fig_mma)
@@ -308,19 +292,16 @@ def main():
         if sampler is not None:
             sampler.close()
 
-    # 额外输出：检查 U/Q 是否病态
+
     print(f"[saved] {out_path}")
-    print(f"[info] min |Q| = {np.min(np.abs(Q.detach().cpu().numpy())):.6e}")
-    print(f"[info] min |U| = {np.min(np.abs(U_np)):.6e}")
-    idx_q = int(np.argmin(np.abs(Q.detach().cpu().numpy())))
-    idx_u = int(np.argmin(np.abs(U_np)))
+    
+    print(f"[info] min |P| = {np.min(np.abs(P_np)):.6e}")
+
+    idx_u = int(np.argmin(np.abs(P_np)))
+
     print(
-        f"[info] argmin |Q|: idx={idx_q}, y={y_grid[idx_q]:.6f}, "
-        f"r={r_np_y[idx_q]:.6f}, Q={Q.detach().cpu().numpy()[idx_q]}"
-    )
-    print(
-        f"[info] argmin |U|: idx={idx_u}, y={y_grid[idx_u]:.6f}, "
-        f"r={r_np_y[idx_u]:.6f}, U={U_np[idx_u]}"
+        f"[info] argmin |P|: idx={idx_u}, y={y_grid[idx_u]:.6f}, "
+        f"r={r_np_y[idx_u]:.6f}, P={P_np[idx_u]}"
     )
 
 

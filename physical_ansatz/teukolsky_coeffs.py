@@ -60,9 +60,9 @@ def coeffs_x(x: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, p, R
     Δr = delta_r(r, M)
     V = V_of_r(r, a, omega, m, s, lambda_, M)
     rp_pref, rm_pref, rs_pref, rs_r_pref, rs_rr_pref = build_prefactor_primitives(r, a, M=M)
-    P,P_r,P_rr= Leaver_prefactors(r, a, omega, m, M, s, rp=rp_pref, rm=rm_pref)
-    Q,Q_r,Q_rr= prefactor_Q(r, a, omega, p, R_amp, M, s, rp=rp_pref, rs=rs_pref, rs_r=rs_r_pref, rs_rr=rs_rr_pref)
-    U,U_r,U_rr=U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr)
+    U, U_r, U_rr = Leaver_prefactors(r, a, omega, m, M, s, rp=rp_pref, rm=rm_pref)
+
+
     
     # if caller did not precompute dx/dr, d2x/dr2, compute via formulas for x=r_plus/r
     if dx_dr is None or d2x_dr2 is None:
