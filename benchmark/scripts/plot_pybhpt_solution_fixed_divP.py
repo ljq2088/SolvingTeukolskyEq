@@ -50,7 +50,30 @@ def eval_mma_with_fallback(
     a: float,
     omega: float,
     r_query: np.ndarray,
+    max_direct_points: int = 200,
 ) -> np.ndarray:
+    r_query = np.asarray(r_query, dtype=float).reshape(-1)
+    if len(r_query) == 0:
+        return np.empty((0,), dtype=np.complex128)
+
+    if len(r_query) > max_direct_points:
+        idx = np.linspace(0, len(r_query) - 1, max_direct_points, dtype=int)
+        coarse_r = r_query[idx]
+        coarse_val = sampler.evaluate_rin_at_points_direct(
+            s=s,
+            l=l,
+            m=m,
+            a=a,
+            omega=omega,
+            r_query=coarse_r,
+        )
+        order = np.argsort(coarse_r)
+        coarse_r_sorted = coarse_r[order]
+        coarse_val_sorted = np.asarray(coarse_val, dtype=np.complex128)[order]
+        re = np.interp(r_query, coarse_r_sorted, coarse_val_sorted.real)
+        im = np.interp(r_query, coarse_r_sorted, coarse_val_sorted.imag)
+        return re + 1j * im
+
     try:
         return sampler.evaluate_rin_at_points_direct(
             s=s,
@@ -80,8 +103,8 @@ def main():
     # -----------------------------
     # 刚才的参数
     # -----------------------------
-    a_val = 0.581667
-    omega_val = 1.0
+    a_val = 0.1
+    omega_val = 0.1
     ell = 2
     m = 2
     s = -2
@@ -120,6 +143,9 @@ def main():
     r_t = rp / x_t
     r_np_y = r_t.detach().cpu().numpy()
     r_np_uniform = np.linspace(r_min, r_max, viz_num_points, dtype=float)
+    order_y_to_r = np.argsort(r_np_y)
+    order_r_to_y = np.argsort(order_y_to_r)
+    r_np_y_sorted = r_np_y[order_y_to_r]
     print("B: before pybhpt")
     # -----------------------------
     # pybhpt 解
@@ -137,9 +163,10 @@ def main():
         omega=omega_val,
         ell=ell,
         m=m,
-        r_grid=r_np_y,
+        r_grid=r_np_y_sorted,
         timeout=60.0,
     )
+    R_pybhpt_y = np.asarray(R_pybhpt_y, dtype=np.complex128)[order_r_to_y]
 
     R_pybhpt_y_t = torch.as_tensor(R_pybhpt_y, device=device, dtype=torch.complex128)
     print("C: after pybhpt")

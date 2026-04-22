@@ -21,12 +21,16 @@ from tqdm.auto import trange
 from config.config_loader import load_pinn_full_config
 from model.pinn_mlp import PINN_MLP
 from dataset.sampling import sample_points_chebyshev_grid
-from physical_ansatz.residual import AuxCache, get_lambda_from_cfg, get_ramp_and_p_from_cfg
+from physical_ansatz.residual import AuxCache, get_lambda_from_cfg
 from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
 from physical_ansatz.mapping import r_plus, r_from_x
-from physical_ansatz.transform_y import g_factor, h_factor
-from physical_ansatz.prefactor import Leaver_prefactors, prefactor_Q, U_prefactor, build_prefactor_primitives
+from physical_ansatz.transform_y import (
+    h_factor,
+    horizon_regularity_slope,
+    compose_reduced_shape_from_f,
+)
+from physical_ansatz.prefactor import Leaver_prefactors, build_prefactor_primitives
 from mma.rin_sampler import MathematicaRinSampler
 from compute_solution import compute_pybhpt_solution
 
@@ -309,27 +313,18 @@ class AtlasPatchTrainer:
         val_u = []
         val_v = []
         val_lambda = []
-        val_ramp = []
-        p_ref = None
 
         for i in range(len(self.val_aw)):
             a_i = torch.tensor(float(self.val_aw[i, 0]), device=self.device, dtype=self.dtype)
             omega_i = torch.tensor(float(self.val_aw[i, 1]), device=self.device, dtype=self.dtype)
 
             lam_i = get_lambda_from_cfg(self.physics_cfg, self.cache, a_i, omega_i)
-            p_i, ramp_i = get_ramp_and_p_from_cfg(self.physics_cfg, self.cache, a_i, omega_i)
-
-            if p_ref is None:
-                p_ref = int(p_i)
-            elif int(p_i) != p_ref:
-                raise RuntimeError(f"Inconsistent p in validation pool: {p_ref} vs {p_i}")
 
             val_a.append(a_i)
             val_omega.append(omega_i)
             val_u.append(torch.tensor(float(self.val_uv[i, 0]), device=self.device, dtype=self.dtype))
             val_v.append(torch.tensor(float(self.val_uv[i, 1]), device=self.device, dtype=self.dtype))
             val_lambda.append(lam_i)
-            val_ramp.append(ramp_i)
 
         self.val_meta = {
             "a": torch.stack(val_a, dim=0),
@@ -337,8 +332,6 @@ class AtlasPatchTrainer:
             "u": torch.stack(val_u, dim=0),
             "v": torch.stack(val_v, dim=0),
             "lambda": torch.stack(val_lambda, dim=0),
-            "ramp": torch.stack(val_ramp, dim=0),
-            "p": int(p_ref if p_ref is not None else 5),
         }
 
     def _init_run_dirs(self):
@@ -474,24 +467,11 @@ class AtlasPatchTrainer:
     # =========================================================
     def resolve_aux_batch(self, a_batch, omega_batch):
         lambda_list = []
-        ramp_list = []
-        p_ref = None
-
         for i in range(a_batch.shape[0]):
             lam_i = get_lambda_from_cfg(self.physics_cfg, self.cache, a_batch[i], omega_batch[i])
-            p_i, ramp_i = get_ramp_and_p_from_cfg(self.physics_cfg, self.cache, a_batch[i], omega_batch[i])
-
-            if p_ref is None:
-                p_ref = int(p_i)
-            elif int(p_i) != p_ref:
-                raise RuntimeError(f"Inconsistent p across batch: got {p_ref} and {p_i}")
-
             lambda_list.append(lam_i)
-            ramp_list.append(ramp_i)
-
         lambda_batch = torch.stack(lambda_list, dim=0)
-        ramp_batch = torch.stack(ramp_list, dim=0)
-        return lambda_batch, ramp_batch, p_ref
+        return lambda_batch
 
     # =========================================================
     # MMA anchor
@@ -586,7 +566,7 @@ class AtlasPatchTrainer:
         self.optimizer.zero_grad()
 
         a_batch, omega_batch, u_batch, v_batch = self.sample_param_batch()
-        lambda_batch, ramp_batch, p = self.resolve_aux_batch(a_batch, omega_batch)
+        lambda_batch = self.resolve_aux_batch(a_batch, omega_batch)
 
         y_interior = self.sample_y_interior()
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
@@ -597,8 +577,6 @@ class AtlasPatchTrainer:
             a_batch=a_batch,
             omega_batch=omega_batch,
             lambda_batch=lambda_batch,
-            ramp_batch=ramp_batch,
-            p=p,
             y_interior=y_interior,
             y_boundary=y_boundary,
             weight_interior=1.0,
@@ -634,6 +612,7 @@ class AtlasPatchTrainer:
                     cfg=self.physics_cfg,
                     a_batch=a_batch[ok_mask],
                     omega_batch=omega_batch[ok_mask],
+                    lambda_batch=lambda_batch[ok_mask],
                     y_anchors=y_anchor,
                     R_mma_anchors=R_mma_ok,
                     relative=False,
@@ -660,7 +639,7 @@ class AtlasPatchTrainer:
     # =========================================================
     # validation
     # =========================================================
-    def _validate_single_case(self, a_val, omega_val, u_val, v_val, lambda_val, ramp_val, p_val):
+    def _validate_single_case(self, a_val, omega_val, u_val, v_val, lambda_val):
         was_training = self.model.training
         self.model.eval()
         try:
@@ -673,8 +652,6 @@ class AtlasPatchTrainer:
                 a_batch=a_val.unsqueeze(0),
                 omega_batch=omega_val.unsqueeze(0),
                 lambda_batch=lambda_val.unsqueeze(0),
-                ramp_batch=ramp_val.unsqueeze(0),
-                p=int(p_val),
                 y_interior=y_val,
                 y_boundary=y_boundary,
                 weight_interior=1.0,
@@ -702,8 +679,6 @@ class AtlasPatchTrainer:
                 u_val=self.val_meta["u"][i],
                 v_val=self.val_meta["v"][i],
                 lambda_val=self.val_meta["lambda"][i],
-                ramp_val=self.val_meta["ramp"][i],
-                p_val=self.val_meta["p"],
             )
             losses.append(loss_i)
             if loss_i > worst_loss:
@@ -731,7 +706,7 @@ class AtlasPatchTrainer:
     # =========================================================
     # visualization
     # =========================================================
-    def _predict_Rprime(self, a_t, omega_t, u_t, v_t, y_grid):
+    def _predict_shape(self, a_t, omega_t, lambda_t, u_t, v_t, y_grid):
         M = float(self.physics_cfg["problem"].get("M", 1.0))
         m = int(self.physics_cfg["problem"].get("m", 2))
         s = int(self.physics_cfg["problem"].get("s", -2))
@@ -744,10 +719,20 @@ class AtlasPatchTrainer:
             v=v_t.unsqueeze(0),
         ).squeeze(0)
 
-        x_grid = 0.5 * (y_grid + 1.0)
-        g_val, _, _ = g_factor(x_grid)
-        h = h_factor(a_t, omega_t, m=m, M=M, s=s)
-        return g_val * f_pred + h
+        slope = horizon_regularity_slope(
+            a=a_t.unsqueeze(0),
+            omega=omega_t.unsqueeze(0),
+            lambda_=lambda_t.unsqueeze(0),
+            m=m,
+            M=M,
+            s=s,
+        ).squeeze(0)
+
+        return compose_reduced_shape_from_f(
+            f=f_pred,
+            y=y_grid,
+            slope=slope,
+        )
     def _eval_pybhpt_preserve_order(self, a_scalar, omega_scalar, ell, m, r_query, timeout):
         r_query = np.asarray(r_query, dtype=float)
         order = np.argsort(r_query)
@@ -780,8 +765,7 @@ class AtlasPatchTrainer:
         v_t = self.ref_sample["v"]
 
         lam = get_lambda_from_cfg(self.physics_cfg, self.cache, a_t, omega_t)
-        p, ramp = get_ramp_and_p_from_cfg(self.physics_cfg, self.cache, a_t, omega_t)
-        ramp_t = ramp.to(device=self.device, dtype=torch.complex128)
+        h2 = h_factor(a_t, omega_t, m=m, M=M, s=s)
 
         rp = r_plus(a_t, M)
         r_min = max(self.viz_r_min, float(rp.detach().cpu().item()) + 1.0e-4)
@@ -810,52 +794,24 @@ class AtlasPatchTrainer:
         self.model.eval()
         with torch.no_grad():
             # prediction on r-grid
-            Rprime_pred_r = self._predict_Rprime(a_t, omega_t, u_t, v_t, y_grid_from_r)
-            rp_r, rm_r, rs_r, rs_r_1, rs_r_2 = build_prefactor_primitives(r_grid_uniform, a_t, M=M)
-            P_r, P_r_1, P_r_2 = Leaver_prefactors(
+            shape_pred_r = self._predict_shape(a_t, omega_t, lam, u_t, v_t, y_grid_from_r)
+            rp_r, rm_r, _, _, _ = build_prefactor_primitives(r_grid_uniform, a_t, M=M, need_rs=False)
+            P_r, _, _ = Leaver_prefactors(
                 r_grid_uniform, a_t, omega_t, m=m, M=M, s=s, rp=rp_r, rm=rm_r
             )
-            Q_r, Q_r_1, Q_r_2 = prefactor_Q(
-                r_grid_uniform,
-                a_t,
-                omega_t,
-                p=int(p),
-                R_amp=ramp_t,
-                M=M,
-                s=s,
-                rp=rp_r,
-                rs=rs_r,
-                rs_r=rs_r_1,
-                rs_rr=rs_r_2,
-            )
-            U_r, _, _ = U_prefactor(P_r, P_r_1, P_r_2, Q_r, Q_r_1, Q_r_2)
-            R_pred_r = U_r * Rprime_pred_r
+            R_pred_r = P_r * h2 * shape_pred_r
 
             # prediction on y-grid
-            Rprime_pred_y = self._predict_Rprime(a_t, omega_t, u_t, v_t, y_grid_cheb)
-            rp_y, rm_y, rs_y, rs_y_1, rs_y_2 = build_prefactor_primitives(r_grid_from_y, a_t, M=M)
-            P_y, P_y_1, P_y_2 = Leaver_prefactors(
+            shape_pred_y = self._predict_shape(a_t, omega_t, lam, u_t, v_t, y_grid_cheb)
+            rp_y, rm_y, _, _, _ = build_prefactor_primitives(r_grid_from_y, a_t, M=M, need_rs=False)
+            P_y, _, _ = Leaver_prefactors(
                 r_grid_from_y, a_t, omega_t, m=m, M=M, s=s, rp=rp_y, rm=rm_y
             )
-            Q_y, Q_y_1, Q_y_2 = prefactor_Q(
-                r_grid_from_y,
-                a_t,
-                omega_t,
-                p=int(p),
-                R_amp=ramp_t,
-                M=M,
-                s=s,
-                rp=rp_y,
-                rs=rs_y,
-                rs_r=rs_y_1,
-                rs_rr=rs_y_2,
-            )
-            U_y, _, _ = U_prefactor(P_y, P_y_1, P_y_2, Q_y, Q_y_1, Q_y_2)
 
         benchmark_available = False
         benchmark_status = "benchmark=none"
+        shape_from_ref_y_np = None
         R_ref_r = None
-        Rprime_from_ref_y_np = None
 
         a_scalar = float(a_t.detach().cpu().item())
         omega_scalar = float(omega_t.detach().cpu().item())
@@ -880,8 +836,9 @@ class AtlasPatchTrainer:
                     timeout=self.viz_pybhpt_timeout,
                 )
                 R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
-                Rprime_from_ref_y = R_ref_y_t / U_y
-                Rprime_from_ref_y_np = Rprime_from_ref_y.detach().cpu().numpy()
+                shape_from_ref_y = R_ref_y_t / (P_y * h2)
+                shape_from_ref_y_np = shape_from_ref_y.detach().cpu().numpy()
+
                 benchmark_available = True
                 benchmark_status = "benchmark=pybhpt-ok"
             except Exception as e:
@@ -894,6 +851,7 @@ class AtlasPatchTrainer:
                         "omega": omega_scalar,
                         "err": str(e),
                     }, ensure_ascii=False) + "\n")
+
         elif self.viz_benchmark_backend == "mma" and self.viz_mma_sampler is not None:
             try:
                 R_ref_r = self.viz_mma_sampler.evaluate_rin_at_points_direct(
@@ -909,8 +867,9 @@ class AtlasPatchTrainer:
                     r_query=r_grid_from_y.detach().cpu().numpy(),
                 )
                 R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
-                Rprime_from_ref_y = R_ref_y_t / U_y
-                Rprime_from_ref_y_np = Rprime_from_ref_y.detach().cpu().numpy()
+                shape_from_ref_y = R_ref_y_t / (P_y * h2)
+                shape_from_ref_y_np = shape_from_ref_y.detach().cpu().numpy()
+
                 benchmark_available = True
                 benchmark_status = "benchmark=mma-ok"
             except Exception as e:
@@ -927,7 +886,7 @@ class AtlasPatchTrainer:
         r_uniform_np = r_grid_uniform.detach().cpu().numpy()
         y_cheb_np = y_grid_cheb.detach().cpu().numpy()
         R_pred_r_np = R_pred_r.detach().cpu().numpy()
-        Rprime_pred_y_np = Rprime_pred_y.detach().cpu().numpy()
+        shape_pred_y_np = shape_pred_y.detach().cpu().numpy()
 
         fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=False)
 
@@ -953,24 +912,24 @@ class AtlasPatchTrainer:
         axes[2, 0].legend()
         axes[2, 0].grid(alpha=0.3)
 
-        axes[0, 1].plot(y_cheb_np, np.real(Rprime_pred_y_np), label="Pred Re(R')", lw=1.6)
+        axes[0, 1].plot(y_cheb_np, np.real(shape_pred_y_np), label="Pred Re(S)", lw=1.6)
         if benchmark_available:
-            axes[0, 1].plot(y_cheb_np, np.real(Rprime_from_ref_y_np), "--", label="ref Re(R')", lw=1.0)
-        axes[0, 1].set_ylabel("Re(R')")
+            axes[0, 1].plot(y_cheb_np, np.real(shape_from_ref_y_np), "--", label="ref Re(S)", lw=1.0)
+        axes[0, 1].set_ylabel("Re(S)")
         axes[0, 1].legend()
         axes[0, 1].grid(alpha=0.3)
 
-        axes[1, 1].plot(y_cheb_np, np.imag(Rprime_pred_y_np), label="Pred Im(R')", lw=1.6)
+        axes[1, 1].plot(y_cheb_np, np.imag(shape_pred_y_np), label="Pred Im(S)", lw=1.6)
         if benchmark_available:
-            axes[1, 1].plot(y_cheb_np, np.imag(Rprime_from_ref_y_np), "--", label="ref Im(R')", lw=1.0)
-        axes[1, 1].set_ylabel("Im(R')")
+            axes[1, 1].plot(y_cheb_np, np.imag(shape_from_ref_y_np), "--", label="ref Im(S)", lw=1.0)
+        axes[1, 1].set_ylabel("Im(S)")
         axes[1, 1].legend()
         axes[1, 1].grid(alpha=0.3)
 
-        axes[2, 1].plot(y_cheb_np, np.abs(Rprime_pred_y_np), label="Pred |R'|", lw=1.6)
+        axes[2, 1].plot(y_cheb_np, np.abs(shape_pred_y_np), label="Pred |S|", lw=1.6)
         if benchmark_available:
-            axes[2, 1].plot(y_cheb_np, np.abs(Rprime_from_ref_y_np), "--", label="ref |R'|", lw=1.0)
-        axes[2, 1].set_ylabel("|R'|")
+            axes[2, 1].plot(y_cheb_np, np.abs(shape_from_ref_y_np), "--", label="ref |S|", lw=1.0)
+        axes[2, 1].set_ylabel("|S|")
         axes[2, 1].set_xlabel("y")
         axes[2, 1].legend()
         axes[2, 1].grid(alpha=0.3)

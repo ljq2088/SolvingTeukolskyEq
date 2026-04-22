@@ -9,100 +9,88 @@ PINN版本的 residual 计算。
 """
 import torch
 import numpy as np
-from .residual import AuxCache, get_lambda_from_cfg, get_ramp_and_p_from_cfg
+from .residual import AuxCache, get_lambda_from_cfg
 from .teukolsky_coeffs import coeffs_x
 from .mapping import r_plus, r_from_x
-from .prefactor import *
-from .transform_y import transform_coeffs_x_to_y, g_factor,h_factor
+from .prefactor import build_prefactor_primitives, Leaver_prefactors
+from .transform_y import (
+    transform_coeffs_x_to_y,
+    h_factor,
+    horizon_regularity_slope,
+    compose_reduced_shape_from_f,
+)
 
-
-def compute_Rprime_derivatives_autograd(
-        model,
-        a_batch,
-        omega_batch,
-        y_points,
-        u_batch=None,
-        v_batch=None,
-    ):
+def compute_f_derivatives_autograd(
+    model,
+    a_batch,
+    omega_batch,
+    y_points,
+    u_batch=None,
+    v_batch=None,
+):
     """
-    使用自动微分计算 R', R'_y, R'_yy
-
-    Args:
-        model: PINN_MLP 模型，输出R'
-        a_batch: (B,)
-        omega_batch: (B,)
-        y_points: (N,) 需要 requires_grad=True
-
-    Returns:
-        Rprime: (B, N) 复数
-        Rprime_y: (B, N) 复数
-        Rprime_yy: (B, N) 复数
+    使用自动微分计算网络输出 f(y), f_y, f_yy
     """
     if not y_points.requires_grad:
         y_points = y_points.clone().requires_grad_(True)
 
-    # 前向传播得到 R'
     if u_batch is None and v_batch is None:
-        Rprime = model(a_batch, omega_batch, y_points)  # (B, N)
+        f = model(a_batch, omega_batch, y_points)
     else:
-        Rprime = model(a_batch, omega_batch, y_points, u=u_batch, v=v_batch)  # (B, N)
+        f = model(a_batch, omega_batch, y_points, u=u_batch, v=v_batch)
 
-    # 分离实部和虚部
-    Rprime_re = Rprime.real
-    Rprime_im = Rprime.imag
+    f_re = f.real
+    f_im = f.imag
 
-    # 计算一阶导数
-    Rprime_y_re_list = []
-    Rprime_y_im_list = []
+    fy_re_list = []
+    fy_im_list = []
 
-    for i in range(Rprime.shape[0]):
+    for i in range(f.shape[0]):
         grad_re = torch.autograd.grad(
-            outputs=Rprime_re[i].sum(),
+            outputs=f_re[i].sum(),
             inputs=y_points,
             create_graph=True,
             retain_graph=True,
         )[0]
-        Rprime_y_re_list.append(grad_re)
+        fy_re_list.append(grad_re)
 
         grad_im = torch.autograd.grad(
-            outputs=Rprime_im[i].sum(),
+            outputs=f_im[i].sum(),
             inputs=y_points,
             create_graph=True,
             retain_graph=True,
         )[0]
-        Rprime_y_im_list.append(grad_im)
+        fy_im_list.append(grad_im)
 
-    Rprime_y_re = torch.stack(Rprime_y_re_list, dim=0)
-    Rprime_y_im = torch.stack(Rprime_y_im_list, dim=0)
-    Rprime_y = torch.complex(Rprime_y_re, Rprime_y_im)
+    fy_re = torch.stack(fy_re_list, dim=0)
+    fy_im = torch.stack(fy_im_list, dim=0)
+    fy = torch.complex(fy_re, fy_im)
 
-    # 计算二阶导数
-    Rprime_yy_re_list = []
-    Rprime_yy_im_list = []
+    fyy_re_list = []
+    fyy_im_list = []
 
-    for i in range(Rprime.shape[0]):
+    for i in range(f.shape[0]):
         grad2_re = torch.autograd.grad(
-            outputs=Rprime_y_re[i].sum(),
+            outputs=fy_re[i].sum(),
             inputs=y_points,
             create_graph=True,
             retain_graph=True,
         )[0]
-        Rprime_yy_re_list.append(grad2_re)
+        fyy_re_list.append(grad2_re)
 
         grad2_im = torch.autograd.grad(
-            outputs=Rprime_y_im[i].sum(),
+            outputs=fy_im[i].sum(),
             inputs=y_points,
             create_graph=True,
             retain_graph=True,
         )[0]
-        Rprime_yy_im_list.append(grad2_im)
+        fyy_im_list.append(grad2_im)
 
-    Rprime_yy_re = torch.stack(Rprime_yy_re_list, dim=0)
-    Rprime_yy_im = torch.stack(Rprime_yy_im_list, dim=0)
-    Rprime_yy = torch.complex(Rprime_yy_re, Rprime_yy_im)
+    fyy_re = torch.stack(fyy_re_list, dim=0)
+    fyy_im = torch.stack(fyy_im_list, dim=0)
+    fyy = torch.complex(fyy_re, fyy_im)
 
-    return Rprime, Rprime_y, Rprime_yy
-
+    return f, fy, fyy
 
 def compute_pointwise_pde_residual(
     model,
@@ -110,20 +98,17 @@ def compute_pointwise_pde_residual(
     a_batch,
     omega_batch,
     lambda_batch,
-    ramp_batch,
-    p,
     y_interior,
     normalize=False,
     eps=1e-12,
     u_batch=None,
     v_batch=None,
 ):
-    device = a_batch.device
     M = float(cfg["problem"].get("M", 1.0))
     s = int(cfg["problem"].get("s", -2))
     m = int(cfg["problem"].get("m", 2))
 
-    Rprime_int, Rprime_y_int, Rprime_yy_int = compute_Rprime_derivatives_autograd(
+    f_int, f_y_int, f_yy_int = compute_f_derivatives_autograd(
         model,
         a_batch,
         omega_batch,
@@ -141,8 +126,6 @@ def compute_pointwise_pde_residual(
             a=a_batch[i],
             omega=omega_batch[i],
             m=m,
-            p=p,
-            R_amp=ramp_batch[i],
             lambda_=lambda_batch[i],
             s=s,
             M=M,
@@ -155,18 +138,24 @@ def compute_pointwise_pde_residual(
     A1_int = torch.stack(A1_list, dim=0)
     A0_int = torch.stack(A0_list, dim=0)
 
-    
-    h=h_factor(a_batch,omega_batch,m,M,s)
-    B2_int, B1_int, B0_int,rhs = transform_coeffs_x_to_y(
-        A2_int, A1_int, A0_int, y_interior,h=h
+    slope = horizon_regularity_slope(
+        a=a_batch,
+        omega=omega_batch,
+        lambda_=lambda_batch,
+        m=m,
+        M=M,
+        s=s,
     )
 
-    residual_int = B2_int * Rprime_yy_int + B1_int * Rprime_y_int + B0_int * Rprime_int-rhs
-    term2 = B2_int * Rprime_yy_int
-    term1 = B1_int * Rprime_y_int
-    term0 = B0_int * Rprime_int
+    B2_int, B1_int, B0_int, rhs = transform_coeffs_x_to_y(
+        A2_int, A1_int, A0_int, y_interior, slope=slope
+    )
 
-    residual_int = term2 + term1 + term0 - rhs
+    residual_int = B2_int * f_yy_int + B1_int * f_y_int + B0_int * f_int - rhs
+    term2 = B2_int * f_yy_int
+    term1 = B1_int * f_y_int
+    term0 = B0_int * f_int
+
     pointwise = torch.abs(residual_int) ** 2
 
     if normalize:
@@ -180,7 +169,6 @@ def compute_pointwise_pde_residual(
         pointwise = pointwise / scale.clamp_min(eps)
 
     return residual_int, pointwise
-
 
 # def pinn_residual_loss(
 #     model,
@@ -451,57 +439,46 @@ def compute_variance_regularizer(
     cfg,
     a_batch,
     omega_batch,
+    lambda_batch,
     y_points,
-    target="Rprime",
+    target="shape",
     kappa=20.0,
     eps=1.0e-12,
     m=2.0,
     u_batch=None,
     v_batch=None,
 ):
-    """
-    用于惩罚“输出几乎为常数”的伪平凡解。
-
-    参数
-    ----
-    model : PINN_MLP
-    cfg : dict
-    a_batch, omega_batch : [B]
-    y_points : [N]
-    target : "f" or "Rprime"
-    kappa : float
-    eps : float
-    """
-
-    # 模型输出: [B, N] complex
     if u_batch is None and v_batch is None:
         f_pred = model(a_batch, omega_batch, y_points)
     else:
         f_pred = model(a_batch, omega_batch, y_points, u=u_batch, v=v_batch)
 
-    h=h_factor(a_batch,omega_batch,m)
-
     if target == "f":
         z = f_pred
 
-    elif target == "Rprime":
-        x_points = 0.5 * (y_points + 1.0)
-        g_val, _, _ = g_factor(x_points)   # [N]
-        z = g_val.unsqueeze(0) * f_pred + h.view(-1, 1)
+    elif target in ("shape", "Rprime"):
+        slope = horizon_regularity_slope(
+            a=a_batch,
+            omega=omega_batch,
+            lambda_=lambda_batch,
+            m=int(m),
+            M=float(cfg["problem"].get("M", 1.0)),
+            s=int(cfg["problem"].get("s", -2)),
+        )
+        z = compose_reduced_shape_from_f(
+            f=f_pred,
+            y=y_points,
+            slope=slope,
+        )
 
     else:
         raise ValueError(f"Unknown target for variance regularizer: {target}")
 
-    # 复数标准差:
-    # sigma_b = sqrt( mean( |z - mean(z)|^2 ) + eps )
     z_mean = z.mean(dim=1, keepdim=True)
     sigma_b = torch.sqrt(torch.mean(torch.abs(z - z_mean) ** 2, dim=1) + eps)
-
-    # batch 平均
     sigma = sigma_b.mean()
 
     loss_var = 1.0 / (torch.expm1(kappa * sigma) + eps)
-
     info = {
         "sigma_var": float(sigma.detach().cpu().item()),
         "loss_var": float(loss_var.detach().cpu().item()),
