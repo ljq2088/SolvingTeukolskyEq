@@ -1,11 +1,24 @@
 from __future__ import annotations
 
+from __future__ import annotations
+
+import os
+
+# ---- 必须在 numpy / matplotlib 之前 ----
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+os.environ.setdefault("MKL_NUM_THREADS", "1")
+os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
+os.environ.setdefault("MPLBACKEND", "Agg")
+
 import argparse
 import csv
 import math
 import sys
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -13,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from utils.mode import KerrMode
-from utils.amplitude import TeukRadAmplitudeIn
+from utils.amplitude import TeukRadAmplitudeInWithAbelChecks
 
 
 def parse_n_list(text: str):
@@ -36,20 +49,22 @@ def main():
     )
     parser.add_argument("--a-min", type=float, default=0.001)
     parser.add_argument("--a-max", type=float, default=0.999)
-    parser.add_argument("--n-a", type=int, default=12)
+    parser.add_argument("--n-a", type=int, default=50)
 
     parser.add_argument("--omega-min", type=float, default=1.0e-4)
     parser.add_argument("--omega-max", type=float, default=10.0)
-    parser.add_argument("--n-omega", type=int, default=14)
+    parser.add_argument("--n-omega", type=int, default=50)
 
     parser.add_argument("--ell", type=int, default=2)
     parser.add_argument("--m", type=int, default=2)
     parser.add_argument("--s", type=int, default=-2)
 
-    parser.add_argument("--N-list", type=str, default="24,32,48,64")
+    parser.add_argument("--N-list", type=str, default="24,32,48,64,80,128")
     parser.add_argument("--z-m", type=float, default=0.3)
 
     parser.add_argument("--out-prefix", type=str, default="amp_scan")
+    parser.add_argument("--skip-plots", action="store_true", help="Only save CSVs, skip all matplotlib figures.")
+    parser.add_argument("--skip-summary", action="store_true", help="Skip writing the text summary file.")
     args = parser.parse_args()
 
     a_values = np.linspace(args.a_min, args.a_max, args.n_a)
@@ -57,7 +72,7 @@ def main():
     N_values = parse_n_list(args.N_list)
     N_ref = max(N_values)
 
-    out_dir = ROOT / "benchmark" / "outputs"
+    out_dir = ROOT / "benchmark" / "outputs"/"conservation_scan"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     detail_rows = []
@@ -92,29 +107,17 @@ def main():
                     "B_trans_over_B_inc_abs2": np.nan,
                     "cons_residual": np.nan,
                     "flux_residual_scaled": np.nan,
+                    "outer_abel_residual": np.nan,
+                    "inner_abel_residual": np.nan,
+                    "detS_residual": np.nan,
                 }
 
                 try:
-                    amp = TeukRadAmplitudeIn(mode, N_in=N, N_out=N, z_m=args.z_m)
+                    amp = TeukRadAmplitudeInWithAbelChecks(mode, N_in=N, N_out=N, z_m=args.z_m)
+
                     B_inc = amp.B_inc
                     B_ref = amp.B_ref
                     B_trans = amp.B_trans
-                    ratio_ref_over_inc = amp.ratio_ref_over_inc
-                    B_trans_over_B_inc = amp.smatrix["B_trans_over_B_inc"]
-
-                    # Kerr flux-conservation law:
-                    # |B_ref/B_inc|^2 + (k_H/omega) |B_trans/B_inc|^2 = 1
-                    lhs = safe_abs2(ratio_ref_over_inc) + (mode.k_hor / mode.omega) * safe_abs2(B_trans_over_B_inc)
-                    cons_residual = abs(lhs - 1.0)
-
-                    flux_num = mode.omega * (abs(B_inc) ** 2 - abs(B_ref) ** 2) - mode.k_hor * (abs(B_trans) ** 2)
-                    flux_den = max(
-                        mode.omega * abs(B_inc) ** 2,
-                        mode.omega * abs(B_ref) ** 2,
-                        abs(mode.k_hor) * abs(B_trans) ** 2,
-                        1.0e-30,
-                    )
-                    flux_residual_scaled = abs(flux_num) / flux_den
 
                     row.update(
                         {
@@ -125,31 +128,64 @@ def main():
                             "B_ref_im": B_ref.imag,
                             "B_trans_re": B_trans.real,
                             "B_trans_im": B_trans.imag,
-                            "ratio_ref_over_inc_abs2": safe_abs2(ratio_ref_over_inc),
-                            "B_trans_over_B_inc_abs2": safe_abs2(B_trans_over_B_inc),
-                            "cons_residual": cons_residual,
-                            "flux_residual_scaled": flux_residual_scaled,
+
+                            # Abel diagnostics
+                            "outer_abel_num_re": amp.smatrix["outer_abel_num"].real,
+                            "outer_abel_num_im": amp.smatrix["outer_abel_num"].imag,
+                            "outer_abel_th_re": amp.smatrix["outer_abel_th"].real,
+                            "outer_abel_th_im": amp.smatrix["outer_abel_th"].imag,
+                            "outer_abel_residual": amp.outer_abel_residual,
+
+                            "inner_abel_num_re": amp.smatrix["inner_abel_num"].real,
+                            "inner_abel_num_im": amp.smatrix["inner_abel_num"].imag,
+                            "inner_abel_th_re": amp.smatrix["inner_abel_th"].real,
+                            "inner_abel_th_im": amp.smatrix["inner_abel_th"].imag,
+                            "inner_abel_residual": amp.inner_abel_residual,
+
+                            "detS_num_re": amp.smatrix["detS_num"].real,
+                            "detS_num_im": amp.smatrix["detS_num"].imag,
+                            "detS_th_re": amp.smatrix["detS_th"].real,
+                            "detS_th_im": amp.smatrix["detS_th"].imag,
+                            "detS_residual": amp.detS_residual,
+
+                            # full transfer matrix columns
+                            "Cin_down_re": amp.smatrix["Cin_down"].real,
+                            "Cin_down_im": amp.smatrix["Cin_down"].imag,
+                            "Cin_up_re": amp.smatrix["Cin_up"].real,
+                            "Cin_up_im": amp.smatrix["Cin_up"].imag,
+                            "Cout_down_re": amp.smatrix["Cout_down"].real,
+                            "Cout_down_im": amp.smatrix["Cout_down"].imag,
+                            "Cout_up_re": amp.smatrix["Cout_up"].real,
+                            "Cout_up_im": amp.smatrix["Cout_up"].imag,
                         }
                     )
+                    
+
+
 
                     if N == N_ref:
                         ref_map[(float(a), float(omega))] = {
                             "B_inc": B_inc,
                             "B_ref": B_ref,
-                            "ratio_ref_over_inc": ratio_ref_over_inc,
-                            "cons_residual": cons_residual,
-                            "flux_residual_scaled": flux_residual_scaled,
+                            "outer_abel_residual": amp.outer_abel_residual,
+                            "inner_abel_residual": amp.inner_abel_residual,
+                            "detS_residual": amp.detS_residual,
                         }
 
                 except Exception as e:
                     row["error"] = str(e)
 
                 detail_rows.append(row)
+                # print(
+                #     f"[scan] a={a:.6f}, omega={omega:.6e}, N={N:3d}, ok={row['ok']}, "
+                #     f"cons={row['cons_residual']}"
+                # )
                 print(
                     f"[scan] a={a:.6f}, omega={omega:.6e}, N={N:3d}, ok={row['ok']}, "
-                    f"cons={row['cons_residual']}"
+                    f"outer={row['outer_abel_residual']:.3e}, "
+                    f"inner={row['inner_abel_residual']:.3e}, "
+                    f"detS={row['detS_residual']:.3e}"
                 )
-
     # convergence against reference N_ref
     conv_rows = []
     for row in detail_rows:
@@ -203,52 +239,74 @@ def main():
         writer.writeheader()
         writer.writerows(conv_rows)
 
-    print(f"[saved] {detail_csv}")
-    print(f"[saved] {conv_csv}")
-
+    print(f"[saved] {detail_csv}", flush=True)
+    print(f"[saved] {conv_csv}", flush=True)
+    if args.skip_plots:
+        print("[done] skip-plots enabled, stop after CSV export", flush=True)
+        return
     # heatmaps for highest-N conservation
-    cons_map = np.full((args.n_a, args.n_omega), np.nan)
-    flux_map = np.full((args.n_a, args.n_omega), np.nan)
+        # heatmaps for highest-N conservation
+    print("[stage] build conservation heatmaps", flush=True)
+
+    outer_map = np.full((args.n_a, args.n_omega), np.nan)
+    inner_map = np.full((args.n_a, args.n_omega), np.nan)
+    detS_map  = np.full((args.n_a, args.n_omega), np.nan)
 
     for ia, a in enumerate(a_values):
         for iw, omega in enumerate(omega_values):
             key = (float(a), float(omega))
             if key in ref_map:
-                cons_map[ia, iw] = ref_map[key]["cons_residual"]
-                flux_map[ia, iw] = ref_map[key]["flux_residual_scaled"]
+                outer_map[ia, iw] = ref_map[key]["outer_abel_residual"]
+                inner_map[ia, iw] = ref_map[key]["inner_abel_residual"]
+                detS_map[ia, iw]  = ref_map[key]["detS_residual"]
 
-    fig1, axes = plt.subplots(1, 2, figsize=(13, 5))
+    try:
+        fig1, axes = plt.subplots(1, 3, figsize=(13, 5))
 
-    im0 = axes[0].imshow(
-        np.log10(np.clip(cons_map, 1e-30, None)),
-        origin="lower",
-        aspect="auto",
-        extent=[np.log10(omega_values[0]), np.log10(omega_values[-1]), a_values[0], a_values[-1]],
-    )
-    axes[0].set_title(f"log10 conservation residual (N={N_ref})")
-    axes[0].set_xlabel("log10 omega")
-    axes[0].set_ylabel("a")
-    fig1.colorbar(im0, ax=axes[0])
+        im0 = axes[0].imshow(
+            np.log10(np.clip(outer_map, 1e-30, None)),
+            origin="lower",
+            aspect="auto",
+            extent=[np.log10(omega_values[0]), np.log10(omega_values[-1]), a_values[0], a_values[-1]],
+        )
+        axes[0].set_title(f"log10 outer map (N={N_ref})")
+        axes[0].set_xlabel("log10 omega")
+        axes[0].set_ylabel("a")
+        fig1.colorbar(im0, ax=axes[0])
 
-    im1 = axes[1].imshow(
-        np.log10(np.clip(flux_map, 1e-30, None)),
-        origin="lower",
-        aspect="auto",
-        extent=[np.log10(omega_values[0]), np.log10(omega_values[-1]), a_values[0], a_values[-1]],
-    )
-    axes[1].set_title(f"log10 scaled flux residual (N={N_ref})")
-    axes[1].set_xlabel("log10 omega")
-    axes[1].set_ylabel("a")
-    fig1.colorbar(im1, ax=axes[1])
+        im1 = axes[1].imshow(
+            np.log10(np.clip(inner_map, 1e-30, None)),
+            origin="lower",
+            aspect="auto",
+            extent=[np.log10(omega_values[0]), np.log10(omega_values[-1]), a_values[0], a_values[-1]],
+        )
+        axes[1].set_title(f"log10 inner map (N={N_ref})")
+        axes[1].set_xlabel("log10 omega")
+        axes[1].set_ylabel("a")
+        fig1.colorbar(im1, ax=axes[1])
 
-    fig1.tight_layout()
-    fig1_path = out_dir / f"{args.out_prefix}_conservation_heatmaps.png"
-    fig1.savefig(fig1_path, dpi=180, bbox_inches="tight")
-    plt.close(fig1)
-    print(f"[saved] {fig1_path}")
+        im2 = axes[2].imshow(
+            np.log10(np.clip(detS_map, 1e-30, None)),
+            origin="lower",
+            aspect="auto",
+            extent=[np.log10(omega_values[0]), np.log10(omega_values[-1]), a_values[0], a_values[-1]],
+        )
+        axes[2].set_title(f"log10 detS map (N={N_ref})")
+        axes[2].set_xlabel("log10 omega")
+        axes[2].set_ylabel("a")
+        fig1.colorbar(im2, ax=axes[2])
+        fig1.tight_layout()
+        fig1_path = out_dir / f"{args.out_prefix}_conservation_heatmaps.png"
+        print("[stage] save conservation heatmaps", flush=True)
+        fig1.savefig(fig1_path, dpi=180, bbox_inches="tight")
+        plt.close(fig1)
+        print(f"[saved] {fig1_path}", flush=True)
 
-    # convergence summary lines
-    fig2, axes = plt.subplots(1, 2, figsize=(13, 5))
+    except Exception as e:
+        print(f"[warn] failed to build/save conservation heatmaps: {e}", flush=True)
+
+        # convergence summary lines
+    print("[stage] build convergence summary plots", flush=True)
 
     Ns_sorted = sorted([N for N in N_values if N != N_ref])
 
@@ -281,63 +339,77 @@ def main():
         med_cons.append(np.nanmedian(consN) if consN.size else np.nan)
         max_cons.append(np.nanmax(consN) if consN.size else np.nan)
 
-    axes[0].plot(Ns_sorted, med_Binc, marker="o", label="median rel err B_inc")
-    axes[0].plot(Ns_sorted, max_Binc, marker="o", linestyle="--", label="max rel err B_inc")
-    axes[0].plot(Ns_sorted, med_Bref, marker="s", label="median rel err B_ref")
-    axes[0].plot(Ns_sorted, max_Bref, marker="s", linestyle="--", label="max rel err B_ref")
-    axes[0].plot(Ns_sorted, med_ratio, marker="^", label="median rel err B_ref/B_inc")
-    axes[0].plot(Ns_sorted, max_ratio, marker="^", linestyle="--", label="max rel err B_ref/B_inc")
-    axes[0].set_yscale("log")
-    axes[0].set_xlabel("spectral order N")
-    axes[0].set_ylabel("relative error vs highest N")
-    axes[0].set_title(f"convergence to N_ref={N_ref}")
-    axes[0].grid(alpha=0.3)
-    axes[0].legend()
+    try:
+        fig2, axes = plt.subplots(1, 2, figsize=(13, 5))
 
-    axes[1].plot(Ns_sorted, med_cons, marker="o", label="median conservation residual")
-    axes[1].plot(Ns_sorted, max_cons, marker="o", linestyle="--", label="max conservation residual")
-    axes[1].set_yscale("log")
-    axes[1].set_xlabel("spectral order N")
-    axes[1].set_ylabel("residual")
-    axes[1].set_title("conservation check vs spectral order")
-    axes[1].grid(alpha=0.3)
-    axes[1].legend()
+        axes[0].plot(Ns_sorted, med_Binc, marker="o", label="median rel err B_inc")
+        axes[0].plot(Ns_sorted, max_Binc, marker="o", linestyle="--", label="max rel err B_inc")
+        axes[0].plot(Ns_sorted, med_Bref, marker="s", label="median rel err B_ref")
+        axes[0].plot(Ns_sorted, max_Bref, marker="s", linestyle="--", label="max rel err B_ref")
+        axes[0].plot(Ns_sorted, med_ratio, marker="^", label="median rel err B_ref/B_inc")
+        axes[0].plot(Ns_sorted, max_ratio, marker="^", linestyle="--", label="max rel err B_ref/B_inc")
+        axes[0].set_yscale("log")
+        axes[0].set_xlabel("spectral order N")
+        axes[0].set_ylabel("relative error vs highest N")
+        axes[0].set_title(f"convergence to N_ref={N_ref}")
+        axes[0].grid(alpha=0.3)
+        axes[0].legend()
 
-    fig2.tight_layout()
-    fig2_path = out_dir / f"{args.out_prefix}_convergence_summary.png"
-    fig2.savefig(fig2_path, dpi=180, bbox_inches="tight")
-    plt.close(fig2)
-    print(f"[saved] {fig2_path}")
+        axes[1].plot(Ns_sorted, med_cons, marker="o", label="median conservation residual")
+        axes[1].plot(Ns_sorted, max_cons, marker="o", linestyle="--", label="max conservation residual")
+        axes[1].set_yscale("log")
+        axes[1].set_xlabel("spectral order N")
+        axes[1].set_ylabel("residual")
+        axes[1].set_title("conservation check vs spectral order")
+        axes[1].grid(alpha=0.3)
+        axes[1].legend()
 
-    # short text summary
-    summary_txt = out_dir / f"{args.out_prefix}_summary.txt"
-    with open(summary_txt, "w", encoding="utf-8") as f:
-        f.write(f"a in [{args.a_min}, {args.a_max}], n_a={args.n_a}\n")
-        f.write(f"omega in [{args.omega_min}, {args.omega_max}], n_omega={args.n_omega}\n")
-        f.write(f"N_list = {N_values}\n")
-        f.write(f"z_m = {args.z_m}\n")
-        f.write(f"N_ref = {N_ref}\n\n")
+        fig2.tight_layout()
+        fig2_path = out_dir / f"{args.out_prefix}_convergence_summary.png"
+        print("[stage] save convergence summary plots", flush=True)
+        fig2.savefig(fig2_path, dpi=180, bbox_inches="tight")
+        plt.close(fig2)
+        print(f"[saved] {fig2_path}", flush=True)
 
-        ref_cons_all = np.array(list(ref_map[k]["cons_residual"] for k in ref_map.keys()), dtype=float)
-        ref_flux_all = np.array(list(ref_map[k]["flux_residual_scaled"] for k in ref_map.keys()), dtype=float)
+    except Exception as e:
+        print(f"[warn] failed to build/save convergence summary plots: {e}", flush=True)
+    if args.skip_summary:
+        print("[done] skip-summary enabled", flush=True)
+        return
 
-        f.write("Highest-order conservation residual summary:\n")
-        f.write(f"  median cons residual = {np.nanmedian(ref_cons_all):.6e}\n")
-        f.write(f"  max    cons residual = {np.nanmax(ref_cons_all):.6e}\n")
-        f.write(f"  median flux residual = {np.nanmedian(ref_flux_all):.6e}\n")
-        f.write(f"  max    flux residual = {np.nanmax(ref_flux_all):.6e}\n\n")
+    print("[stage] write text summary", flush=True)
+    try:
+        summary_txt = out_dir / f"{args.out_prefix}_summary.txt"
+        with open(summary_txt, "w", encoding="utf-8") as f:
+            f.write(f"a in [{args.a_min}, {args.a_max}], n_a={args.n_a}\n")
+            f.write(f"omega in [{args.omega_min}, {args.omega_max}], n_omega={args.n_omega}\n")
+            f.write(f"N_list = {N_values}\n")
+            f.write(f"z_m = {args.z_m}\n")
+            f.write(f"N_ref = {N_ref}\n\n")
 
-        for N, mbi, xbi, mbr, xbr, mrr, xrr in zip(
-            Ns_sorted, med_Binc, max_Binc, med_Bref, max_Bref, med_ratio, max_ratio
-        ):
-            f.write(
-                f"N={N:4d}: "
-                f"med/max err B_inc = {mbi:.6e}/{xbi:.6e}, "
-                f"med/max err B_ref = {mbr:.6e}/{xbr:.6e}, "
-                f"med/max err ratio = {mrr:.6e}/{xrr:.6e}\n"
-            )
+            ref_cons_all = np.array(list(ref_map[k]["cons_residual"] for k in ref_map.keys()), dtype=float)
+            ref_flux_all = np.array(list(ref_map[k]["flux_residual_scaled"] for k in ref_map.keys()), dtype=float)
 
-    print(f"[saved] {summary_txt}")
+            f.write("Highest-order conservation residual summary:\n")
+            f.write(f"  median cons residual = {np.nanmedian(ref_cons_all):.6e}\n")
+            f.write(f"  max    cons residual = {np.nanmax(ref_cons_all):.6e}\n")
+            f.write(f"  median flux residual = {np.nanmedian(ref_flux_all):.6e}\n")
+            f.write(f"  max    flux residual = {np.nanmax(ref_flux_all):.6e}\n\n")
+
+            for N, mbi, xbi, mbr, xbr, mrr, xrr in zip(
+                Ns_sorted, med_Binc, max_Binc, med_Bref, max_Bref, med_ratio, max_ratio
+            ):
+                f.write(
+                    f"N={N:4d}: "
+                    f"med/max err B_inc = {mbi:.6e}/{xbi:.6e}, "
+                    f"med/max err B_ref = {mbr:.6e}/{xbr:.6e}, "
+                    f"med/max err ratio = {mrr:.6e}/{xrr:.6e}\n"
+                )
+
+        print(f"[saved] {summary_txt}", flush=True)
+
+    except Exception as e:
+        print(f"[warn] failed to write summary: {e}", flush=True)
 
 
 if __name__ == "__main__":

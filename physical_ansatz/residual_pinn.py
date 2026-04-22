@@ -4,7 +4,7 @@ PINN版本的 residual 计算。
 注意：
 这里的 cfg 必须是 physics config，
 即 config/teukolsky_radial.yaml 对应的结构，
-至少应包含 cfg["problem"] 中的 M, s, l, m, lambda, R_amp。
+至少应包含 cfg["problem"] 中的 M, s, l, m, lambda。
 不要把 pinn_config.yaml 直接传进来。
 """
 import torch

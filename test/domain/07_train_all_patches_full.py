@@ -10,7 +10,7 @@ from trainer.multipatch_atlas_trainer import MultiPatchAtlasTrainer
 def main():
     parser = argparse.ArgumentParser(description="Full multi-patch atlas training.")
     parser.add_argument("--cfg", type=str, default="config/pinn_config.yaml")
-    parser.add_argument("--probe-json", type=str, default="outputs/domain/probe_l2_m2_with_ramp.json")
+    parser.add_argument("--probe-json", type=str, default="outputs/domain/probe_l2_m2.json")
     parser.add_argument("--atlas-json", type=str, default="outputs/domain/atlas_l2_m2.json")
     parser.add_argument("--patch-json", type=str, default="outputs/domain/patch_cover_l2_m2.json")
     parser.add_argument("--device", type=str, default="cuda")

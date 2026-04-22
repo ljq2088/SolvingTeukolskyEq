@@ -21,7 +21,7 @@ def main():
     parser.add_argument(
         "--probe-json",
         type=str,
-        default="outputs/domain/probe_l2_m2_with_ramp.json",
+        default="outputs/domain/probe_l2_m2.json",
     )
     parser.add_argument(
         "--atlas-json",

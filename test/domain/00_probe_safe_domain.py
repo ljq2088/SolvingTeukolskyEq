@@ -11,6 +11,14 @@ import numpy as np
 from domain.safe_eval import evaluate_param_point
 
 
+def _lambda_cache_key(a: float, omega: float, l: int, m: int, s: int) -> str:
+    return (
+        f"a={round(float(a), 12):.12f}|"
+        f"omega={round(float(omega), 12):.12f}|"
+        f"l={int(l)}|m={int(m)}|s={int(s)}"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--l", type=int, default=2)
@@ -39,6 +47,7 @@ def main():
 
     records = []
     counter = Counter()
+    lambda_cache = {}
 
     for a in a_grid:
         for w in w_grid:
@@ -54,14 +63,32 @@ def main():
                 n_cheb=args.n_cheb,
             )
             counter[st.code] += 1
-            records.append({
+            lam_value = None if st.lambda_status is None else st.lambda_status.value
+            lam_re = None if lam_value is None else complex(lam_value).real
+            lam_im = None if lam_value is None else complex(lam_value).imag
+
+            rec = {
                 "a": st.a,
                 "omega": st.omega,
                 "valid": st.valid,
                 "code": st.code,
                 "message": st.message,
                 "k_h": st.k_h,
-            })
+                "lambda_re": lam_re,
+                "lambda_im": lam_im,
+            }
+            records.append(rec)
+
+            if lam_value is not None:
+                lambda_cache[_lambda_cache_key(st.a, st.omega, st.l, st.m, st.s)] = {
+                    "a": st.a,
+                    "omega": st.omega,
+                    "l": st.l,
+                    "m": st.m,
+                    "s": st.s,
+                    "lambda_re": lam_re,
+                    "lambda_im": lam_im,
+                }
 
     total = len(records)
     valid = sum(1 for r in records if r["valid"])
@@ -96,6 +123,7 @@ def main():
                     "require_ramp": args.require_ramp,
                 },
                 "counts": dict(counter),
+                "lambda_cache": lambda_cache,
                 "records": records,
             },
             f,

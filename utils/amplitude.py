@@ -254,44 +254,79 @@ def basis_values_at_match(mode: KerrMode, basis: str, sol, side: str):
     Rm_r = F * (dzdr * uzm + q * um)
     return complex(Rm), complex(Rm_r)
 # def boundary_du_true(mode: KerrMode, basis: str, side: str, eps: float):
+#     """
+#     在真边界附近拟合 u_z 的局部展开：
+
+#     左端 z=0:
+#         u_z(z) ≈ c0 + c1 z + c2 z^2
+#     右端 y=1-z=0:
+#         u_z(y) ≈ c0 + c1 y + c2 y^2
+
+#     返回 (c0, c1)，这样既能构造
+#         u(eps)
+#     也能构造
+#         u_z(eps)
+#     """
+#     ss = eps * np.array([0.25, 0.5, 0.75, 1.0], dtype=float)
+
+#     if side == 'left':
+#         z_s = ss
+#         _, B1, B0 = coeffs_numeric(z_s, mode, basis)
+#         du_s = -(B0 / B1)
+
+#         V = np.vstack([np.ones_like(ss), ss, ss**2]).T
+#         c, *_ = np.linalg.lstsq(V, du_s, rcond=None)
+#         return complex(c[0]), complex(c[1])
+
+#     elif side == 'right':
+#         y_s = ss
+#         z_s = 1.0 - y_s
+#         _, B1, B0 = coeffs_numeric(z_s, mode, basis)
+#         du_s = -(B0 / B1)
+
+#         V = np.vstack([np.ones_like(y_s), y_s, y_s**2]).T
+#         c, *_ = np.linalg.lstsq(V, du_s, rcond=None)
+#         return complex(c[0]), complex(c[1])
+
+#     else:
+#         raise ValueError
+# from typing import Callable
+def abel_constant_from_pair(
+    Ra: complex,
+    Ra_r: complex,
+    Rb: complex,
+    Rb_r: complex,
+    r: float,
+    mode: KerrMode,
+) -> complex:
     """
-    在真边界附近拟合 u_z 的局部展开：
-
-    左端 z=0:
-        u_z(z) ≈ c0 + c1 z + c2 z^2
-    右端 y=1-z=0:
-        u_z(y) ≈ c0 + c1 y + c2 y^2
-
-    返回 (c0, c1)，这样既能构造
-        u(eps)
-    也能构造
-        u_z(eps)
+    Abel-type bilinear invariant for the current Teukolsky radial equation:
+        C[Ra,Rb] = (Ra*Rb_r - Ra_r*Rb) / Delta(r)
+    which is constant for any two solutions Ra, Rb of the same ODE.
     """
-    ss = eps * np.array([0.25, 0.5, 0.75, 1.0], dtype=float)
+    D = Delta(r, mode)
+    return (Ra * Rb_r - Ra_r * Rb) / D
 
-    if side == 'left':
-        z_s = ss
-        _, B1, B0 = coeffs_numeric(z_s, mode, basis)
-        du_s = -(B0 / B1)
 
-        V = np.vstack([np.ones_like(ss), ss, ss**2]).T
-        c, *_ = np.linalg.lstsq(V, du_s, rcond=None)
-        return complex(c[0]), complex(c[1])
+def outer_abel_theory(mode: KerrMode) -> complex:
+    """
+    Theoretical constant for the outer basis pair (down, up):
+        C_out = W(R_down, R_up) / Delta = 2 i omega
+    """
+    return 2.0j * mode.omega
 
-    elif side == 'right':
-        y_s = ss
-        z_s = 1.0 - y_s
-        _, B1, B0 = coeffs_numeric(z_s, mode, basis)
-        du_s = -(B0 / B1)
 
-        V = np.vstack([np.ones_like(y_s), y_s, y_s**2]).T
-        c, *_ = np.linalg.lstsq(V, du_s, rcond=None)
-        return complex(c[0]), complex(c[1])
+def inner_abel_theory(mode: KerrMode) -> complex:
+    """
+    Theoretical constant for the inner basis pair (in, out):
+        C_in = W(R_in, R_out) / Delta
+             = 2 i k_H (r_+^2 + a^2) - 2 (r_+ - r_-)
+    """
+    return 2.0j * mode.k_hor * (mode.rp * mode.rp + mode.a * mode.a) - 2.0 * mode.delta_h
 
-    else:
-        raise ValueError
-from typing import Callable
 
+def rel_complex_residual(val: complex, ref: complex, floor: float = 1.0e-30) -> float:
+    return abs(val - ref) / max(abs(ref), floor)
 
 def leaver_factor(r, mode: KerrMode):
     """
@@ -538,6 +573,114 @@ def compute_smatrix(
     result["psi_inner"] = psi_inner_full
 
     return result
+
+def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3):
+    """
+    Same transfer-matrix computation as compute_smatrix, but also returns
+    Abel-invariant diagnostics suitable for Kerr Teukolsky with complex potential.
+
+    Returned diagnostics:
+      - outer_abel_num, outer_abel_th, outer_abel_residual
+      - inner_abel_num, inner_abel_th, inner_abel_residual
+      - detS_num, detS_th, detS_residual
+
+    Notes
+    -----
+    * outer_abel checks the pair (R_down, R_up)
+    * inner_abel checks the pair (R_in, R_out)
+    * detS check validates the whole matching / amplitude extraction process
+    """
+
+    # outer domain: [0, z_m]
+    sol_down = solve_basis_domain(mode, 'down', N_out, 0.0, z_m, 'left')
+    sol_up   = solve_basis_domain(mode, 'up',   N_out, 0.0, z_m, 'left')
+
+    R_down_m, Rr_down_m = basis_values_at_match(mode, 'down', sol_down, 'right')
+    R_up_m,   Rr_up_m   = basis_values_at_match(mode, 'up',   sol_up,   'right')
+    Mmatch = np.array([[R_down_m, R_up_m], [Rr_down_m, Rr_up_m]], dtype=complex)
+
+    # inner domain: [z_m, 1]
+    sol_in  = solve_basis_domain(mode, 'in',  N_in, z_m, 1.0, 'right')
+    sol_out = solve_basis_domain(mode, 'out', N_in, z_m, 1.0, 'right')
+
+    R_in_m,  Rr_in_m  = basis_values_at_match(mode, 'in',  sol_in,  'left')
+    R_out_m, Rr_out_m = basis_values_at_match(mode, 'out', sol_out, 'left')
+
+    # first column: R_in expressed in outer basis
+    Cin_down, Cin_up = np.linalg.solve(
+        Mmatch, np.array([R_in_m, Rr_in_m], dtype=complex)
+    )
+
+    # second column: R_out expressed in outer basis
+    Cout_down, Cout_up = np.linalg.solve(
+        Mmatch, np.array([R_out_m, Rr_out_m], dtype=complex)
+    )
+
+    S = np.array([[Cin_down, Cin_up], [Cout_down, Cout_up]], dtype=complex)
+
+    b_inc = complex(Cin_down)
+    b_ref = complex(Cin_up)
+    b_trans = 1.0 + 0.0j
+
+    ratio_ref_over_inc = _safe_complex_ratio(b_ref, b_inc)
+    ratio_inc_over_ref = _safe_complex_ratio(b_inc, b_ref)
+
+    # match-point radius
+    r_m_outer = r_of_z(sol_down['z'][-1], mode)
+    r_m_inner = r_of_z(sol_in['z'][0], mode)
+
+    # Abel invariants on each side
+    outer_abel_num = abel_constant_from_pair(
+        R_down_m, Rr_down_m, R_up_m, Rr_up_m, r_m_outer, mode
+    )
+    outer_abel_th = outer_abel_theory(mode)
+    outer_abel_residual = rel_complex_residual(outer_abel_num, outer_abel_th)
+
+    inner_abel_num = abel_constant_from_pair(
+        R_in_m, Rr_in_m, R_out_m, Rr_out_m, r_m_inner, mode
+    )
+    inner_abel_th = inner_abel_theory(mode)
+    inner_abel_residual = rel_complex_residual(inner_abel_num, inner_abel_th)
+
+    # determinant relation:
+    # det(S) * C_outer = C_inner
+    detS_num = np.linalg.det(S)
+    detS_th = inner_abel_th / outer_abel_th
+    detS_residual = rel_complex_residual(detS_num, detS_th)
+
+    return {
+        # original outputs
+        'S': S,
+        'B_inc': b_inc,
+        'B_ref': b_ref,
+        'B_trans': b_trans,
+        'ratio_ref_over_inc': ratio_ref_over_inc,
+        'ratio_inc_over_ref': ratio_inc_over_ref,
+        'B_trans_over_B_inc': _safe_complex_ratio(b_trans, b_inc),
+        'B_ref_over_B_inc': ratio_ref_over_inc,
+
+        # expose both columns explicitly
+        'Cin_down': complex(Cin_down),
+        'Cin_up': complex(Cin_up),
+        'Cout_down': complex(Cout_down),
+        'Cout_up': complex(Cout_up),
+
+        # Abel diagnostics
+        'r_match_outer': float(r_m_outer),
+        'r_match_inner': float(r_m_inner),
+
+        'outer_abel_num': complex(outer_abel_num),
+        'outer_abel_th': complex(outer_abel_th),
+        'outer_abel_residual': float(outer_abel_residual),
+
+        'inner_abel_num': complex(inner_abel_num),
+        'inner_abel_th': complex(inner_abel_th),
+        'inner_abel_residual': float(inner_abel_residual),
+
+        'detS_num': complex(detS_num),
+        'detS_th': complex(detS_th),
+        'detS_residual': float(detS_residual),
+    }
 class TeukRadAmplitudeIn(object):
     def __init__(self, mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3):
         self.mode = mode
@@ -550,7 +693,7 @@ class TeukRadAmplitudeIn(object):
         self.N_in = N_in
         self.N_out = N_out
         self.z_m = z_m
-        self.lam = mode.lambda_value
+        self.lam = mode.lam
         self._smatrix: Dict[str, complex | np.ndarray | None] | None = None
         self._result: InAmplitudesResult | None = None
 
@@ -585,13 +728,15 @@ class TeukRadAmplitudeIn(object):
 
     def to_result(self) -> InAmplitudesResult:
         if self._result is None:
+            lam = self.mode.lambda_value
+            self.lam = lam
             self._result = InAmplitudesResult(
                 l=self.mode.ell,
                 m=self.mode.m,
                 s=self.mode.s,
                 a=self.a,
                 omega=self.omega,
-                lam=self.lam,
+                lam=lam,
                 B_inc=self.B_inc,
                 B_ref=self.B_ref,
                 B_trans=self.B_trans,
@@ -612,6 +757,37 @@ class TeukRadAmplitudeIn(object):
             f"TeukRadAmplitudeIn(l={self.ell}, m={self.m}, a={self.a}, omega={self.omega}, "
             f"N_in={self.N_in}, N_out={self.N_out}, z_m={self.z_m})"
         )
+
+class TeukRadAmplitudeInWithAbelChecks(TeukRadAmplitudeIn):
+    """
+    Same amplitude interface as TeukRadAmplitudeIn, but the underlying computation
+    also returns Abel-type invariant diagnostics that remain valid for the complex-
+    potential Kerr Teukolsky radial equation.
+    """
+
+    @property
+    def smatrix(self) -> Dict[str, complex | np.ndarray | None]:
+        if self._smatrix is None:
+            self._smatrix = compute_smatrix_with_abel(
+                self.mode,
+                N_in=self.N_in,
+                N_out=self.N_out,
+                z_m=self.z_m,
+            )
+        return self._smatrix
+
+    @property
+    def outer_abel_residual(self) -> float:
+        return float(self.smatrix["outer_abel_residual"])
+
+    @property
+    def inner_abel_residual(self) -> float:
+        return float(self.smatrix["inner_abel_residual"])
+
+    @property
+    def detS_residual(self) -> float:
+        return float(self.smatrix["detS_residual"])
+
 class TeukRadAmplitudeInWithInterpolant(TeukRadAmplitudeIn):
     """
     Same amplitudes as TeukRadAmplitudeIn, but also exposes

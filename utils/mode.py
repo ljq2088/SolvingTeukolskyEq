@@ -3,10 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-try:
-    from .compute_lambda import compute_lambda
-except ImportError:  # direct script execution
-    from compute_lambda import compute_lambda
+from .compute_lambda_usage import compute_lambda
 
 
 def _safe_complex_ratio(numer: complex, denom: complex, *, tol: float = 1.0e-30) -> complex | None:

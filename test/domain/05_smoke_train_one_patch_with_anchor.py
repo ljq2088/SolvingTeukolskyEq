@@ -17,7 +17,7 @@ torch.manual_seed(1234)
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--cfg", type=str, default="config/pinn_config.yaml")
-    parser.add_argument("--probe-json", type=str, default="outputs/domain/probe_l2_m2_with_ramp.json")
+    parser.add_argument("--probe-json", type=str, default="outputs/domain/probe_l2_m2.json")
     parser.add_argument("--atlas-json", type=str, default="outputs/domain/atlas_l2_m2.json")
     parser.add_argument("--patch-json", type=str, default="outputs/domain/patch_cover_l2_m2.json")
     parser.add_argument("--patch-id", type=int, default=0)

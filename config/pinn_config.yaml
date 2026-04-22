@@ -253,7 +253,7 @@ atlas_training:
   viz_r_min: 2.0
   viz_r_max: 1000.0
   anchor_backend: pybhpt
-  viz_benchmark_backend: pybhpt
+  viz_benchmark_backend: none
   viz_pybhpt_timeout: 10.0
   anchor_pybhpt_timeout: 10.0
   viz_mma_enabled: false

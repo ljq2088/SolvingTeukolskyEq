@@ -50,7 +50,7 @@ def eval_mma_with_fallback(
     a: float,
     omega: float,
     r_query: np.ndarray,
-    max_direct_points: int = 200,
+    max_direct_points: int = 100,
 ) -> np.ndarray:
     r_query = np.asarray(r_query, dtype=float).reshape(-1)
     if len(r_query) == 0:
@@ -103,8 +103,8 @@ def main():
     # -----------------------------
     # 刚才的参数
     # -----------------------------
-    a_val = 0.1
-    omega_val = 0.1
+    a_val = 0.5
+    omega_val = 1.0
     ell = 2
     m = 2
     s = -2

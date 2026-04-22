@@ -1,30 +1,11 @@
-"""计算角向分离常数 λ 和振幅比值的接口函数"""
-import sys
-import os
+"""Backward-compatible compute_lambda entry point.
 
-# 添加 GremLinEqRe 路径
-_GREMLINEQRE_PATH = "/home/ljq/code/Teukolsky_based/GremLinEqRe"
-if _GREMLINEQRE_PATH not in sys.path:
-    sys.path.insert(0, _GREMLINEQRE_PATH)
+The project historically imported ``utils.compute_lambda`` from multiple
+places. The implementation file was renamed to ``compute_lambda_usage.py``,
+but not all callers were updated. Re-export the function here so the rest of
+the codebase continues to use a stable import path.
+"""
 
-def compute_lambda(a, omega, l, m, s=-2):
-    """
-    计算角向分离常数 λ
+from .compute_lambda_usage import compute_lambda
 
-    参数:
-        a: 黑洞自旋参数 (0 <= a < 1)
-        omega: 频率 (M*ω)
-        l: 角量子数 l (l >= |s|)
-        m: 角量子数 m (|m| <= l)
-        s: 自旋权重 (默认 -2，用于引力波)
-
-    返回:
-        lambda_val: 角向分离常数
-    """
-    try:
-        from GremLinEqRe import _core
-    except ImportError as e:
-        raise ImportError(f"无法导入 GremLinEqRe._core 模块: {e}\n请确保已编译 GremLinEqRe")
-
-    swsh = _core.SWSH(s, l, m, a * omega)
-    return swsh.m_lambda
+__all__ = ["compute_lambda"]

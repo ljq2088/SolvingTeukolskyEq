@@ -39,8 +39,6 @@ def _get_dtype(dtype_name: str):
     if dtype_name == "float32":
         return torch.float32
     return torch.float64
-
-
 class AtlasPatchTrainer:
     """
     真正训练版的 atlas patch trainer。
@@ -137,7 +135,7 @@ class AtlasPatchTrainer:
                 "must be one of {'pybhpt','mma'}."
             )
 
-        self.viz_benchmark_backend = str(atlas_train_cfg.get("viz_benchmark_backend", "pybhpt")).lower()
+        self.viz_benchmark_backend = str(atlas_train_cfg.get("viz_benchmark_backend", "none")).lower()
         if self.viz_benchmark_backend not in ("none", "pybhpt", "mma"):
             raise ValueError(
                 f"Unsupported atlas_training.viz_benchmark_backend={self.viz_benchmark_backend}; "
@@ -243,6 +241,7 @@ class AtlasPatchTrainer:
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.cache = AuxCache()
+        self._preload_lambda_cache_from_probe(probe_json)
         self.init_checkpoint = init_checkpoint
         self.init_load_optimizer = bool(init_load_optimizer)
         self.resume_checkpoint = resume_checkpoint
@@ -250,6 +249,8 @@ class AtlasPatchTrainer:
 
         self.global_step = 0
         self.best_val_mean = float("inf")
+        self.best_val_case_means = None
+        self.best_val_case_steps = None
         self.history = []
         self.anchor_fail_history = []
 
@@ -257,6 +258,7 @@ class AtlasPatchTrainer:
         # validation metadata
         # ---------------------------------------------------------
         self._build_validation_metadata()
+        self._init_best_val_case_tracking()
 
         # ---------------------------------------------------------
         # output dirs
@@ -275,6 +277,64 @@ class AtlasPatchTrainer:
     def _vprint(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
+
+    def _preload_lambda_cache_from_probe(self, probe_json: str | Path):
+        path = Path(probe_json)
+        if not path.exists():
+            return
+
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            self._vprint(f"[lambda-cache] skip loading {path}: {e}")
+            return
+
+        problem_cfg = self.physics_cfg["problem"]
+        default_l = int(problem_cfg["l"])
+        default_m = int(problem_cfg["m"])
+        default_s = int(problem_cfg.get("s", -2))
+        loaded = 0
+
+        for item in data.get("lambda_cache", {}).values():
+            lam_re = item.get("lambda_re")
+            lam_im = item.get("lambda_im")
+            if lam_re is None or lam_im is None:
+                continue
+            key = (
+                "lambda",
+                round(float(item["a"]), 12),
+                round(float(item["omega"]), 12),
+                int(item.get("l", default_l)),
+                int(item.get("m", default_m)),
+                int(item.get("s", default_s)),
+            )
+            self.cache.lambda_cache[key] = complex(float(lam_re), float(lam_im))
+            loaded += 1
+
+        if loaded == 0:
+            meta = data.get("meta", {})
+            rec_l = int(meta.get("l", default_l))
+            rec_m = int(meta.get("m", default_m))
+            rec_s = int(meta.get("s", default_s))
+            for item in data.get("records", []):
+                lam_re = item.get("lambda_re")
+                lam_im = item.get("lambda_im")
+                if lam_re is None or lam_im is None:
+                    continue
+                key = (
+                    "lambda",
+                    round(float(item["a"]), 12),
+                    round(float(item["omega"]), 12),
+                    rec_l,
+                    rec_m,
+                    rec_s,
+                )
+                self.cache.lambda_cache[key] = complex(float(lam_re), float(lam_im))
+                loaded += 1
+
+        if loaded > 0:
+            self._vprint(f"[lambda-cache] preloaded {loaded} entries from {path}")
 
     def _seed_everything(self, seed: int):
         random.seed(seed)
@@ -334,6 +394,54 @@ class AtlasPatchTrainer:
             "lambda": torch.stack(val_lambda, dim=0),
         }
 
+    def _init_best_val_case_tracking(self):
+        n_val = int(self.val_meta["a"].shape[0])
+        self.best_val_case_means = np.full(n_val, float("inf"), dtype=np.float64)
+        self.best_val_case_steps = np.full(n_val, -1, dtype=np.int64)
+
+    def _serialize_best_val_cases(self):
+        rows = []
+        if self.best_val_case_means is None or self.best_val_case_steps is None:
+            return rows
+        n_val = int(self.val_meta["a"].shape[0])
+        for i in range(n_val):
+            rows.append(
+                {
+                    "case_index": int(i),
+                    "a": float(self.val_meta["a"][i].detach().cpu().item()),
+                    "omega": float(self.val_meta["omega"][i].detach().cpu().item()),
+                    "u": float(self.val_meta["u"][i].detach().cpu().item()),
+                    "v": float(self.val_meta["v"][i].detach().cpu().item()),
+                    "lambda": float(self.val_meta["lambda"][i].detach().cpu().item()),
+                    "best_y_mean": float(self.best_val_case_means[i]),
+                    "best_step": int(self.best_val_case_steps[i]),
+                }
+            )
+        return rows
+
+    def _update_best_val_cases(self, val_metrics: dict):
+        case_losses = val_metrics.get("case_losses", None)
+        if case_losses is None:
+            return 0
+        if self.best_val_case_means is None or self.best_val_case_steps is None:
+            self._init_best_val_case_tracking()
+        improved_count = 0
+        for i, loss_i in enumerate(case_losses):
+            loss_i = float(loss_i)
+            best_i = float(self.best_val_case_means[i])
+            if np.isfinite(best_i):
+                rel_improve_i = (best_i - loss_i) / max(abs(best_i), 1.0e-12)
+                improved_i = rel_improve_i > self.es_min_rel_improve
+            else:
+                improved_i = True
+            if improved_i:
+                self.best_val_case_means[i] = loss_i
+                self.best_val_case_steps[i] = int(self.global_step)
+                improved_count += 1
+        if self.best_val_case_means is not None and len(self.best_val_case_means) > 0:
+            self.best_val_mean = float(np.mean(self.best_val_case_means))
+        return improved_count
+
     def _init_run_dirs(self):
         if self.resume_run_dir is not None:
             self.run_dir = self.resume_run_dir
@@ -389,6 +497,11 @@ class AtlasPatchTrainer:
 
         self.global_step = int(ckpt.get("step", 0))
         self.best_val_mean = float(ckpt.get("best_val_mean", float("inf")))
+        best_case_means = ckpt.get("best_val_case_means", None)
+        best_case_steps = ckpt.get("best_val_case_steps", None)
+        if best_case_means is not None and best_case_steps is not None:
+            self.best_val_case_means = np.asarray(best_case_means, dtype=np.float64)
+            self.best_val_case_steps = np.asarray(best_case_steps, dtype=np.int64)
         self._vprint(
             f"[resume] loaded checkpoint: {self.resume_checkpoint} "
             f"(step={self.global_step}, best_val_mean={self.best_val_mean:.6e})"
@@ -671,6 +784,7 @@ class AtlasPatchTrainer:
         losses = []
         worst_loss = -float("inf")
         worst_idx = -1
+        case_metrics = []
 
         for i in range(self.val_meta["a"].shape[0]):
             loss_i = self._validate_single_case(
@@ -681,6 +795,17 @@ class AtlasPatchTrainer:
                 lambda_val=self.val_meta["lambda"][i],
             )
             losses.append(loss_i)
+            case_metrics.append(
+                {
+                    "case_index": int(i),
+                    "a": float(self.val_meta["a"][i].detach().cpu().item()),
+                    "omega": float(self.val_meta["omega"][i].detach().cpu().item()),
+                    "u": float(self.val_meta["u"][i].detach().cpu().item()),
+                    "v": float(self.val_meta["v"][i].detach().cpu().item()),
+                    "lambda": float(self.val_meta["lambda"][i].detach().cpu().item()),
+                    "y_mean_loss": float(loss_i),
+                }
+            )
             if loss_i > worst_loss:
                 worst_loss = loss_i
                 worst_idx = i
@@ -690,6 +815,8 @@ class AtlasPatchTrainer:
             "val_mean": val_mean,
             "val_worst": float(worst_loss if losses else float("inf")),
             "n_val_samples": int(len(losses)),
+            "case_losses": [float(x) for x in losses],
+            "case_metrics": case_metrics,
         }
         if worst_idx >= 0:
             metrics["worst_a"] = float(self.val_meta["a"][worst_idx].detach().cpu().item())
@@ -808,81 +935,9 @@ class AtlasPatchTrainer:
                 r_grid_from_y, a_t, omega_t, m=m, M=M, s=s, rp=rp_y, rm=rm_y
             )
 
-        benchmark_available = False
-        benchmark_status = "benchmark=none"
-        shape_from_ref_y_np = None
-        R_ref_r = None
-
+        benchmark_status = "benchmark=off"
         a_scalar = float(a_t.detach().cpu().item())
         omega_scalar = float(omega_t.detach().cpu().item())
-
-        if self.viz_benchmark_backend == "pybhpt":
-            try:
-                R_ref_r = self._eval_pybhpt_preserve_order(
-                    a_scalar=a_scalar,
-                    omega_scalar=omega_scalar,
-                    ell=l,
-                    m=m,
-                    r_query=r_grid_uniform.detach().cpu().numpy(),
-                    timeout=self.viz_pybhpt_timeout,
-                )
-
-                R_ref_y = self._eval_pybhpt_preserve_order(
-                    a_scalar=a_scalar,
-                    omega_scalar=omega_scalar,
-                    ell=l,
-                    m=m,
-                    r_query=r_grid_from_y.detach().cpu().numpy(),
-                    timeout=self.viz_pybhpt_timeout,
-                )
-                R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
-                shape_from_ref_y = R_ref_y_t / (P_y * h2)
-                shape_from_ref_y_np = shape_from_ref_y.detach().cpu().numpy()
-
-                benchmark_available = True
-                benchmark_status = "benchmark=pybhpt-ok"
-            except Exception as e:
-                benchmark_status = "benchmark=pybhpt-failed"
-                with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
-                    f.write(json.dumps({
-                        "step": int(step),
-                        "backend": "pybhpt",
-                        "a": a_scalar,
-                        "omega": omega_scalar,
-                        "err": str(e),
-                    }, ensure_ascii=False) + "\n")
-
-        elif self.viz_benchmark_backend == "mma" and self.viz_mma_sampler is not None:
-            try:
-                R_ref_r = self.viz_mma_sampler.evaluate_rin_at_points_direct(
-                    s=s, l=l, m=m,
-                    a=a_scalar,
-                    omega=omega_scalar,
-                    r_query=r_grid_uniform.detach().cpu().numpy(),
-                )
-                R_ref_y = self.viz_mma_sampler.evaluate_rin_at_points_direct(
-                    s=s, l=l, m=m,
-                    a=a_scalar,
-                    omega=omega_scalar,
-                    r_query=r_grid_from_y.detach().cpu().numpy(),
-                )
-                R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
-                shape_from_ref_y = R_ref_y_t / (P_y * h2)
-                shape_from_ref_y_np = shape_from_ref_y.detach().cpu().numpy()
-
-                benchmark_available = True
-                benchmark_status = "benchmark=mma-ok"
-            except Exception as e:
-                benchmark_status = "benchmark=mma-failed"
-                with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
-                    f.write(json.dumps({
-                        "step": int(step),
-                        "backend": "mma",
-                        "a": a_scalar,
-                        "omega": omega_scalar,
-                        "err": str(e),
-                    }, ensure_ascii=False) + "\n")
-
         r_uniform_np = r_grid_uniform.detach().cpu().numpy()
         y_cheb_np = y_grid_cheb.detach().cpu().numpy()
         R_pred_r_np = R_pred_r.detach().cpu().numpy()
@@ -891,44 +946,32 @@ class AtlasPatchTrainer:
         fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=False)
 
         axes[0, 0].plot(r_uniform_np, np.real(R_pred_r_np), label="Pred Re(R)", lw=1.6)
-        if benchmark_available:
-            axes[0, 0].plot(r_uniform_np, np.real(R_ref_r), "--", label="ref Re(R)", lw=1.0)
         axes[0, 0].set_ylabel("Re(R)")
         axes[0, 0].legend()
         axes[0, 0].grid(alpha=0.3)
 
         axes[1, 0].plot(r_uniform_np, np.imag(R_pred_r_np), label="Pred Im(R)", lw=1.6)
-        if benchmark_available:
-            axes[1, 0].plot(r_uniform_np, np.imag(R_ref_r), "--", label="ref Im(R)", lw=1.0)
         axes[1, 0].set_ylabel("Im(R)")
         axes[1, 0].legend()
         axes[1, 0].grid(alpha=0.3)
 
         axes[2, 0].plot(r_uniform_np, np.abs(R_pred_r_np), label="Pred |R|", lw=1.6)
-        if benchmark_available:
-            axes[2, 0].plot(r_uniform_np, np.abs(R_ref_r), "--", label="ref |R|", lw=1.0)
         axes[2, 0].set_ylabel("|R|")
         axes[2, 0].set_xlabel("r")
         axes[2, 0].legend()
         axes[2, 0].grid(alpha=0.3)
 
         axes[0, 1].plot(y_cheb_np, np.real(shape_pred_y_np), label="Pred Re(S)", lw=1.6)
-        if benchmark_available:
-            axes[0, 1].plot(y_cheb_np, np.real(shape_from_ref_y_np), "--", label="ref Re(S)", lw=1.0)
         axes[0, 1].set_ylabel("Re(S)")
         axes[0, 1].legend()
         axes[0, 1].grid(alpha=0.3)
 
         axes[1, 1].plot(y_cheb_np, np.imag(shape_pred_y_np), label="Pred Im(S)", lw=1.6)
-        if benchmark_available:
-            axes[1, 1].plot(y_cheb_np, np.imag(shape_from_ref_y_np), "--", label="ref Im(S)", lw=1.0)
         axes[1, 1].set_ylabel("Im(S)")
         axes[1, 1].legend()
         axes[1, 1].grid(alpha=0.3)
 
         axes[2, 1].plot(y_cheb_np, np.abs(shape_pred_y_np), label="Pred |S|", lw=1.6)
-        if benchmark_available:
-            axes[2, 1].plot(y_cheb_np, np.abs(shape_from_ref_y_np), "--", label="ref |S|", lw=1.0)
         axes[2, 1].set_ylabel("|S|")
         axes[2, 1].set_xlabel("y")
         axes[2, 1].legend()
@@ -960,6 +1003,9 @@ class AtlasPatchTrainer:
             "patch_center": {"u": float(self.patch.u_center), "v": float(self.patch.v_center)},
             "history_tail": self.history[-50:],
             "best_val_mean": float(self.best_val_mean),
+            "best_val_case_means": self.best_val_case_means.tolist() if self.best_val_case_means is not None else None,
+            "best_val_case_steps": self.best_val_case_steps.tolist() if self.best_val_case_steps is not None else None,
+            "best_val_cases": self._serialize_best_val_cases(),
             "latest_val_metrics": val_metrics,
         }
         torch.save(payload, path)
@@ -979,6 +1025,7 @@ class AtlasPatchTrainer:
             "val_pool_size": int(len(self.val_aw)),
             "global_step": int(self.global_step),
             "best_val_mean": float(self.best_val_mean),
+            "best_val_cases": self._serialize_best_val_cases(),
             "latest_val_metrics": final_val,
             "run_dir": str(self.run_dir),
             "best_model": str(self.ckpt_dir / "best_model.pt"),
@@ -1004,6 +1051,8 @@ class AtlasPatchTrainer:
                 f"already reached target steps={steps}; skipping train loop."
             )
             final_val = self.validate()
+            improved_count = self._update_best_val_cases(final_val)
+            final_val["case_improved_count"] = int(improved_count)
             self._save_checkpoint(self.ckpt_dir / "latest_model.pt", val_metrics=final_val)
             self._write_summary(final_val)
             return {
@@ -1024,23 +1073,19 @@ class AtlasPatchTrainer:
                 # validation
                 if step % self.val_every == 0 or step == 1:
                     final_val = self.validate()
+                    improved_count = self._update_best_val_cases(final_val)
+                    final_val["case_improved_count"] = int(improved_count)
                     info["val_mean"] = final_val["val_mean"]
                     info["val_worst"] = final_val["val_worst"]
-
-                    if np.isfinite(self.best_val_mean):
-                        rel_improve = (self.best_val_mean - final_val["val_mean"]) / max(abs(self.best_val_mean), 1.0e-12)
-                        info["val_rel_improve"] = float(rel_improve)
-                        improved = rel_improve > self.es_min_rel_improve
-                    else:
-                        info["val_rel_improve"] = None
-                        improved = True
+                    info["val_case_improved_count"] = int(improved_count)
+                    improved = improved_count > 0
+                    info["val_rel_improve"] = None
 
                     if improved:
-                        self.best_val_mean = final_val["val_mean"]
                         self.es_bad_count = 0
                         self._save_checkpoint(self.ckpt_dir / "best_model.pt", val_metrics=final_val)
                     else:
-                        if np.isfinite(self.best_val_mean):
+                        if self.best_val_case_means is not None and np.all(np.isfinite(self.best_val_case_means)):
                             self.es_bad_count += 1
 
                     if self.es_enabled and step >= self.es_min_steps and self.es_bad_count >= self.es_patience:
