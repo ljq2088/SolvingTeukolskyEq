@@ -229,7 +229,7 @@ mathematica:
   wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
 
 atlas_training:
-  steps: 2000
+  steps: 10000
   batch_size: 8
   n_interior: 64
   grad_clip: 1.0
@@ -239,6 +239,12 @@ atlas_training:
   val_param_samples: 12
   val_every: 50
   val_n_points: 64
+
+  early_stopping:
+    enabled: true
+    patience: 20
+    min_rel_improve: 1.0e-4
+    min_steps: 2000
 
   save_every: 200
   ckpt_every: 200
@@ -272,14 +278,20 @@ multipatch_training:
   # 若为 true，则已有 best 模型的 patch 会跳过
   skip_existing: true
 
+  # 若为 true，则会从 patch_runs 中的 latest_model.pt 续跑
+  resume_partial_runs: true
+
+  # 若为 true，则会加载已有 registry 并复用其中的 patch_records
+  reuse_existing_registry: true
+
   # 单 patch 覆盖 atlas_training.steps；若为 null 则用 atlas_training.steps
   patch_steps: null
 
   # 输出总目录
-  output_root: outputs/atlas_multipatch_train_coarse040
+  output_root: outputs/atlas_multipatch_train_coarse040_retrain_rel1e4
 
   # registry 文件名
-  registry_name: atlas_registry_coarse040.json
+  registry_name: atlas_registry_coarse040_retrain_rel1e4.json
 
   # 训练完成后，是否把 best/latest checkpoint 复制到统一模型目录
   export_flat_models: true

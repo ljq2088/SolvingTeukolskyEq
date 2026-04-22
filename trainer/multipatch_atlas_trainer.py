@@ -51,6 +51,8 @@ class MultiPatchAtlasTrainer:
         self.patch_order_mode = str(self.mcfg.get("patch_order", "center_out"))
         self.warmstart_from_neighbor = bool(self.mcfg.get("warmstart_from_neighbor", True))
         self.skip_existing = bool(self.mcfg.get("skip_existing", True))
+        self.resume_partial_runs = bool(self.mcfg.get("resume_partial_runs", True))
+        self.reuse_existing_registry = bool(self.mcfg.get("reuse_existing_registry", True))
         self.patch_steps = self.mcfg.get("patch_steps", None)
         self.output_root = Path(self.mcfg.get("output_root", "outputs/atlas_multipatch_train"))
         self.registry_name = str(self.mcfg.get("registry_name", "atlas_registry.json"))
@@ -87,7 +89,7 @@ class MultiPatchAtlasTrainer:
             "patch_records": [],
         }
 
-        if self.registry_path.exists():
+        if self.reuse_existing_registry and self.registry_path.exists():
             with open(self.registry_path, "r", encoding="utf-8") as f:
                 self.registry = json.load(f)
 
@@ -168,6 +170,8 @@ class MultiPatchAtlasTrainer:
         return candidates[0][1]
 
     def _find_resume_run(self, patch_id: int):
+        if not self.resume_partial_runs:
+            return None, None
         pattern = f"*_patch_{int(patch_id):03d}_comp_*"
         run_dirs = [p for p in self.patch_runs_root.glob(pattern) if p.is_dir()]
         if len(run_dirs) == 0:

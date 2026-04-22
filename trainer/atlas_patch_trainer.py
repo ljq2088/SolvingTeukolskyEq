@@ -91,6 +91,13 @@ class AtlasPatchTrainer:
         cfg_output_root = atlas_train_cfg.get("output_root", "outputs/atlas_patch_train")
         sampling_cfg = self.cfg.get("sampling", {})
 
+        early_cfg = atlas_train_cfg.get("early_stopping", {})
+        self.es_enabled = bool(early_cfg.get("enabled", False))
+        self.es_patience = int(early_cfg.get("patience", 20))
+        self.es_min_rel_improve = float(early_cfg.get("min_rel_improve", 1.0e-4))
+        self.es_min_steps = int(early_cfg.get("min_steps", 2000))
+        self.es_bad_count = 0
+
         self.batch_size = int(
             atlas_train_cfg.get(
                 "batch_size",
@@ -741,7 +748,25 @@ class AtlasPatchTrainer:
         g_val, _, _ = g_factor(x_grid)
         h = h_factor(a_t, omega_t, m=m, M=M, s=s)
         return g_val * f_pred + h
+    def _eval_pybhpt_preserve_order(self, a_scalar, omega_scalar, ell, m, r_query, timeout):
+        r_query = np.asarray(r_query, dtype=float)
+        order = np.argsort(r_query)
+        inv_order = np.empty_like(order)
+        inv_order[order] = np.arange(order.size)
 
+        r_sorted = r_query[order]
+        _, R_sorted = compute_pybhpt_solution(
+            a=a_scalar,
+            omega=omega_scalar,
+            ell=ell,
+            m=m,
+            r_grid=r_sorted,
+            timeout=timeout,
+        )
+
+        R_sorted = np.asarray(R_sorted, dtype=np.complex128)
+        R_back = R_sorted[inv_order]
+        return R_back
     def visualize_reference(self, step: int):
         problem_cfg = self.physics_cfg["problem"]
         M = float(problem_cfg.get("M", 1.0))
@@ -837,20 +862,21 @@ class AtlasPatchTrainer:
 
         if self.viz_benchmark_backend == "pybhpt":
             try:
-                _, R_ref_r = compute_pybhpt_solution(
-                    a=a_scalar,
-                    omega=omega_scalar,
+                R_ref_r = self._eval_pybhpt_preserve_order(
+                    a_scalar=a_scalar,
+                    omega_scalar=omega_scalar,
                     ell=l,
                     m=m,
-                    r_grid=r_grid_uniform.detach().cpu().numpy(),
+                    r_query=r_grid_uniform.detach().cpu().numpy(),
                     timeout=self.viz_pybhpt_timeout,
                 )
-                _, R_ref_y = compute_pybhpt_solution(
-                    a=a_scalar,
-                    omega=omega_scalar,
+
+                R_ref_y = self._eval_pybhpt_preserve_order(
+                    a_scalar=a_scalar,
+                    omega_scalar=omega_scalar,
                     ell=l,
                     m=m,
-                    r_grid=r_grid_from_y.detach().cpu().numpy(),
+                    r_query=r_grid_from_y.detach().cpu().numpy(),
                     timeout=self.viz_pybhpt_timeout,
                 )
                 R_ref_y_t = torch.as_tensor(R_ref_y, device=self.device, dtype=torch.complex128)
@@ -1042,9 +1068,28 @@ class AtlasPatchTrainer:
                     info["val_mean"] = final_val["val_mean"]
                     info["val_worst"] = final_val["val_worst"]
 
-                    if final_val["val_mean"] < self.best_val_mean:
+                    if np.isfinite(self.best_val_mean):
+                        rel_improve = (self.best_val_mean - final_val["val_mean"]) / max(abs(self.best_val_mean), 1.0e-12)
+                        info["val_rel_improve"] = float(rel_improve)
+                        improved = rel_improve > self.es_min_rel_improve
+                    else:
+                        info["val_rel_improve"] = None
+                        improved = True
+
+                    if improved:
                         self.best_val_mean = final_val["val_mean"]
+                        self.es_bad_count = 0
                         self._save_checkpoint(self.ckpt_dir / "best_model.pt", val_metrics=final_val)
+                    else:
+                        if np.isfinite(self.best_val_mean):
+                            self.es_bad_count += 1
+
+                    if self.es_enabled and step >= self.es_min_steps and self.es_bad_count >= self.es_patience:
+                        self._vprint(
+                            f"[early-stop] patch {self.patch.patch_id}: "
+                            f"no val improvement for {self.es_bad_count} validations, stop at step={step}"
+                        )
+                        break
 
                 # periodic visualization
                 if step % self.viz_every == 0 or step == 1:
