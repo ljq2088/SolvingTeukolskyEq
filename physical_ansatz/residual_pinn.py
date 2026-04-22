@@ -264,8 +264,7 @@ def pinn_residual_loss(
     a_batch,
     omega_batch,
     lambda_batch,
-    ramp_batch,
-    p,
+
     y_interior,
     y_boundary,
     weight_interior=1.0,
@@ -282,8 +281,8 @@ def pinn_residual_loss(
         a_batch=a_batch,
         omega_batch=omega_batch,
         lambda_batch=lambda_batch,
-        ramp_batch=ramp_batch,
-        p=p,
+
+
         y_interior=y_interior,
         normalize=normalize_residual,
         eps=residual_scale_eps,

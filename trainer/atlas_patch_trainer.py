@@ -20,7 +20,9 @@ from tqdm.auto import trange
 
 from config.config_loader import load_pinn_full_config
 from model.pinn_mlp import PINN_MLP
-from dataset.sampling import sample_points_chebyshev_grid
+from utils.mode import KerrMode
+from utils.amplitude import TeukRadAmplitudeInWithInterpolant
+from dataset.sampling import sample_points_chebyshev_grid, sample_points_uniform_grid
 from physical_ansatz.residual import AuxCache, get_lambda_from_cfg
 from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
@@ -107,6 +109,7 @@ class AtlasPatchTrainer:
             )
         )
         self.n_interior = int(atlas_train_cfg.get("n_interior", 64))
+        self.n_interior_outer_extra = int(atlas_train_cfg.get("n_interior_outer_extra", 8))
         self.n_anchor_y = int(n_anchor_y if n_anchor_y is not None else atlas_train_cfg.get("n_anchor_y", 4))
         self.steps_default = int(atlas_train_cfg.get("steps", 2000))
         self.grad_clip = float(atlas_train_cfg.get("grad_clip", 1.0))
@@ -136,13 +139,15 @@ class AtlasPatchTrainer:
             )
 
         self.viz_benchmark_backend = str(atlas_train_cfg.get("viz_benchmark_backend", "none")).lower()
-        if self.viz_benchmark_backend not in ("none", "pybhpt", "mma"):
+        if self.viz_benchmark_backend not in ("none", "pybhpt", "mma", "spectral"):
             raise ValueError(
                 f"Unsupported atlas_training.viz_benchmark_backend={self.viz_benchmark_backend}; "
-                "must be one of {'none','pybhpt','mma'}."
+                "must be one of {'none','pybhpt','mma','spectral'}."
             )
         self.viz_pybhpt_timeout = float(atlas_train_cfg.get("viz_pybhpt_timeout", 10.0))
         self.anchor_pybhpt_timeout = float(atlas_train_cfg.get("anchor_pybhpt_timeout", self.viz_pybhpt_timeout))
+        self.viz_spectral_N = int(atlas_train_cfg.get("viz_spectral_N", 64))
+        self.viz_spectral_z_m = float(atlas_train_cfg.get("viz_spectral_z_m", 0.3))
         self.viz_mma_enabled = bool(atlas_train_cfg.get("viz_mma_enabled", False))
 
         self.anchor_enabled = bool(anchor_enabled)
@@ -277,7 +282,27 @@ class AtlasPatchTrainer:
     def _vprint(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
+    def _tensor_scalar_for_json(self, x: torch.Tensor, name: str = "value", tol: float = 1.0e-10):
+        """
+        把 0-d tensor 转成可写入 json 的 Python 标量。
 
+        若是 complex：
+        - imag 很小，则自动取 real
+        - imag 不小，则返回 {real, imag}，避免直接 float(complex) 报错
+        """
+        v = x.detach().cpu().item()
+
+        if isinstance(v, complex):
+            if abs(v.imag) < tol:
+                return float(v.real)
+            # 对 lambda 这种理论上应为实数的量，这里也可以给出 warning
+            self._vprint(f"[warn] {name} has non-negligible imaginary part: {v}")
+            return {
+                "real": float(v.real),
+                "imag": float(v.imag),
+            }
+
+        return float(v)
     def _preload_lambda_cache_from_probe(self, probe_json: str | Path):
         path = Path(probe_json)
         if not path.exists():
@@ -404,7 +429,18 @@ class AtlasPatchTrainer:
         if self.best_val_case_means is None or self.best_val_case_steps is None:
             return rows
         n_val = int(self.val_meta["a"].shape[0])
+
         for i in range(n_val):
+            #检查λ虚部是否显著非零，若是则在日志中标记该案例可能具有更复杂的行为
+            lam_i = self.val_meta["lambda"][i]
+            lam_imag = lam_i.imag if isinstance(lam_i, complex) else 0
+            if abs(lam_imag) > 1.0e-6:
+                self._vprint(
+                    f"[val-case-{i}] warning: λ has significant imaginary part ({lam_i}), "
+                    "which may indicate more complex behavior and affect training dynamics."
+                )
+
+
             rows.append(
                 {
                     "case_index": int(i),
@@ -412,7 +448,7 @@ class AtlasPatchTrainer:
                     "omega": float(self.val_meta["omega"][i].detach().cpu().item()),
                     "u": float(self.val_meta["u"][i].detach().cpu().item()),
                     "v": float(self.val_meta["v"][i].detach().cpu().item()),
-                    "lambda": float(self.val_meta["lambda"][i].detach().cpu().item()),
+                    "lambda": float(self.val_meta["lambda"][i].real.detach().cpu().item()),
                     "best_y_mean": float(self.best_val_case_means[i]),
                     "best_step": int(self.best_val_case_steps[i]),
                 }
@@ -546,13 +582,25 @@ class AtlasPatchTrainer:
         return a_batch, omega_batch, u_batch, v_batch
 
     def sample_y_interior(self):
-        y = sample_points_chebyshev_grid(
+        y_base = sample_points_chebyshev_grid(
             n_points=self.n_interior,
             y_min=-0.99,
             y_max=0.99,
             device=self.device,
             dtype=self.dtype,
         )
+        if self.n_interior_outer_extra > 0:
+            y_extra = sample_points_uniform_grid(
+                n_points=self.n_interior_outer_extra,
+                y_min=-0.99,
+                y_max=0.0,
+                device=self.device,
+                dtype=self.dtype,
+                shuffle=False,
+            )
+            y = torch.cat([y_base, y_extra], dim=0)
+        else:
+            y = y_base
         return y.clone().requires_grad_(True)
 
     def sample_y_anchor(self):
@@ -802,7 +850,7 @@ class AtlasPatchTrainer:
                     "omega": float(self.val_meta["omega"][i].detach().cpu().item()),
                     "u": float(self.val_meta["u"][i].detach().cpu().item()),
                     "v": float(self.val_meta["v"][i].detach().cpu().item()),
-                    "lambda": float(self.val_meta["lambda"][i].detach().cpu().item()),
+                    "lambda": self._tensor_scalar_for_json(self.val_meta["lambda"][i], name="lambda"),
                     "y_mean_loss": float(loss_i),
                 }
             )
@@ -935,6 +983,7 @@ class AtlasPatchTrainer:
                 r_grid_from_y, a_t, omega_t, m=m, M=M, s=s, rp=rp_y, rm=rm_y
             )
 
+        benchmark_available = False
         benchmark_status = "benchmark=off"
         a_scalar = float(a_t.detach().cpu().item())
         omega_scalar = float(omega_t.detach().cpu().item())
@@ -942,36 +991,84 @@ class AtlasPatchTrainer:
         y_cheb_np = y_grid_cheb.detach().cpu().numpy()
         R_pred_r_np = R_pred_r.detach().cpu().numpy()
         shape_pred_y_np = shape_pred_y.detach().cpu().numpy()
+        R_ref_r_np = None
+        shape_ref_y_np = None
+
+        if self.viz_benchmark_backend == "spectral":
+            try:
+                mode = KerrMode(
+                    M=M,
+                    a=a_scalar,
+                    omega=omega_scalar,
+                    ell=l,
+                    m=m,
+                    lam=complex(lam.detach().cpu().item()),
+                    s=s,
+                )
+                spectral = TeukRadAmplitudeInWithInterpolant(
+                    mode=mode,
+                    N_in=self.viz_spectral_N,
+                    N_out=self.viz_spectral_N,
+                    z_m=self.viz_spectral_z_m,
+                )
+                profile = spectral.profile
+                R_ref_r_np = np.asarray(profile.R_of_r(r_uniform_np), dtype=np.complex128)
+                R_ref_y_np = np.asarray(profile.R_of_r(r_grid_from_y.detach().cpu().numpy()), dtype=np.complex128)
+                shape_ref_y_np = R_ref_y_np / (P_y.detach().cpu().numpy() * complex(h2.detach().cpu().item()))
+                benchmark_available = True
+                benchmark_status = f"benchmark=spectral(N={self.viz_spectral_N})"
+            except Exception as e:
+                benchmark_status = "benchmark=spectral-failed"
+                with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "step": int(step),
+                        "backend": "spectral",
+                        "a": a_scalar,
+                        "omega": omega_scalar,
+                        "err": str(e),
+                    }, ensure_ascii=False) + "\n")
 
         fig, axes = plt.subplots(3, 2, figsize=(10, 10), sharex=False)
 
         axes[0, 0].plot(r_uniform_np, np.real(R_pred_r_np), label="Pred Re(R)", lw=1.6)
+        if benchmark_available:
+            axes[0, 0].plot(r_uniform_np, np.real(R_ref_r_np), "--", label="ref Re(R)", lw=1.0)
         axes[0, 0].set_ylabel("Re(R)")
         axes[0, 0].legend()
         axes[0, 0].grid(alpha=0.3)
 
         axes[1, 0].plot(r_uniform_np, np.imag(R_pred_r_np), label="Pred Im(R)", lw=1.6)
+        if benchmark_available:
+            axes[1, 0].plot(r_uniform_np, np.imag(R_ref_r_np), "--", label="ref Im(R)", lw=1.0)
         axes[1, 0].set_ylabel("Im(R)")
         axes[1, 0].legend()
         axes[1, 0].grid(alpha=0.3)
 
         axes[2, 0].plot(r_uniform_np, np.abs(R_pred_r_np), label="Pred |R|", lw=1.6)
+        if benchmark_available:
+            axes[2, 0].plot(r_uniform_np, np.abs(R_ref_r_np), "--", label="ref |R|", lw=1.0)
         axes[2, 0].set_ylabel("|R|")
         axes[2, 0].set_xlabel("r")
         axes[2, 0].legend()
         axes[2, 0].grid(alpha=0.3)
 
         axes[0, 1].plot(y_cheb_np, np.real(shape_pred_y_np), label="Pred Re(S)", lw=1.6)
+        if benchmark_available:
+            axes[0, 1].plot(y_cheb_np, np.real(shape_ref_y_np), "--", label="ref Re(S)", lw=1.0)
         axes[0, 1].set_ylabel("Re(S)")
         axes[0, 1].legend()
         axes[0, 1].grid(alpha=0.3)
 
         axes[1, 1].plot(y_cheb_np, np.imag(shape_pred_y_np), label="Pred Im(S)", lw=1.6)
+        if benchmark_available:
+            axes[1, 1].plot(y_cheb_np, np.imag(shape_ref_y_np), "--", label="ref Im(S)", lw=1.0)
         axes[1, 1].set_ylabel("Im(S)")
         axes[1, 1].legend()
         axes[1, 1].grid(alpha=0.3)
 
         axes[2, 1].plot(y_cheb_np, np.abs(shape_pred_y_np), label="Pred |S|", lw=1.6)
+        if benchmark_available:
+            axes[2, 1].plot(y_cheb_np, np.abs(shape_ref_y_np), "--", label="ref |S|", lw=1.0)
         axes[2, 1].set_ylabel("|S|")
         axes[2, 1].set_xlabel("y")
         axes[2, 1].legend()

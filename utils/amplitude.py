@@ -1,7 +1,8 @@
 from __future__ import annotations
 import math
 from typing import Dict, Tuple
-
+import sys
+sys.path.append("/home/ljq/code/PINN/SolvingTeukolsky")
 import numpy as np
 
 from utils.mode import InAmplitudesResult, KerrMode
@@ -817,3 +818,21 @@ class TeukRadAmplitudeInWithInterpolant(TeukRadAmplitudeIn):
         if self._profile is None:
             self._profile = self.smatrix["profile"]
         return self._profile
+
+#使用实例
+if __name__ == "__main__":
+    # Example usage
+    mode = KerrMode(M=1.0, a=0.9, ell=2, m=1, s=-2, omega=0.3)
+    amplitude_computer = TeukRadAmplitudeInWithAbelChecks(mode)
+    result = amplitude_computer.result
+
+    print("Computed amplitudes:")
+    print(f"B_inc: {result.B_inc}")
+    print(f"B_ref: {result.B_ref}")
+    print(f"B_trans: {result.B_trans}")
+    print(f"Ratio B_ref / B_inc: {result.ratio_ref_over_inc}")
+    print(f"Ratio B_inc / B_ref: {result.ratio_inc_over_ref}")
+    print("\nAbel invariant diagnostics:")
+    print(f"Outer Abel residual: {amplitude_computer.outer_abel_residual:.2e}")
+    print(f"Inner Abel residual: {amplitude_computer.inner_abel_residual:.2e}")
+    print(f"Determinant relation residual: {amplitude_computer.detS_residual:.2e}")

@@ -86,8 +86,9 @@ def main():
     parser.add_argument("--ell", type=int, default=2)
     parser.add_argument("--m", type=int, default=2)
     parser.add_argument("--s", type=int, default=-2)
-
-    parser.add_argument("--N-list", type=str, default="24,32,48,64,80,128")
+    #对于ω小于1e-2的时候,需要使用更大的N
+    
+    parser.add_argument("--N-list", type=str, default="24,32,48,64,80,128,160,180,256")
     parser.add_argument("--z-m", type=float, default=0.3)
 
     parser.add_argument("--out-prefix", type=str, default="amp_scan")
@@ -122,6 +123,7 @@ def main():
             )
 
             for N in N_values:
+
                 row = {
                     "a": float(a),
                     "omega": float(omega),

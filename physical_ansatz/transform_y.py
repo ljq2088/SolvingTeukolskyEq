@@ -201,11 +201,45 @@ def horizon_regularity_slope(
     return -A0_H / A1_H
 
 
-def _broadcast_slope_to_x(slope: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-    slope = slope.to(dtype=x.dtype, device=x.device)
+def _broadcast_slope_to_x(slope: torch.Tensor, x: torch.Tensor):
+    """
+    把 slope 和 x 对齐到可广播的形状。
+
+    典型情况：
+        slope: (B,)
+        x:     (N,)
+    需要变成：
+        slope: (B,1)
+        x:     (1,N)
+
+    也兼容：
+        slope: scalar
+        x:     (N,)
+    或
+        slope: (B,1)
+        x:     (1,N)
+    """
+    slope = slope.to(device=x.device)
+
+    # 不要把 complex slope 强制 cast 成 x.dtype，否则会丢掉虚部
+    target_dtype = torch.promote_types(x.dtype, slope.dtype)
+    slope = slope.to(dtype=target_dtype)
+    x = x.to(dtype=target_dtype)
+
+    # 最常见情形：共享 y/x 网格 + batch slope
+    if slope.ndim == 1 and x.ndim == 1:
+        slope = slope.unsqueeze(-1)   # (B,) -> (B,1)
+        x = x.unsqueeze(0)            # (N,) -> (1,N)
+        return slope, x
+
+    # 更一般的广播
     while slope.ndim < x.ndim:
         slope = slope.unsqueeze(-1)
-    return slope
+
+    while x.ndim < slope.ndim:
+        x = x.unsqueeze(0)
+
+    return slope, x
 
 
 def g_factor(x: torch.Tensor, slope: torch.Tensor):
@@ -214,10 +248,15 @@ def g_factor(x: torch.Tensor, slope: torch.Tensor):
     满足:
         g(1)=0
         g_x(1)=slope
+
+    支持：
+        slope: (B,), x: (N,)   -> 输出 (B,N)
+        slope: scalar, x: (N,) -> 输出 (N,)
     """
+    slope, x = _broadcast_slope_to_x(slope, x)
+
     ex = torch.exp(x - 1.0)
     base = ex - 1.0
-    slope = _broadcast_slope_to_x(slope, x)
 
     g = slope * base
     g_x = slope * ex
@@ -260,19 +299,12 @@ def transform_coeffs_x_to_y(
         x = (y+1)/2
         f_x  = 2 f_y
         f_xx = 4 f_yy
-
-    代入方程
-        A2 S_xx + A1 S_x + A0 S = 0
-    得
-        B2 f_yy + B1 f_y + B0 f = rhs
-
-    其中
-        B2 = 4 A2 W
-        B1 = 4 A2 W_x + 2 A1 W
-        B0 = A2 W_xx + A1 W_x + A0 W
-        rhs = -(A2 G_xx + A1 G_x + A0 G)
     """
     x = 0.5 * (y + 1.0)
+
+    # 若 A2/A1/A0 已经是 batch 形式，而 x 仍是 1D，则扩成 (1,N)
+    if A2.ndim >= 2 and x.ndim == 1:
+        x = x.unsqueeze(0)
 
     h1, h1_x, h1_xx = h1_factor(x)
     g, g_x, g_xx = g_factor(x, slope)

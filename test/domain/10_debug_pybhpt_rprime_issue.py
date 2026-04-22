@@ -23,7 +23,7 @@ from physical_ansatz.prefactor import (
 )
 from physical_ansatz.residual import AuxCache, get_ramp_and_p_from_cfg
 from physical_ansatz.transform_y import h_factor
-from compute_solution import compute_pybhpt_solution
+from pybhpt_usage.compute_solution import compute_pybhpt_solution
 
 
 def complex_median(z: np.ndarray) -> complex:

@@ -232,6 +232,7 @@ atlas_training:
   steps: 10000
   batch_size: 8
   n_interior: 64
+  n_interior_outer_extra: 8
   grad_clip: 1.0
   normalize_residual: false
 
@@ -253,9 +254,11 @@ atlas_training:
   viz_r_min: 2.0
   viz_r_max: 1000.0
   anchor_backend: pybhpt
-  viz_benchmark_backend: none
+  viz_benchmark_backend: spectral
   viz_pybhpt_timeout: 10.0
   anchor_pybhpt_timeout: 10.0
+  viz_spectral_N: 64
+  viz_spectral_z_m: 0.3
   viz_mma_enabled: false
 
   anchor_target_ratio: 1.0e-2
