@@ -88,7 +88,9 @@ def compute_pybhpt_solution(a, omega, ell=2, m=2, r_grid=None, timeout=10.0):
         r_grid = np.linspace(rp + 1e-4, rp + 1.0, 20)
     r_grid = np.asarray(r_grid, dtype=float)
 
-    ctx = mp.get_context('spawn')
+    # Use 'fork' instead of 'spawn' to avoid module re-import deadlock
+    # 'fork' is faster and avoids the need for if __name__ == '__main__' protection
+    ctx = mp.get_context('fork')
     q = ctx.Queue()
     p = ctx.Process(target=_worker, args=(q, a, omega, ell, m, r_grid), daemon=True)
     p.start()
