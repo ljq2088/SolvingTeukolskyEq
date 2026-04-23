@@ -78,6 +78,25 @@ def main() -> None:
     print(f"Cin_up    = {amp.smatrix['Cin_up']}")
     print(f"Cout_down = {amp.smatrix['Cout_down']}")
     print(f"Cout_up   = {amp.smatrix['Cout_up']}")
+    print("\n=== Conditioning diagnostics ===")
+    print(f"cond(M_left)         = {amp.smatrix['cond_M_left']:.6e}")
+    print(f"cond(T_mid)          = {amp.smatrix['cond_T_mid']:.6e}")
+    print(f"cond(M_outer_at_z2)  = {amp.smatrix['cond_M_outer_at_z2']:.6e}")
+
+    print(f"solve_in_relres      = {amp.smatrix['solve_in_relres']:.6e}")
+    print(f"solve_out_relres     = {amp.smatrix['solve_out_relres']:.6e}")
+    print(f"solve_in_cond_raw    = {amp.smatrix['solve_in_cond_raw']:.6e}")
+    print(f"solve_out_cond_raw   = {amp.smatrix['solve_out_cond_raw']:.6e}")
+    print(f"solve_in_cond_scaled = {amp.smatrix['solve_in_cond_scaled']:.6e}")
+    print(f"solve_out_cond_scaled= {amp.smatrix['solve_out_cond_scaled']:.6e}")
+
+    print(f"solve_in_smax        = {amp.smatrix['solve_in_smax']:.6e}")
+    print(f"solve_in_smin        = {amp.smatrix['solve_in_smin']:.6e}")
+    print(f"solve_out_smax       = {amp.smatrix['solve_out_smax']:.6e}")
+    print(f"solve_out_smin       = {amp.smatrix['solve_out_smin']:.6e}")
+
+    print(f"state_in_z1_relerr   = {amp.smatrix['state_in_z1_relerr']:.6e}")
+    print(f"state_out_z1_relerr  = {amp.smatrix['state_out_z1_relerr']:.6e}")
 
 
 if __name__ == "__main__":

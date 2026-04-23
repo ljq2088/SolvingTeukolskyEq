@@ -197,6 +197,34 @@ def solve_middle_raw_pair(
         "T_mid": T_mid,
     }
 
+def _solve_scaled_2x2(M: np.ndarray, y: np.ndarray, floor: float = 1.0e-300):
+    """
+    Solve M x = y with simple column scaling + least squares.
+    This is more robust than a raw solve when the 2x2 system is badly scaled.
+    """
+    M = np.asarray(M, dtype=complex)
+    y = np.asarray(y, dtype=complex)
+
+    col_norms = np.linalg.norm(M, axis=0)
+    col_norms = np.where(col_norms > floor, col_norms, 1.0)
+
+    Ms = M / col_norms[None, :]
+    x_scaled, *_ = np.linalg.lstsq(Ms, y, rcond=None)
+    x = x_scaled / col_norms
+
+    relres = np.linalg.norm(M @ x - y) / max(np.linalg.norm(y), floor)
+    svals = np.linalg.svd(M, compute_uv=False)
+
+    diag = {
+        "relres": float(relres),
+        "cond_raw": float(np.linalg.cond(M)),
+        "cond_scaled": float(np.linalg.cond(Ms)),
+        "smax": float(np.abs(svals[0])),
+        "smin": float(np.abs(svals[-1])),
+        "col_norm_0": float(col_norms[0]),
+        "col_norm_1": float(col_norms[1]),
+    }
+    return x, diag 
 
 def compute_smatrix_three_patch_with_abel(
     mode: KerrMode,
@@ -261,12 +289,35 @@ def compute_smatrix_three_patch_with_abel(
     R_in_z2, Rr_in_z2 = basis_values_at_match(mode, "in", sol_in, "left")
     R_out_z2, Rr_out_z2 = basis_values_at_match(mode, "out", sol_out, "left")
 
-    # Express the right-patch in/out solutions in the transported outer basis
-    Cin_down, Cin_up = np.linalg.solve(
-        M_outer_at_z2, np.array([R_in_z2, Rr_in_z2], dtype=complex)
+    y_in_z2 = np.array([R_in_z2, Rr_in_z2], dtype=complex)
+    y_out_z2 = np.array([R_out_z2, Rr_out_z2], dtype=complex)
+
+    # ---------------------------------------------------------
+    # IMPORTANT CHANGE:
+    # instead of decomposing directly on M_outer_at_z2 (often badly conditioned),
+    # first propagate the right states backward to z1 through T_mid^{-1},
+    # then decompose on the original left outer basis M_left.
+    # ---------------------------------------------------------
+    state_in_z1_back = np.linalg.solve(T_mid, y_in_z2)
+    state_out_z1_back = np.linalg.solve(T_mid, y_out_z2)
+
+    coef_in, diag_in = _solve_scaled_2x2(M_left, state_in_z1_back)
+    coef_out, diag_out = _solve_scaled_2x2(M_left, state_out_z1_back)
+
+    Cin_down, Cin_up = coef_in
+    Cout_down, Cout_up = coef_out
+
+    # reconstructed states at z1 for debugging
+    state_in_z1_recon = M_left @ np.array([Cin_down, Cin_up], dtype=complex)
+    state_out_z1_recon = M_left @ np.array([Cout_down, Cout_up], dtype=complex)
+
+    state_in_z1_relerr = float(
+        np.linalg.norm(state_in_z1_recon - state_in_z1_back)
+        / max(np.linalg.norm(state_in_z1_back), 1.0e-300)
     )
-    Cout_down, Cout_up = np.linalg.solve(
-        M_outer_at_z2, np.array([R_out_z2, Rr_out_z2], dtype=complex)
+    state_out_z1_relerr = float(
+        np.linalg.norm(state_out_z1_recon - state_out_z1_back)
+        / max(np.linalg.norm(state_out_z1_back), 1.0e-300)
     )
 
     S = np.array([[Cin_down, Cin_up], [Cout_down, Cout_up]], dtype=complex)
@@ -333,6 +384,28 @@ def compute_smatrix_three_patch_with_abel(
         "z2": float(z2),
         "r_match_outer": float(r_match_outer),
         "r_match_inner": float(r_match_inner),
+
+        "cond_M_left": float(np.linalg.cond(M_left)),
+        "cond_T_mid": float(np.linalg.cond(T_mid)),
+        "cond_M_outer_at_z2": float(np.linalg.cond(M_outer_at_z2)),
+
+        "solve_in_relres": float(diag_in["relres"]),
+        "solve_out_relres": float(diag_out["relres"]),
+        "solve_in_cond_raw": float(diag_in["cond_raw"]),
+        "solve_out_cond_raw": float(diag_out["cond_raw"]),
+        "solve_in_cond_scaled": float(diag_in["cond_scaled"]),
+        "solve_out_cond_scaled": float(diag_out["cond_scaled"]),
+        "solve_in_smax": float(diag_in["smax"]),
+        "solve_in_smin": float(diag_in["smin"]),
+        "solve_out_smax": float(diag_out["smax"]),
+        "solve_out_smin": float(diag_out["smin"]),
+
+        "state_in_z1_relerr": state_in_z1_relerr,
+        "state_out_z1_relerr": state_out_z1_relerr,
+        "state_in_z1_back": state_in_z1_back,
+        "state_out_z1_back": state_out_z1_back,
+        "state_in_z1_recon": state_in_z1_recon,
+        "state_out_z1_recon": state_out_z1_recon,
     }
 
     if return_details:
