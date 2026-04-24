@@ -26,6 +26,14 @@ from utils.amplitude import (
     inner_abel_theory,
     rel_complex_residual,
 )
+from utils.hp_linear import (
+    use_mp_backend,
+    solve_2x2_np,
+    solve_2x2_mp,
+    solve_scaled_2x2_np,
+    solve_scaled_2x2_mp,
+    det_2x2_mp,
+)
 
 
 def q_and_qp_three_patch(r, mode: KerrMode, basis: str):
@@ -235,6 +243,8 @@ def compute_smatrix_three_patch_with_abel(
     z2: float = 0.9,
     *,
     return_details: bool = False,
+    omega_mp_cut: float = 1.0e-2,
+    mp_dps_loww: int = 80,
 ):
     """
     Three-patch version:
@@ -298,15 +308,31 @@ def compute_smatrix_three_patch_with_abel(
     # first propagate the right states backward to z1 through T_mid^{-1},
     # then decompose on the original left outer basis M_left.
     # ---------------------------------------------------------
-    state_in_z1_back = np.linalg.solve(T_mid, y_in_z2)
-    state_out_z1_back = np.linalg.solve(T_mid, y_out_z2)
+    use_mp = use_mp_backend(mode.omega, omega_mp_cut)
 
-    coef_in, diag_in = _solve_scaled_2x2(M_left, state_in_z1_back)
-    coef_out, diag_out = _solve_scaled_2x2(M_left, state_out_z1_back)
+    if use_mp:
+        state_in_z1_back, diag_back_in = solve_2x2_mp(
+            T_mid, y_in_z2, dps=mp_dps_loww
+        )
+        state_out_z1_back, diag_back_out = solve_2x2_mp(
+            T_mid, y_out_z2, dps=mp_dps_loww
+        )
+
+        coef_in, diag_in = solve_scaled_2x2_mp(
+            M_left, state_in_z1_back, dps=mp_dps_loww
+        )
+        coef_out, diag_out = solve_scaled_2x2_mp(
+            M_left, state_out_z1_back, dps=mp_dps_loww
+        )
+    else:
+        state_in_z1_back, diag_back_in = solve_2x2_np(T_mid, y_in_z2)
+        state_out_z1_back, diag_back_out = solve_2x2_np(T_mid, y_out_z2)
+
+        coef_in, diag_in = solve_scaled_2x2_np(M_left, state_in_z1_back)
+        coef_out, diag_out = solve_scaled_2x2_np(M_left, state_out_z1_back)
 
     Cin_down, Cin_up = coef_in
     Cout_down, Cout_up = coef_out
-
     # reconstructed states at z1 for debugging
     state_in_z1_recon = M_left @ np.array([Cin_down, Cin_up], dtype=complex)
     state_out_z1_recon = M_left @ np.array([Cout_down, Cout_up], dtype=complex)
@@ -349,7 +375,10 @@ def compute_smatrix_three_patch_with_abel(
     inner_abel_th = inner_abel_theory(mode)
     inner_abel_residual = rel_complex_residual(inner_abel_num, inner_abel_th)
 
-    detS_num = np.linalg.det(S)
+    if use_mp:
+        detS_num = det_2x2_mp(S, dps=mp_dps_loww)
+    else:
+        detS_num = np.linalg.det(S)
     detS_th = inner_abel_th / outer_abel_th
     detS_residual = rel_complex_residual(detS_num, detS_th)
 
@@ -406,6 +435,13 @@ def compute_smatrix_three_patch_with_abel(
         "state_out_z1_back": state_out_z1_back,
         "state_in_z1_recon": state_in_z1_recon,
         "state_out_z1_recon": state_out_z1_recon,
+
+        "use_mp_backend": bool(use_mp),
+        "omega_mp_cut": float(omega_mp_cut),
+        "mp_dps_loww": int(mp_dps_loww if use_mp else 0),
+
+        "back_in_relres": float(diag_back_in["relres"]),
+        "back_out_relres": float(diag_back_out["relres"]),
     }
 
     if return_details:
@@ -439,6 +475,8 @@ class TeukRadAmplitudeIn3Patch:
         N_right: int = 64,
         z1: float = 0.1,
         z2: float = 0.9,
+        omega_mp_cut: float = 1.0e-2,
+        mp_dps_loww: int = 80,
     ):
         self.mode = mode
         self.M = mode.M
@@ -456,7 +494,8 @@ class TeukRadAmplitudeIn3Patch:
         self.lam = mode.lam
         self._smatrix: Dict[str, complex | np.ndarray | None] | None = None
         self._result: InAmplitudesResult | None = None
-
+        self.omega_mp_cut = omega_mp_cut
+        self.mp_dps_loww = mp_dps_loww
     def __call__(self) -> InAmplitudesResult:
         return self.to_result()
 
@@ -471,6 +510,8 @@ class TeukRadAmplitudeIn3Patch:
                 z1=self.z1,
                 z2=self.z2,
                 return_details=False,
+                omega_mp_cut=self.omega_mp_cut,
+                mp_dps_loww=self.mp_dps_loww,
             )
         return self._smatrix
 

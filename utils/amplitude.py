@@ -7,7 +7,12 @@ import numpy as np
 
 from utils.mode import InAmplitudesResult, KerrMode
 
-
+from utils.hp_linear import (
+    use_mp_backend,
+    solve_scaled_2x2_np,
+    solve_scaled_2x2_mp,
+    det_2x2_mp,
+)
 def _safe_complex_ratio(numer: complex, denom: complex, *, tol: float = 1.0e-30) -> complex | None:
     if abs(denom) <= tol:
         return None
@@ -482,6 +487,8 @@ def compute_smatrix(
     z_m: float = 0.3,
     *,
     return_profile: bool = False,
+    omega_mp_cut: float = 1.0e-2,
+    mp_dps_loww: int = 80,
 ):
     # outer domain: [0, z_m]
     sol_down = solve_basis_domain(mode, 'down', N_out, 0.0, z_m, 'left')
@@ -498,8 +505,20 @@ def compute_smatrix(
     R_in_m,  Rr_in_m  = basis_values_at_match(mode, 'in',  sol_in,  'left')
     R_out_m, Rr_out_m = basis_values_at_match(mode, 'out', sol_out, 'left')
 
-    Cin_down, Cin_up   = np.linalg.solve(Mmatch, np.array([R_in_m,  Rr_in_m],  dtype=complex))
-    Cout_down, Cout_up = np.linalg.solve(Mmatch, np.array([R_out_m, Rr_out_m], dtype=complex))
+    rhs_in = np.array([R_in_m, Rr_in_m], dtype=complex)
+    rhs_out = np.array([R_out_m, Rr_out_m], dtype=complex)
+
+    use_mp = use_mp_backend(mode.omega, omega_mp_cut)
+
+    if use_mp:
+        coef_in, diag_in = solve_scaled_2x2_mp(Mmatch, rhs_in, dps=mp_dps_loww)
+        coef_out, diag_out = solve_scaled_2x2_mp(Mmatch, rhs_out, dps=mp_dps_loww)
+    else:
+        coef_in, diag_in = solve_scaled_2x2_np(Mmatch, rhs_in)
+        coef_out, diag_out = solve_scaled_2x2_np(Mmatch, rhs_out)
+
+    Cin_down, Cin_up = coef_in
+    Cout_down, Cout_up = coef_out
 
     b_inc = complex(Cin_down)
     b_ref = complex(Cin_up)
@@ -575,7 +594,8 @@ def compute_smatrix(
 
     return result
 
-def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3):
+def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3,omega_mp_cut: float = 1.0e-2,
+    mp_dps_loww: int = 80,):
     """
     Same transfer-matrix computation as compute_smatrix, but also returns
     Abel-invariant diagnostics suitable for Kerr Teukolsky with complex potential.
@@ -607,15 +627,20 @@ def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z
     R_in_m,  Rr_in_m  = basis_values_at_match(mode, 'in',  sol_in,  'left')
     R_out_m, Rr_out_m = basis_values_at_match(mode, 'out', sol_out, 'left')
 
-    # first column: R_in expressed in outer basis
-    Cin_down, Cin_up = np.linalg.solve(
-        Mmatch, np.array([R_in_m, Rr_in_m], dtype=complex)
-    )
+    rhs_in = np.array([R_in_m, Rr_in_m], dtype=complex)
+    rhs_out = np.array([R_out_m, Rr_out_m], dtype=complex)
 
-    # second column: R_out expressed in outer basis
-    Cout_down, Cout_up = np.linalg.solve(
-        Mmatch, np.array([R_out_m, Rr_out_m], dtype=complex)
-    )
+    use_mp = use_mp_backend(mode.omega, omega_mp_cut)
+
+    if use_mp:
+        coef_in, diag_in = solve_scaled_2x2_mp(Mmatch, rhs_in, dps=mp_dps_loww)
+        coef_out, diag_out = solve_scaled_2x2_mp(Mmatch, rhs_out, dps=mp_dps_loww)
+    else:
+        coef_in, diag_in = solve_scaled_2x2_np(Mmatch, rhs_in)
+        coef_out, diag_out = solve_scaled_2x2_np(Mmatch, rhs_out)
+
+    Cin_down, Cin_up = coef_in
+    Cout_down, Cout_up = coef_out
 
     S = np.array([[Cin_down, Cin_up], [Cout_down, Cout_up]], dtype=complex)
 
@@ -645,7 +670,10 @@ def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z
 
     # determinant relation:
     # det(S) * C_outer = C_inner
-    detS_num = np.linalg.det(S)
+    if use_mp:
+        detS_num = det_2x2_mp(S, dps=mp_dps_loww)
+    else:
+        detS_num = np.linalg.det(S)
     detS_th = inner_abel_th / outer_abel_th
     detS_residual = rel_complex_residual(detS_num, detS_th)
 
@@ -681,9 +709,20 @@ def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z
         'detS_num': complex(detS_num),
         'detS_th': complex(detS_th),
         'detS_residual': float(detS_residual),
+
+        "use_mp_backend": bool(use_mp),
+        "omega_mp_cut": float(omega_mp_cut),
+        "mp_dps_loww": int(mp_dps_loww if use_mp else 0),
+        "solve_in_relres": float(diag_in["relres"]),
+        "solve_out_relres": float(diag_out["relres"]),
+        "solve_in_cond_raw": float(diag_in["cond_raw"]),
+        "solve_out_cond_raw": float(diag_out["cond_raw"]),
+        "solve_in_cond_scaled": float(diag_in["cond_scaled"]),
+        "solve_out_cond_scaled": float(diag_out["cond_scaled"]),
     }
 class TeukRadAmplitudeIn(object):
-    def __init__(self, mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3):
+    def __init__(self, mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3,omega_mp_cut: float = 1.0e-2,
+        mp_dps_loww: int = 80,):
         self.mode = mode
         self.M = mode.M
         self.a = mode.a
@@ -697,6 +736,8 @@ class TeukRadAmplitudeIn(object):
         self.lam = mode.lam
         self._smatrix: Dict[str, complex | np.ndarray | None] | None = None
         self._result: InAmplitudesResult | None = None
+        self.omega_mp_cut = omega_mp_cut
+        self.mp_dps_loww = mp_dps_loww
 
     def __call__(self) -> InAmplitudesResult:
         return self.to_result()
@@ -704,7 +745,7 @@ class TeukRadAmplitudeIn(object):
     @property
     def smatrix(self) -> Dict[str, complex | np.ndarray | None]:
         if self._smatrix is None:
-            self._smatrix = compute_smatrix(self.mode, N_in=self.N_in, N_out=self.N_out, z_m=self.z_m)
+            self._smatrix = compute_smatrix(self.mode, N_in=self.N_in, N_out=self.N_out, z_m=self.z_m,omega_mp_cut=self.omega_mp_cut, mp_dps_loww=self.mp_dps_loww)
         return self._smatrix
 
     @property
@@ -774,6 +815,8 @@ class TeukRadAmplitudeInWithAbelChecks(TeukRadAmplitudeIn):
                 N_in=self.N_in,
                 N_out=self.N_out,
                 z_m=self.z_m,
+                omega_mp_cut=self.omega_mp_cut,
+                mp_dps_loww=self.mp_dps_loww,
             )
         return self._smatrix
 

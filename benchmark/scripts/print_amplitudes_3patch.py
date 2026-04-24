@@ -32,6 +32,9 @@ def main() -> None:
     parser.add_argument("--z1", type=float, default=0.1)
     parser.add_argument("--z2", type=float, default=0.9)
 
+    parser.add_argument("--omega-mp-cut", dest="omega_mp_cut", type=float, default=1.0e-2)
+    parser.add_argument("--mp-dps-loww", dest="mp_dps_loww", type=int, default=80)
+
     args = parser.parse_args()
 
     mode = KerrMode(
@@ -51,6 +54,8 @@ def main() -> None:
         N_right=args.N_right,
         z1=args.z1,
         z2=args.z2,
+        omega_mp_cut=args.omega_mp_cut,
+        mp_dps_loww=args.mp_dps_loww,
     )
 
     print("=== Three-patch amplitudes ===")
@@ -98,6 +103,7 @@ def main() -> None:
     print(f"state_in_z1_relerr   = {amp.smatrix['state_in_z1_relerr']:.6e}")
     print(f"state_out_z1_relerr  = {amp.smatrix['state_out_z1_relerr']:.6e}")
 
-
+    print(f"use_mp_backend      = {amp.smatrix['use_mp_backend']}")
+    print(f"mp_dps_loww         = {amp.smatrix['mp_dps_loww']}")
 if __name__ == "__main__":
     main()
