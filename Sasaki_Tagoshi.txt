@@ -1,0 +1,7376 @@
+LIVING
+
+Living Rev. Relativity, 6, (2003), 6
+http://www.livingreviews.org/lrr-2003-6
+
+RE VIE WS
+
+in relativity
+
+Analytic Black Hole Perturbation Approach to Gravitational
+Radiation
+Misao Sasaki
+Yukawa Institute for Theoretical Physics,
+Kyoto University
+Kyoto 606-8502
+Japan
+email: misao@yukawa.kyoto-u.ac.jp
+
+Hideyuki Tagoshi
+Department of Earth and Space Science,
+Osaka University
+Toyonaka, Osaka 560-0043
+Japan
+email: tagoshi@vega.ess.sci.osaka-u.ac.jp
+
+Accepted on 5 September 2003
+Published on 21 November 2003
+(Revised on 14 September 2010)
+
+Abstract
+We review the analytic methods used to perform the post-Newtonian expansion of gravitational waves induced by a particle orbiting a massive, compact body, based on black hole
+perturbation theory. There exist two different methods of performing the post-Newtonian expansion. Both are based on the Teukolsky equation. In one method, the Teukolsky equation is
+transformed into a Regge–Wheeler type equation that reduces to the standard Klein–Gordon
+equation in the flat-space limit, while in the other method (which was introduced by Mano,
+Suzuki, and Takasugi relatively recently), the Teukolsky equation is used directly in its original form. The former’s advantage is that it is intuitively easy to understand how various
+curved space effects come into play. However, it becomes increasingly complicated when one
+goes to higher and higher post-Newtonian orders. In contrast, the latter’s advantage is that a
+systematic calculation to higher post-Newtonian orders can be implemented relatively easily,
+but otherwise, it is so mathematical that it is hard to understand the interplay of higher order
+terms. In this paper, we review both methods so that their pros and cons may be seen clearly.
+We also review some results of calculations of gravitational radiation emitted by a particle
+orbiting a black hole.
+
+This review is licensed under a Creative Commons
+Attribution-Non-Commercial-NoDerivs 3.0 Germany License.
+http://creativecommons.org/licenses/by-nc-nd/3.0/de/
+
+Imprint / Terms of Use
+Living Reviews in Relativity is a peer reviewed open access journal published by the Max Planck
+Institute for Gravitational Physics, Am Mühlenberg 1, 14476 Potsdam, Germany. ISSN 1433-8351.
+This review is licensed under a Creative Commons Attribution-Non-Commercial-NoDerivs 3.0
+Germany License: http://creativecommons.org/licenses/by-nc-nd/3.0/de/
+Because a Living Reviews article can evolve over time, we recommend to cite the article as follows:
+
+Misao Sasaki and Hideyuki Tagoshi,
+“Analytic Black Hole Perturbation Approach to Gravitational Radiation”,
+Living Rev. Relativity, 6, (2003), 6. [Online Article]: cited [<date>],
+http://www.livingreviews.org/lrr-2003-6
+
+The date given as <date> then uniquely identifies the version of the article you are referring to.
+
+Article Revisions
+Living Reviews supports two ways of keeping its articles up-to-date:
+Fast-track revision A fast-track revision provides the author with the opportunity to add short
+notices of current research results, trends and developments, or important publications to
+the article. A fast-track revision is refereed by the responsible subject editor. If an article
+has undergone a fast-track revision, a summary of changes will be listed here.
+Major update A major update will include substantial changes and additions and is subject to
+full external refereeing. It is published with a new publication number.
+For detailed documentation of an article’s evolution, please refer to the history document of the
+article’s online version at http://www.livingreviews.org/lrr-2003-6.
+
+14 September 2010: The main changes are new Sections 4.6, 5.3, 5.8, and 5.9, which show the
+progress since 2003. Added 46 new references.
+Page 5:
+
+Updated progress in detectors. Dropped reference to resonant bars.
+
+Page 6:
+
+Extended paragraph on the Futamase–Schutz method.
+
+Page 7: Added five more references for the BDI approach above. Added four paragraphs on
+the derivation of the 3PN equations of motion below.
+Page 9:
+
+Added reference to Fujita and Iyer.
+
+Page 10:
+Page 11:
+
+Added paragraph on the rate of change of the Carter constant below.
+^ and 𝐽.
+^
+Changed original 𝐿 and 𝐽 to 𝐿
+
+Page 12:
+
+Changed definition accordingly.
+
+Page 12:
+
+Added √12𝜋 to the right-hand side.
+
+^ 𝐶,
+^ and ^𝑙𝑧 are introduced. The
+Page 13: Definitions of 𝐸, 𝐶, 𝑙𝑧 are changed; new variables ℰ,
+footnote in the older version is moved to the main text. All of these variables in the text are
+changed. In the new version, ℰ and 𝑙𝑧 represent the energy and angular momentum of the
+particle. On the other hand, 𝐸 and 𝐽𝑧 represent the energy and angular momentum radiated
+to infinity or horizon.
+Page 27:
+
+Simplifed last line from the original 𝜆2 = 1 + (𝐻(ℓ + 1) − 𝐻(ℓ) − 1).
+
+Page 35:
+
+Corrected errors in the phase of the asymptotic amplitudes.
+
+Page 36:
+
+Added new Subsection 4.6.
+
+Page 39:
+
+Added missing negative sign to last term.
+
+Page 39:
+
+Added new Subsection 5.3.
+
+Page 42:
+
+(︀
+)︀ 5
+773
+Corrected last term from the original − 2399
+56 𝑞 − 3 𝜋 𝑥 .
+(︀
+)︀ 5
+171 2
+243
+785
+Corrected last term from the original − 1041349
+18144 + 16 𝑞 − 8 𝑞 − 6 𝜋 𝑥 .
+
+Page 42:
+
+Page 43: Simplified notation from the original 𝑦 = 𝑄𝐶2 , 𝑄2 = 𝑙𝑧2 + 𝑎2 (1 − 𝐸 2 ). See note on
+revision above.
+Page 44:
+
+Added new Subsection 5.8.
+
+Page 48:
+
+Added new Subsection 5.9.
+
+Contents
+1 Introduction
+1.1 General . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+1.2 Post-Newtonian expansion of gravitational waves . . . . . . . . . . . . . . . . . . .
+1.3 Linear perturbation theory of black holes . . . . . . . . . . . . . . . . . . . . . . .
+1.4 Brief historical notes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+
+5
+5
+6
+7
+9
+
+2 Basic Formulae for the Black Hole Perturbation
+2.1 Teukolsky formalism . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+2.2 Chandrasekhar–Sasaki–Nakamura transformation . . . . . . . . . . . . . . . . . . .
+
+11
+11
+16
+
+3 Post-Newtonian Expansion of the Regge–Wheeler Equation
+3.1 Basic assumptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+3.2 Horizon solution; 𝑧 ≪ 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+3.3 Outer solution; 𝜖 ≪ 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+3.4 More on the inner boundary condition of the outer solution . . . . . . . . . . . . .
+3.5 Structure of the ingoing wave function to 𝒪(𝜖2 ) . . . . . . . . . . . . . . . . . . . .
+
+19
+19
+20
+21
+22
+23
+
+4 Analytic Solutions of the Homogeneous Teukolsky Equation by Means of the
+Series Expansion of Special Functions
+26
+4.1 Angular eigenvalue . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26
+4.2 Horizon solution in series of hypergeometric functions . . . . . . . . . . . . . . . . 27
+4.3 Outer solution as a series of Coulomb wave functions . . . . . . . . . . . . . . . . . 30
+4.4 Matching of horizon and outer solutions . . . . . . . . . . . . . . . . . . . . . . . . 33
+4.5 Low frequency expansion of the hypergeometric expansion . . . . . . . . . . . . . . 35
+4.6 Property of 𝜈 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36
+5 Gravitational Waves from a Particle Orbiting a Black Hole
+5.1 Circular orbit around a Schwarzschild black hole . . . . . . . . . . . . . . . . . . .
+5.2 Circular orbit on the equatorial plane around a Kerr black hole . . . . . . . . . . .
+5.3 Waveforms in the case of circular orbit . . . . . . . . . . . . . . . . . . . . . . . . .
+5.4 Slightly eccentric orbit around a Schwarzschild black hole . . . . . . . . . . . . . .
+5.5 Slightly eccentric orbit around a Kerr black hole . . . . . . . . . . . . . . . . . . .
+5.6 Circular orbit with a small inclination from the equatorial plane around a Kerr black
+hole . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
+5.7 Absorption of gravitational waves by a black hole . . . . . . . . . . . . . . . . . . .
+5.8 Adiabatic evolution of Carter constant for orbit with small eccentricity and small
+inclination angle around a Kerr black hole . . . . . . . . . . . . . . . . . . . . . . .
+5.9 Adiabatic evolution of constants of motion for orbits with generic inclination angle
+and with small eccentricity around a Kerr black hole . . . . . . . . . . . . . . . . .
+
+38
+38
+39
+39
+41
+42
+
+6 Conclusion
+
+51
+
+7 Acknowledgements
+
+52
+
+References
+
+53
+
+42
+44
+44
+48
+
+List of Tables
+1
+
+The value of 𝜈 for various value of 𝑀 𝜔 in the case 𝑠 = −2, 𝑙 = 𝑚 = 2 and 𝑞 = 0. .
+
+37
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+1
+
+Introduction
+
+1.1
+
+General
+
+5
+
+In the past several years, there has been substantial progress in the projects of ground-based laser
+interferometric gravitational wave detectors, which include LIGO [65], VIRGO [108], GEO600 [50],
+and TAMA300 [102, 3, 103]. TAMA300 was in operation from 1999 until 2004. LIGO and GEO600
+began operating in 2002. LIGO has performed it’s fifth science run from November 2005 to October
+2007, and over one year of science-quality data was taken with all of it’s three LIGO interferometers
+in simultaneous operation. The Virgo detector performed its first science run in 2007 and 4.5
+months of joint data-taking with LIGO was done. There are several future projects as well. Most
+importantly, the Laser Interferometer Space Antenna (LISA) project is in progress [67, 66]. The
+DECIGO [2] and BBO [36] are more ambitious space interferometer proposals which aim to cover
+the frequency gap between the ground based interferometers and LISA. For a review of ground
+and space laser interferometers, see, e.g., the respective Living Reviews article [88].
+The detection of gravitational waves will be done by extracting gravitational wave signals from a
+noisy data stream. In developing the data analysis strategy, detailed knowledge of the gravitational
+waveforms will help us greatly to detect a signal, and to extract the physical information about
+its source. Thus, it has become a very important problem for theorists to predict with sufficiently
+good accuracy the waveforms from possible gravitational wave sources.
+Gravitational waves are generated by dynamical astrophysical events, and they are expected
+to be strong enough to be detected when compact stars such as neutron stars (NS) or black holes
+(BH) are involved in such events. In particular, coalescing compact binaries are considered to be
+the most promising sources of gravitational radiation that can be detected by the ground-based
+laser interferometers. The last inspiral phase of a coalescing compact binary, in which the binary
+stars orbit each other for ∼ 104 cycles, will be in the bandwidth of the interferometers, and this
+phase may not only be detectable: it could provide us with important astrophysical information
+about the system, if the theoretical templates are sufficiently accurate.
+Unfortunately, it seems difficult to attain the sensitivity to detect NS-NS binary inspirals with
+the first generation of interferometric detectors. However, the coalescence of BH-NS/BH-BH binaries with a black hole mass of ∼ 10 – 20 𝑀⊙ may be detected out to the distance of the VIRGO
+cluster if we are lucky enough. In any case, it will be necessary to wait for the next generation of
+interferometric detectors to see these coalescing events more frequently [73, 82].
+To predict the waveforms, a conventional approach is to formulate the Einstein equations with
+respect to the flat Minkowski background and apply the post-Newtonian expansion to the resulting
+equations (see the Section 1.2).
+In this paper, however, we review a different approach, namely the black hole perturbation
+approach. In this approach, binaries are assumed to consist of a massive black hole and a small
+compact star which is taken to be a point particle. Hence, its applicability is constrained to the
+case of binaries with large mass ratio. Nevertheless, there are several advantages here that cannot
+be overlooked.
+Most importantly, the black hole perturbation equations take full account of general relativistic
+effects of the background spacetime and they are applicable to arbitrary orbits of a small mass
+star. In particular, if a numerical approach is taken, gravitational waves from highly relativistic
+orbits can be calculated. Then, if we can develop a method to calculate gravitational waves to
+a sufficiently high PN order analytically, it can give insight not only into how and when general
+relativistic effects become important, by comparing with numerical results, but it will also give us
+a knowledge, complementary to the conventional post-Newtonian approach, about as yet unknown
+higher-order PN terms or general relativistic spin effects.
+Moreover, one of the main targets of LISA is to observe phenomena associated with the for-
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+6
+
+Misao Sasaki and Hideyuki Tagoshi
+
+mation and evolution of supermassive black holes in galactic centers. In particular, a gravitational
+wave event of a compact star spiraling into such a supermassive black hole is indeed a case of
+application for the black hole perturbation theory.
+
+1.2
+
+Post-Newtonian expansion of gravitational waves
+
+The post-Newtonian expansion of general relativity assumes that the internal gravity of a source is
+small so that the deviation from the Minkowski metric is small, and that velocities associated with
+the source are small compared to the speed of light, 𝑐. When we consider the orbital motion of a
+compact binary system, these two conditions become essentially equivalent to each other. Although
+both conditions may be violated inside each of the compact objects, this is not regarded as a serious
+problem of the post-Newtonian expansion, as long as we are concerned with gravitational waves
+generated from the orbital motion, and, indeed, the two bodies are usually assumed to be point-like
+objects in the calculation.
+In fact, Itoh, Futamase, and Asada [57, 58] developed a new post-Newtonian method that can
+deal with a binary system in which the constituent bodies may have strong internal gravity, based
+on earlier work by Futamase and Schutz [44, 45, 42]. They derived the equations of motion to 2.5PN
+order and obtained a complete agreement with the Damour–Deruelle equations of motion [26, 25],
+which assumes the validity of the point-particle approximation. In the Futamase–Schutz method,
+each star in a binary is first expressed as an extended object and then the limit is taken to set
+the radius to zero in a specific manner first proposed by Futamase [42]. At the same time, the
+surface integral approach (à la Einstein–Infeld–Hoffmann [32]) is taken to derive the equations of
+motion. More recently Itoh and Futamase [56, 54] derived the 3PN equations of motion based on
+the Futamase–Schutz method, and they are again in agreement with those derived by Damour,
+Jaranowski and Schäfer [27] and by Blanchet et al. [10] in which the point-particle approximation
+is used.
+There are two existing approaches of the post-Newtonian expansion to calculate gravitational
+waves: one developed by Blanchet, Damour, and Iyer (BDI) [12, 7] and another by Will and
+Wiseman (WW) [111] based on previous work by Epstein, Wagoner, and Will [33, 109]. In both
+approaches, the gravitational waveforms and luminosity are expanded in time derivatives of radiative multipoles, which are then related to some source multipoles (the relation between them
+contains the “tails”). The source multipoles are expressed as integrals over the matter source and
+the gravitational field. The source multipoles are combined with the equations of motion to obtain
+explicit expressions in terms of the source masses, positions, and velocities.
+One issue of the post-Newtonian calculation arises from the fact that the post-Newtonian
+expansion can be applied only to the near-zone field of the source. In the conventional postNewtonian formalism, the harmonic coordinates are used to write down the Einstein equations. If
+we define the deviation from the Minkowski metric as
+√
+ℎ𝜇𝜈 ≡ −𝑔𝑔 𝜇𝜈 − 𝜂 𝜇𝜈 ,
+(1)
+the Einstein equations are schematically written in the form
+ℎ𝜇𝜈 = 16𝜋|𝑔|𝑇 𝜇𝜈 + Λ𝜇𝜈 (ℎ),
+
+(2)
+
+together with the harmonic gauge condition, 𝜕𝜈 ℎ𝜇𝜈 = 0, where  = 𝜂 𝜇𝜈 𝜕𝜇 𝜕𝜈 is the D’Alambertian
+operator in flat-space time, 𝜂 𝜇𝜈 = diag (−1, 1, 1, 1), and Λ𝜇𝜈 (ℎ) represents the non-linear terms
+in the Einstein equations. The Einstein equations (2) are integrated using the flat-space retarded
+integrals. In order to perform the post-Newtonian expansion, if we naively expand the retarded
+integrals in powers of 1/𝑐, there appear divergent integrals. This is a technical problem that arises
+due to the near-zone nature of the post-Newtonian approximation. In the BDI approach, in order
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+7
+
+to integrate the retarded integrals, and to evaluate the radiative multipole moments at infinity, two
+kinds of approximation methods are introduced. One is the multipolar post-Minkowski expansion,
+which can be applied to a region outside the source including infinity, and the other is the nearzone, post-Newtonian expansion. These two expansions are matched in the intermediate region
+where both expansions are valid, and the radiative multipole moments are evaluated at infinity.
+In the WW approach, the retarded integrals are evaluated directly, without expanding in terms of
+1/𝑐, in the region outside the source in a novel way.
+The lowest order of the gravitational waves is given by the Newtonian quadrupole formula.
+It is standard to refer to the post-Newtonian formulae (for the waveforms and luminosity) that
+contain terms up to 𝒪((𝑣/𝑐)𝑛 ) beyond the Newtonian quadrupole formula as the (𝑛/2)PN formulae. Evaluation of gravitational waves emitted to infinity from a compact binary system has
+been successfully carried out to the 3.5 post-Newtonian (PN) order beyond the lowest Newtonian
+quadrupole formula in the BDI approach [12, 7, 18, 19, 15, 16, 11]. Up to now, the WW approach
+gives the same answer for the gravitational waveforms and luminosity to 2PN order.
+The computation of the 3.5PN flux requires the 3PN equations of motion. As mentioned in
+the above, the 3PN equations of motion have been derived by three different methods. The first
+is the direct post-Newtonian iteration in the harmonic coordinates [14, 28, 10]. The second employs the Arnowitt–Deser–Misner (ADM) coordinates within the Hamiltonian formalism of general
+relativity [59, 60, 27]. The third is based on the Futamase–Schutz method [56, 54].
+Since the first two methods use the point particle approximation while the third one is not,
+let us first focus on the first two. In both methods, since the stars are represented by the Dirac
+delta functions, the divergent self-fields must be regularized. In earlier papers, they used the
+Hadamard regularization method [59, 60, 14, 28]. However, it turned out that there remains an
+unknown coefficient which cannot be determined within the regularization method. This problem
+was solved by Damour, Jaranowski and Schäfer [27] who successfully derived the 3PN equations of
+motion without undetermined numerical coefficients by using the dimensional regularization within
+an ADM Hamiltonian approach. Then the 3PN equations of motion in the harmonic coordinates
+were also derived without undetermined coefficients by using a combination of the Hadamard
+regularization and the dimensional regularization in [10]. The 3.5PN radiation reaction terms in
+the equations of motion are also derived in both approaches [76, 62]. See reviews by Blanchet [8, 9]
+for details and summaries on post-Newtonian approaches.
+In the case of Futamase–Schutz method, as mentioned in the beginning of this subsection, the
+3PN equations of motion is derived by Itoh and Futamase [56, 54], and the 3.5PN terms are derived
+by Itoh [55]. See a review article by Futamase and Itoh [43] for details on this method.
+There are other methods in which stars are treated as fluid balls [51, 63, 80, 81]. Pati and
+Will [80, 81] use an method which is an extension of the WW approach in which the retarded
+integral is evaluated directly. With these method, the 2PN equations of motion as well as 2.5PN
+and 3.5PN radiation reaction effects are derived.
+
+1.3
+
+Linear perturbation theory of black holes
+
+In the black hole perturbation approach, we deal with gravitational waves from a particle of mass
+𝜇 orbiting a black hole of mass 𝑀 , assuming 𝜇 ≪ 𝑀 . The perturbation of a black hole spacetime
+is evaluated to linear order in 𝜇/𝑀 . The equations are essentially in the form of Equation (2)
+BH
+with 𝜂𝜇𝜈 replaced by the background black hole metric 𝑔𝜇𝜈
+and the higher order terms Λ(ℎ)𝜇𝜈
+neglected. Thus, apart from the assumption 𝜇 ≪ 𝑀 , the black hole perturbation approach is not
+restricted to slow-motion sources, nor to small deviations from the Minkowski spacetime, and the
+Green function used to integrate the Einstein equations contains the whole curved spacetime effect
+of the background geometry.
+The black hole perturbation theory was originally developed as a metric perturbation theory.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+8
+
+Misao Sasaki and Hideyuki Tagoshi
+
+For non-rotating (Schwarzschild) black holes, a single master equation for the metric perturbation
+was derived by Regge and Wheeler [87] for the so-called odd parity part, and later by Zerilli [112]
+for the even parity part. These equations have the nice property that they reduce to the standard
+Klein–Gordon wave equation in the flat-space limit. However, no such equation has been found in
+the case of a Kerr black hole so far.
+Then, based on the Newman–Penrose null-tetrad formalism, in which the tetrad components
+of the curvature tensor are the fundamental variables, a master equation for the curvature perturbation was first developed by Bardeen and Press [6] for a Schwarzschild black hole without source
+(𝑇 𝜇𝜈 = 0), and by Teukolsky [106] for a Kerr black hole with source (𝑇 𝜇𝜈 ̸= 0). The master
+equation is called the Teukolsky equation, and it is a wave equation for a null-tetrad component
+of the Weyl tensor 𝜓0 or 𝜓4 . In the source-free case, Chrzanowski [23] and Wald [110] developed
+a method to construct the metric perturbation from the curvature perturbation.
+The Teukolsky equation has, however, a rather complicated structure as a wave equation. Even
+in the flat-space limit, it does not reduce to the standard Klein–Gordon form. Later, Chandrasekhar
+showed that the Teukolsky equation can be transformed to the form of the Regge–Wheeler or Zerilli
+equation for the source-free Schwarzschild case [21]. A generalization of this to the Kerr case
+with source was done by Sasaki and Nakamura [92, 93]. They gave a transformation that brings
+the Teukolsky equation to a Regge–Wheeler type equation that reduces to the Regge–Wheeler
+equation in the Schwarzschild limit. It may be noted that the Sasaki–Nakamura equation contains
+an imaginary part, suggesting that either it is unrelated to a (yet-to-be-found) master equation
+for the metric perturbation for the Kerr geometry or implying the non-existence of such a master
+equation.
+As mentioned above, an important difference between the black-hole perturbation approach
+and the conventional post-Newtonian approach appears in the structure of the Green function
+used to integrate the wave equations. In the black-hole perturbation approach, the Green function
+takes account of the curved spacetime effect on the wave propagation, which implies complexity
+of its structure in contrast to the flat-space Green function. Thus, since the system is linear in
+the black-hole perturbation approach, the most non-trivial task is the construction of the Green
+function.
+There are many papers that deal with a numerical evaluation of the Green function and calculations of gravitational waves induced by a particle. See Breuer [20], Chandrasekhar [22], and
+Nakamura, Oohara, and Kojima [72] for reviews and for references on earlier papers.
+Here, we are interested in an analytical evaluation of the Green function. One way is to adopt
+the post-Minkowski expansion assuming 𝐺𝑀/𝑐2 ≪ 𝑟. Note that, for bound orbits, the condition
+𝐺𝑀/𝑐2 ≪ 𝑟 is equivalent to the condition for the post-Newtonian expansion, 𝑣 2 /𝑐2 ≪ 1. If we
+can calculate the Green function to a sufficiently high order in this expansion, we may be able to
+obtain a rather accurate approximation of it that can be applicable to a relativistic orbit fairly
+close to the horizon, possibly to a radius as small as the inner-most stable circular orbit (ISCO),
+which is given by 𝑟ISCO = 6𝐺𝑀/𝑐2 in the case of a Schwarzschild black hole.
+It turns out that this is indeed possible. Though there arise some complications as one goes
+to higher PN orders, they are relatively easy to handle as compared to situations one encounters
+in the conventional post-Newtonian approaches. Thus, very interesting relativistic effects such
+as tails of gravitational waves can be investigated easily. Further, we can also easily investigate
+convergence properties of the post-Newtonian expansion by comparing a numerically calculated
+exact result with the corresponding analytic but approximate result. In this sense, the analytic
+black-hole perturbation approach can provide an important test of the post-Newtonian expansion.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+1.4
+
+9
+
+Brief historical notes
+
+Let us briefly review some of the past work on post-Newtonian calculations in black-hole perturbation theory. Although the literature on numerical calculations of gravitational waves emitted
+by a particle orbiting a black hole is abundant, there are not so many papers that deal with the
+post-Newtonian expansion of gravitational waves, mainly because such an analysis was not necessary until recently, when the construction of accurate theoretical templates for the interferometric
+gravitational wave detectors became an urgent issue.
+In the case of orbits in the Schwarzschild background, one of the earliest papers was by Gal’tsov,
+Matiukhin and Petukhov [47], who considered the case when a particle is in a slightly eccentric
+orbit around a Schwarzschild black hole, and calculated the gravitational waves up to 1PN order. Poisson [83] considered a circular orbit around a Schwarzschild black hole and calculated the
+waveforms and luminosity to 1.5PN order at which the tail effect appears. Cutler, Finn, Poisson,
+and Sussman [24] worked on the same problem numerically by applying the least-square fitting
+technique to the numerically evaluated data for the luminosity, and obtained a post-Newtonian
+formula for the luminosity to 2.5PN order. Subsequently, a highly accurate numerical calculation
+was carried out by Tagoshi and Nakamura [99]. They obtained the formulae for the luminosity to
+4PN order numerically by using the least-square fitting method. They found the log 𝑣 terms in
+the luminosity formula at 3PN and 4PN orders. They concluded that, although the convergence
+of the post-Newtonian expansion is slow, the luminosity formula accurate to 3.5PN order will be
+good enough to represent the orbital phase evolution of coalescing compact binaries in theoretical
+templates for ground-based interferometers. After that, Sasaki [91] found an analytic method and
+obtained formulae that were needed to calculate the gravitational waves to 4PN order. Then,
+Tagoshi and Sasaki [100] obtained the gravitational waveforms and luminosity to 4PN order analytically, and confirmed the results of Tagoshi and Nakamura. These calculations were extended
+to 5.5PN order by Tanaka, Tagoshi, and Sasaki [105]. Fujita and Iyer [39] extended this work and
+derived 5.5PN waveforms.
+In the case of orbits around a Kerr black hole, Poisson calculated the 1.5PN order corrections
+to the waveforms and luminosity due to the rotation of the black hole, and showed that the result
+agrees with the standard post-Newtonian effect due to spin-orbit coupling [84]. Then, Shibata,
+Sasaki, Tagoshi, and Tanaka [94] calculated the luminosity to 2.5PN order. They calculated the
+luminosity from a particle in circular orbit with small inclination from the equatorial plane. They
+used the Sasaki–Nakamura equation as well as the Teukolsky equation. This analysis was extended
+to 4PN order by Tagoshi, Shibata, Tanaka, and Sasaki [101], in which the orbits of the test particles
+were restricted to circular ones on the equatorial plane. The analysis in the case of slightly eccentric
+orbit on the equatorial plane was also done by Tagoshi [95, 96] to 2.5PN order.
+Tanaka, Mino, Sasaki, and Shibata [104] considered the case when a spinning particle is in a
+circular orbit near the equatorial plane of a Kerr black hole, based on the Papapetrou equations
+of motion for a spinning particle [79] and the energy momentum tensor of a spinning particle by
+Dixon [29]. They derived the luminosity formula to 2.5PN order which includes the linear order
+effect of the particle’s spin.
+The absorption of gravitational waves into the black hole horizon, appearing at 4PN order in
+the Schwarzschild case, was calculated by Poisson and Sasaki for a particle in a circular orbit [85].
+The black hole absorption in the case of a rotating black hole appears at 2.5PN order [46]. Using
+a new analytic method to solve the homogeneous Teukolsky equation found by Mano, Suzuki, and
+Takasugi [68], the black hole absorption in the Kerr case was calculated by Tagoshi, Mano, and
+Takasugi [98] to 6.5PN order beyond the quadrupole formula.
+If gravity is not described by the Einstein theory but by the Brans–Dicke theory, there will
+appear scalar-type gravitational waves as well as transverse-traceless gravitational waves. Such
+scalar-type gravitational waves were calculated to 2.5PN order by Ohashi, Tagoshi, and Sasaki [77]
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+10
+
+Misao Sasaki and Hideyuki Tagoshi
+
+in the case when a compact star is in a circular orbit on the equatorial plane around a Kerr black
+hole.
+In the above works the energy and angular momentum flux at infinity or the absorption rate
+at the horizon were evaluated. In the Kerr case, in order to specify the evolution of particle’s
+trajectory under the influence of radiation reaction, we need to determine the rate of change of
+the Carter constant which is not directly related to the asymptotic gravitational waves. Mino [70]
+proved that the average rate of change of the Carter constant can be evaluated by using the
+radiative field (i.e., retarded minus advanced field) in the adiabatic approximation. An explicit
+calculation of the rate of change of the Carter constant was done in the case of a scalar charged
+particle in [30]. Sago et al. [90] extended Mino’s work and found a simpler formula for the average
+rate of change of the Carter constant. They derived analytically the rate of change of the Carter
+constant as well as the energy and the angular momentum of a particle for orbits with small
+eccentricities and inclinations up to 𝑂(𝑣 5 ) [89]. In Ref. [48], the method was extended to the case
+of the orbits with small eccentricity but arbitrary inclination angle, and the rate of change of the
+energy, angular momentum and the Carter constant up to 𝑂(𝑣 5 ) were derived.
+In the rest of the paper, we use the units 𝑐 = 𝐺 = 1.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+2
+
+Basic Formulae for the Black Hole Perturbation
+
+2.1
+
+Teukolsky formalism
+
+11
+
+In terms of the conventional Boyer–Lindquist coordinates, the metric of a Kerr black hole is
+expressed as
+]︀2
+Δ
+sin2 𝜃 [︀ 2
+(𝑑𝑡 − 𝑎 sin2 𝜃 𝑑𝜙)2 +
+(𝑟 + 𝑎2 )𝑑𝜙 − 𝑎 𝑑𝑡
+Σ
+Σ
+Σ 2
+2
++ 𝑑𝑟 + Σ𝑑𝜃 ,
+Δ
+
+𝑑𝑠2 = −
+
+(3)
+
+where Σ = 𝑟2 + 𝑎2 cos2 𝜃 and Δ = 𝑟2 − 2𝑀 𝑟 + 𝑎2 . In the Teukolsky formalism [106], the
+gravitational perturbations of a Kerr black hole are described by a Newman–Penrose quantity
+𝜓4 = −𝐶𝛼𝛽𝛾𝛿 𝑛𝛼 𝑚
+¯ 𝛽 𝑛𝛾 𝑚
+¯ 𝛿 [74, 75], where 𝐶𝛼𝛽𝛾𝛿 is the Weyl tensor and
+1
+((𝑟2 + 𝑎2 ), −Δ, 0, 𝑎),
+2Σ
+1
+𝑚𝛼 = √
+(𝑖𝑎 sin 𝜃, 0, 1, 𝑖/ sin 𝜃).
+2(𝑟 + 𝑖𝑎 cos 𝜃)
+𝑛𝛼 =
+
+(4)
+(5)
+
+The perturbation equation for 𝜑 ≡ 𝜌−4 𝜓4 , 𝜌 = (𝑟 − 𝑖𝑎 cos 𝜃)−1 , is given by
+^
+
+𝑠 𝒪𝜑 = 4𝜋Σ𝑇 .
+
+Here, the operator 𝑠 𝒪 is given by
+(︂ 2
+)︂
+(︂ 2
+)︂
+(𝑟 + 𝑎2 )2
+4𝑀 𝑎𝑟
+𝑎
+1
+2
+2
+2
+𝒪
+=
+−
+−
+𝑎
+sin
+𝜃
+𝜕
+−
+𝜕
+𝜕
+−
+−
+𝜕𝜑2
+𝑠
+𝑡 𝜑
+𝑡
+Δ
+Δ
+Δ
+sin2 𝜃
+(︂
+)︂
+𝑎(𝑟 − 𝑀 ) 𝑖 cos 𝜃
+1
+𝜕𝜃 (sin 𝜃𝜕𝜃 ) + 2𝑠
++
+𝜕𝜑
++Δ−𝑠 𝜕𝑟 (Δ𝑠+1 𝜕𝑟 ) +
+sin 𝜃
+Δ
+sin2 𝜃
+)︂
+(︂
+𝑀 (𝑟2 − 𝑎2 )
+− 𝑟 − 𝑖𝑎 cos 𝜃 𝜕𝑡 − 𝑠(𝑠 cot2 𝜃 − 1),
++2𝑠
+Δ
+
+(6)
+
+(7)
+
+with 𝑠 = −2. The source term 𝑇^ is given by
+′
+𝑇^ = 2(𝐵2′ + 𝐵2* ),
+1
+^ −1 [𝜌−4 𝐿
+^ 0 (𝜌−2 𝜌−1 𝑇𝑛𝑛 )]
+𝐵2′ = − 𝜌8 𝜌𝐿
+2
+1
+^ −1 [𝜌−4 𝜌2 𝐽^+ (𝜌−2 𝜌−2 Δ−1 𝑇𝑚𝑛 )],
+− √ 𝜌8 𝜌Δ2 𝐿
+2 2
+1
+𝐵2′* = − 𝜌8 𝜌Δ2 𝐽^+ [𝜌−4 𝐽^+ (𝜌−2 𝜌𝑇𝑚𝑚 )]
+4
+1
+^ −1 (𝜌−2 𝜌−2 𝑇𝑚𝑛 )],
+− √ 𝜌8 𝜌Δ2 𝐽^+ [𝜌−4 𝜌2 Δ−1 𝐿
+2 2
+
+(8)
+
+(9)
+
+(10)
+
+where
+𝑖
+𝜕𝜙 − 𝑖𝑎 sin 𝜃𝜕𝑡 + 𝑠 cot 𝜃,
+sin 𝜃
+)︀
+1 (︀ 2
+𝐽^+ = 𝜕𝑟 −
+(𝑟 + 𝑎2 )𝜕𝑡 + 𝑎𝜕𝜙 ,
+Δ
+^ 𝑠 = 𝜕𝜃 −
+𝐿
+
+(11)
+(12)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+12
+
+Misao Sasaki and Hideyuki Tagoshi
+
+and 𝑇𝑛𝑛 , 𝑇𝑚𝑛 , and 𝑇𝑚𝑚 are the tetrad components of the energy momentum tensor (𝑇𝑛𝑛 =
+𝑇𝜇𝜈 𝑛𝜇 𝑛𝜈 etc.). The bar denotes the complex conjugation.
+If we set 𝑠 = 2 in Equation (6), with appropriate change of the source term, it becomes the
+perturbation equation for 𝜓0 . Moreover, it describes the perturbation for a scalar field (𝑠 = 0), a
+neutrino field (|𝑠| = 1/2), and an electromagnetic field (|𝑠| = 1) as well.
+We decompose 𝜓4 into the Fourier-harmonic components according to
+∑︁ 1 ∫︁
+√
+𝑑𝜔𝑒−𝑖𝜔𝑡+𝑖𝑚𝜙 −2 𝑆ℓ𝑚 (𝜃)𝑅ℓ𝑚𝜔 (𝑟).
+(13)
+𝜌−4 𝜓4 =
+2𝜋
+ℓ𝑚
+The radial function 𝑅ℓ𝑚𝜔 and the angular function 𝑠 𝑆ℓ𝑚 (𝜃) satisfy the Teukolsky equations with
+𝑠 = −2 as
+(︂
+)︂
+𝑑
+1 𝑑𝑅ℓ𝑚𝜔
+Δ2
+− 𝑉 (𝑟)𝑅ℓ𝑚𝜔 = 𝑇ℓ𝑚𝜔 ,
+(14)
+𝑑𝑟 Δ 𝑑𝑟
+[︃
+(︂
+)︂
+1 𝑑
+𝑑
+(𝑚 − 2 cos 𝜃)2
+sin 𝜃
+− 𝑎2 𝜔 2 sin2 𝜃 −
+sin 𝜃 𝑑𝜃
+𝑑𝜃
+sin2 𝜃
+]︃
++4𝑎𝜔 cos 𝜃 − 2 + 2𝑚𝑎𝜔 + 𝜆 −2 𝑆ℓ𝑚 = 0.
+
+(15)
+
+𝐾 2 + 4𝑖(𝑟 − 𝑀 )𝐾
++ 8𝑖𝜔𝑟 + 𝜆,
+Δ
+
+(16)
+
+The potential 𝑉 (𝑟) is given by
+𝑉 (𝑟) = −
+
+𝑎𝜔
+where 𝜆 is the eigenvalue of −2 𝑆ℓ𝑚
+and 𝐾 = (𝑟2 + 𝑎2 )𝜔 − 𝑚𝑎. The angular function 𝑠 𝑆ℓ𝑚 (𝜃) is
+called the spin-weighted spheroidal harmonic, which is usually normalized as
+∫︁ 𝜋
+|−2 𝑆ℓ𝑚 |2 sin 𝜃𝑑𝜃 = 1.
+(17)
+0
+
+In the Schwarzschild limit, it reduces to the spin-weighted spherical harmonic with 𝜆 → ℓ(ℓ + 1).
+In the Kerr case, however, no analytic formula for 𝜆 is known. The source term 𝑇ℓ𝑚𝜔 is given by
+∫︁
+𝑎𝜔
+−2 𝑆
+𝑇ℓ𝑚𝜔 = 4 𝑑Ω𝑑𝑡𝜌−5 𝜌−1 (𝐵2′ + 𝐵2′* )𝑒−𝑖𝑚𝜙+𝑖𝜔𝑡 √ ℓ𝑚 ,
+(18)
+2𝜋
+We mention that for orbits of our interest, which are bounded, 𝑇ℓ𝑚𝜔 has support only in a compact
+range of 𝑟.
+We solve the radial Teukolsky equation by using the Green function method. For this purpose,
+we define two kinds of homogeneous solutions of the radial Teukolsky equation:
+{︃ trans 2 −𝑖𝑘𝑟*
+for 𝑟 → 𝑟+
+𝐵ℓ𝑚𝜔 Δ 𝑒
+in
+(19)
+𝑅ℓ𝑚𝜔 →
+3 ref
+𝑖𝜔𝑟 *
+−1 inc −𝑖𝜔𝑟 *
+𝑟 𝐵ℓ𝑚𝜔 𝑒
++ 𝑟 𝐵ℓ𝑚𝜔 𝑒
+for 𝑟 → +∞,
+{︃ up 𝑖𝑘𝑟*
+*
+ref
+𝐶ℓ𝑚𝜔 𝑒
++ Δ2 𝐶ℓ𝑚𝜔
+𝑒−𝑖𝑘𝑟
+for 𝑟 → 𝑟+ ,
+up
+𝑅ℓ𝑚𝜔 →
+(20)
+trans 3 𝑖𝜔𝑟 *
+𝐶ℓ𝑚𝜔 𝑟 𝑒
+for 𝑟 → +∞,
+where 𝑘 = 𝜔 − 𝑚𝑎/2𝑀 𝑟+ , and 𝑟* is the tortoise coordinate defined by
+∫︁
+𝑑𝑟*
+*
+𝑟 =
+𝑑𝑟
+𝑑𝑟
+2𝑀 𝑟+
+𝑟 − 𝑟+
+2𝑀 𝑟−
+𝑟 − 𝑟−
+=𝑟+
+ln
+−
+ln
+,
+𝑟+ − 𝑟−
+2𝑀
+𝑟+ − 𝑟−
+2𝑀
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(21)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+13
+
+√
+where 𝑟± = 𝑀 ± 𝑀 2 − 𝑎2 , and where we have fixed the integration constant.
+in
+Combining with the Fourier mode 𝑒−𝑖𝜔𝑡 , we see that 𝑅ℓ𝑚𝜔
+has no outcoming wave from past
+up
+horizon, while 𝑅 has no incoming wave at past infinity. Since these are the properties of waves
+causally generated by a source, a solution of the Teukolsky equation which has purely outgoing
+property at infinity and has purely ingoing property at the horizon is given by
+)︃
+(︃
+∫︁ ∞
+∫︁ 𝑟
+1
+up
+up
+in
+in
+𝑑𝑟′ 𝑅ℓ𝑚𝜔 𝑇ℓ𝑚𝜔 Δ−2 ,
+(22)
+𝑑𝑟′ 𝑅ℓ𝑚𝜔
+𝑇ℓ𝑚𝜔 Δ−2 + 𝑅ℓ𝑚𝜔
+𝑅ℓ𝑚𝜔
+𝑅ℓ𝑚𝜔 =
+𝑊ℓ𝑚𝜔
+𝑟
+𝑟+
+where the Wronskian 𝑊ℓ𝑚𝜔 is given by
+trans inc
+𝑊ℓ𝑚𝜔 = 2𝑖𝜔𝐶ℓ𝑚𝜔
+𝐵ℓ𝑚𝜔 .
+
+(23)
+
+Then, the asymptotic behavior at the horizon is
+*
+
+𝐵 trans Δ2 𝑒−𝑖𝑘𝑟
+𝑅ℓ𝑚𝜔 (𝑟 → 𝑟+ ) → ℓ𝑚𝜔 trans inc
+2𝑖𝜔𝐶ℓ𝑚𝜔 𝐵ℓ𝑚𝜔
+
+∫︁ ∞
+𝑟+
+
+*
+up
+H
+𝑑𝑟′ 𝑅ℓ𝑚𝜔
+Δ2 𝑒−𝑖𝑘𝑟 ,
+𝑇ℓ𝑚𝜔 Δ−2 ≡ 𝑍˜ℓ𝑚𝜔
+
+(24)
+
+in
+*
+𝑇ℓ𝑚𝜔 (𝑟′ )𝑅ℓ𝑚𝜔
+(𝑟′ )
+∞
+≡ 𝑍˜ℓ𝑚𝜔
+𝑟3 𝑒𝑖𝜔𝑟 .
+Δ2 (𝑟′ )
+
+(25)
+
+while the asymptotic behavior at infinity is
+*
+
+𝑟3 𝑒𝑖𝜔𝑟
+𝑅ℓ𝑚𝜔 (𝑟 → ∞) →
+inc
+2𝑖𝜔𝐵ℓ𝑚𝜔
+
+∫︁ ∞
+𝑟+
+
+𝑑𝑟′
+
+We note that the homogeneous Teukolsky equation is invariant under the complex conjugation
+¯ in,up = 𝑅in,up , where
+followed by the transformation 𝑚 → −𝑚 and 𝜔 → −𝜔. Thus, we can set 𝑅
+ℓ𝑚𝜔
+ℓ−𝑚−𝜔
+the bar denotes the complex conjugation.
+We consider 𝑇𝜇𝜈 of a monopole particle of mass 𝜇. The energy momentum tensor takes the
+form
+𝑑𝑧 𝜇 𝑑𝑧 𝜈
+𝜇
+𝛿(𝑟 − 𝑟(𝑡))𝛿(𝜃 − 𝜃(𝑡))𝛿(𝜙 − 𝜙(𝑡)),
+(26)
+𝑇 𝜇𝜈 =
+Σ sin 𝜃𝑑𝑡/𝑑𝜏 𝑑𝜏 𝑑𝜏
+(︀
+)︀
+where 𝑧 𝜇 = 𝑡, 𝑟(𝑡), 𝜃(𝑡), 𝜙(𝑡) is a geodesic trajectory, and 𝜏 = 𝜏 (𝑡) is the proper time along the
+geodesic. The geodesic equations in the Kerr geometry are given by
+[︃
+(︃
+)︃]︃1/2
+^𝑙2
+𝑑𝜃
+𝑧
+2
+2
+2
+^
+^
+Σ
+= ± 𝐶 − cos 𝜃 𝑎 (1 − ℰ ) +
+≡ Θ(𝜃),
+𝑑𝜏
+sin2 𝜃
+(︃
+)︃
+)︁
+^𝑙𝑧
+𝑑𝜙
+𝑎 (︁ ^ 2
+= − 𝑎ℰ^ −
+ℰ(𝑟 + 𝑎2 ) − 𝑎^𝑙𝑧 ≡ Φ,
+Σ
++
+2
+𝑑𝜏
+Δ
+sin 𝜃
+(︃
+)︃
+2
+2 (︁
+^𝑙𝑧 )︁
+𝑑𝑡
+𝑟
++
+𝑎
+2
+2
+2
+^ + 𝑎 ) − 𝑎^𝑙𝑧 ≡ 𝑇,
+Σ
+= − 𝑎ℰ^ −
+𝑎 sin 𝜃 +
+ℰ(𝑟
+𝑑𝜏
+Δ
+sin2 𝜃
+√
+𝑑𝑟
+Σ
+= ± 𝑅,
+𝑑𝜏
+
+(27)
+
+^ 2 + 𝑎2 ) − 𝑎^𝑙𝑧 ]2 − Δ[(ℰ𝑎
+^ − ^𝑙𝑧 )2 + 𝑟2 + 𝐶].
+^
+𝑅 = [ℰ(𝑟
+
+(28)
+
+where
+^ ^𝑙𝑧 , and 𝐶^ are the energy, the 𝑧-component of the angular momentum, and the Carter
+and ℰ,
+constant of a test particle, respectively. These constants of motion are those measured in units of
+^ 𝑙𝑧 = 𝜇^𝑙𝑧 , and 𝐶 = 𝜇2 𝐶.
+^
+𝜇. That is, if expressed in the standard units, they become ℰ = 𝜇ℰ,
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+14
+
+Misao Sasaki and Hideyuki Tagoshi
+
+Using Equation (27), the tetrad components of the energy momentum tensor are expressed as
+𝐶𝑛𝑛
+𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡)) 𝛿(𝜙 − 𝜙(𝑡)),
+sin 𝜃
+𝐶𝑚𝑛
+𝑇𝑚𝑛 = 𝜇
+𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡)) 𝛿(𝜙 − 𝜙(𝑡)),
+sin 𝜃
+𝐶𝑚𝑚
+𝑇𝑚𝑚 = 𝜇
+𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡)) 𝛿(𝜙 − 𝜙(𝑡)),
+sin 𝜃
+𝑇𝑛𝑛 = 𝜇
+
+(29)
+
+where
+[︂
+]︂2
+1
+^ 2 + 𝑎2 ) − 𝑎^𝑙𝑧 + Σ 𝑑𝑟 ,
+ℰ(𝑟
+𝑑𝜏
+4Σ3 𝑡˙
+(︃
+]︃
+)︃
+[︂
+]︂ [︃
+^𝑙𝑧
+𝑑𝑟
+𝜌
+𝑑𝜃
+2
+2
+^
+^
+^
+ℰ(𝑟 + 𝑎 ) − 𝑎𝑙𝑧 + Σ
+𝑖 sin 𝜃 𝑎ℰ −
+,
+𝐶𝑚𝑛 = − √
++Σ
+𝑑𝜏
+𝑑𝜏
+sin2 𝜃
+2 2Σ2 𝑡˙
+[︃
+(︃
+)︃
+]︃2
+^𝑙𝑧
+𝜌2
+𝑑𝜃
+^
+𝐶𝑚𝑚 =
+𝑖 sin 𝜃 𝑎ℰ −
++Σ
+,
+𝑑𝜏
+2Σ𝑡˙
+sin2 𝜃
+𝐶𝑛𝑛 =
+
+(30)
+(31)
+
+(32)
+
+and 𝑡˙ = 𝑑𝑡/𝑑𝜏 . Substituting Equation (10) into Equation (18) and performing integration by part,
+we obtain
+∫︁ ∞ ∫︁
+4𝜇
+𝑑𝑡 𝑑𝜃𝑒𝑖𝜔𝑡−𝑖𝑚𝜙(𝑡)
+𝑇ℓ𝑚𝜔 = √
+2𝜋 −∞
+{︃
+)︁
+1 (︁
+× − 𝐿†1 𝜌−4 𝐿†2 (𝜌3 𝑆) 𝐶𝑛𝑛 𝜌−2 𝜌−1 𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡))
+2
+]︂
+[︂
+)︁
+Δ2 𝜌2 (︁ †
+𝐶𝑚𝑛
++ √
+𝐿2 𝑆 + 𝑖𝑎(𝜌 − 𝜌) sin 𝜃𝑆 𝐽+ 2 2 𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡))
+𝜌 𝜌 Δ
+2𝜌
+)︀
+1 † (︀ 3
++ √ 𝐿2 𝜌 𝑆(𝜌2 𝜌−4 ),𝑟 𝐶𝑚𝑛 Δ𝜌−2 𝜌−2 𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡))
+2 2
+}︃
+[︀ −4 (︀ −2
+)︀]︀
+1 3 2
+− 𝜌 Δ 𝑆𝐽+ 𝜌 𝐽+ 𝜌𝜌 𝐶𝑚𝑚 𝛿(𝑟 − 𝑟(𝑡)) 𝛿(𝜃 − 𝜃(𝑡))
+,
+(33)
+4
+where
+𝑚
++ 𝑎𝜔 sin 𝜃 + 𝑠 cot 𝜃,
+sin 𝜃
+𝐽+ = 𝜕𝑟 + 𝑖𝐾/Δ,
+𝐿†𝑠 = 𝜕𝜃 −
+
+(34)
+(35)
+
+𝑎𝜔
+and 𝑆 denotes −2 𝑆ℓ𝑚
+(𝜃) for simplicity.
+For a source bounded in a finite range of 𝑟, it is convenient to rewrite Equation (33) further as
+∫︁ ∞
+{︁
+𝑇ℓ𝑚𝜔 = 𝜇
+𝑑𝑡𝑒𝑖𝜔𝑡−𝑖𝑚𝜙(𝑡) Δ2 (𝐴𝑛𝑛0 + 𝐴𝑚𝑛0 + 𝐴𝑚𝑚0 ) 𝛿(𝑟 − 𝑟(𝑡))
+−∞
+
++ [(𝐴𝑚𝑛1 + 𝐴𝑚𝑚1 ) 𝛿(𝑟 − 𝑟(𝑡))],𝑟
+}︁
++ [𝐴𝑚𝑚2 𝛿(𝑟 − 𝑟(𝑡))],𝑟𝑟 ,
+
+(36)
+
+where
+𝐴𝑛𝑛0 = √
+
+−2
+𝜌−2 𝜌−1 𝐶𝑛𝑛 𝐿†1 [𝜌−4 𝐿†2 (𝜌3 𝑆)],
+2𝜋Δ2
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(37)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+15
+
+[︂(︁
+)︂
+]︂
+)︁ (︂ 𝑖𝐾
+2
+𝐾
+†
+−3
+𝐴𝑚𝑛0 = √
++ 𝜌 + 𝜌 − 𝑎 sin 𝜃𝑆 (𝜌 − 𝜌) ,
+𝜌 𝐶𝑚𝑛 𝐿2 𝑆
+Δ
+Δ
+𝜋Δ
+[︃ (︂ )︂
+]︃
+𝐾
+1
+𝐾
+𝐾2
+𝐴𝑚𝑚0 = − √ 𝜌−3 𝜌 𝐶𝑚𝑚 𝑆 −𝑖
+,
+− 2 + 2𝑖𝜌
+Δ ,𝑟 Δ
+Δ
+2𝜋
+
+(38)
+(39)
+
+2
+𝜌−3 𝐶𝑚𝑛 [𝐿†2 𝑆 + 𝑖𝑎 sin 𝜃(𝜌 − 𝜌)𝑆],
+𝜋Δ
+(︂
+)︂
+2 −3
+𝐾
+𝐴𝑚𝑚1 = − √ 𝜌 𝜌 𝐶𝑚𝑚 𝑆 𝑖 + 𝜌 ,
+Δ
+2𝜋
+1
+𝐴𝑚𝑚2 = − √ 𝜌−3 𝜌 𝐶𝑚𝑚 𝑆.
+2𝜋
+𝐴𝑚𝑛1 = √
+
+(40)
+(41)
+(42)
+
+Inserting Equation (36) into Equation (25), we obtain 𝑍˜ℓ𝑚𝜔 as
+𝑍˜ℓ𝑚𝜔 =
+
+∫︁ ∞
+
+𝜇
+inc
+2𝑖𝜔𝐵ℓ𝑚𝜔
+
+𝑑𝑡𝑒𝑖𝜔𝑡−𝑖𝑚𝜙(𝑡) 𝑊ℓ𝑚𝜔 ,
+
+(43)
+
+−∞
+
+where
+{︂
+𝑊ℓ𝑚𝜔 =
+
+in
+𝑅ℓ𝑚𝜔
+[𝐴𝑛𝑛0 + 𝐴𝑚𝑛0 + 𝐴𝑚𝑚0 ] −
+
+in
+in
+𝑑𝑅ℓ𝑚𝜔
+𝑑2 𝑅ℓ𝑚𝜔
+[𝐴𝑚𝑛1 + 𝐴𝑚𝑚1 ] +
+𝐴𝑚𝑚2
+𝑑𝑟
+𝑑𝑟2
+
+}︂
+. (44)
+𝑟=𝑟(𝑡)
+
+In this paper, we focus on orbits which are either circular (with or without inclination) or
+eccentric but confined on the equatorial plane. In either case, the frequency spectrum of 𝑇ℓ𝑚𝜔
+becomes discrete. Accordingly, 𝑍˜ℓ𝑚𝜔 in Equation (24) or (25) takes the form,
+𝑍˜ℓ𝑚𝜔 =
+
+∑︁
+
+𝛿(𝜔 − 𝜔𝑛 )𝑍ℓ𝑚𝜔 .
+
+(45)
+
+𝑛
+
+Then, in particular, 𝜓4 at 𝑟 → ∞ is obtained from Equation (13) as
+𝜓4 =
+
+𝑎𝜔𝑛
+*
+1 ∑︁
+−2 𝑆
+𝑍ℓ𝑚𝜔𝑛 √ ℓ𝑚 𝑒𝑖𝜔𝑛 (𝑟 −𝑡)+𝑖𝑚𝜙 .
+𝑟
+2𝜋
+
+(46)
+
+ℓ𝑚𝑛
+
+At infinity, 𝜓4 is related to the two independent modes of gravitational waves ℎ+ and ℎ× as
+𝜓4 =
+
+1
+(ℎ̈+ − 𝑖ℎ̈× ).
+2
+
+(47)
+
+From Equations (46) and (47), the luminosity averaged over 𝑡 ≫ Δ𝑡, where Δ𝑡 is the characteristic
+time scale of the orbital motion (e.g., a period between the two consecutive apastrons), is given by
+⟨
+
+𝑑𝐸
+𝑑𝑡
+
+⟩
+=
+
+⃒
+⃒2
+⃒
+⃒
+∑︁ ⃒𝑍ℓ𝑚𝜔𝑛 ⃒
+4𝜋𝜔𝑛2
+
+ℓ,𝑚,𝑛
+
+≡
+
+∑︁ (︁ 𝑑𝐸 )︁
+ℓ,𝑚,𝑛
+
+𝑑𝑡
+
+.
+
+(48)
+
+ℓ𝑚𝑛
+
+In the same way, the time-averaged angular momentum flux is given by
+⟨
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+⟩
+=
+
+∑︁ 𝑚 |𝑍ℓ𝑚𝜔 |2
+𝑛
+
+ℓ,𝑚,𝑛
+
+4𝜋𝜔𝑛3
+
+≡
+
+∑︁ (︂ 𝑑𝐽𝑧 )︂
+ℓ,𝑚,𝑛
+
+𝑑𝑡
+
+∑︁ 𝑚 (︂ 𝑑𝐸 )︂
+=
+.
+𝜔𝑛 𝑑𝑡 ℓ𝑚𝑛
+ℓ𝑚𝑛
+
+(49)
+
+ℓ,𝑚,𝑛
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+16
+
+2.2
+
+Misao Sasaki and Hideyuki Tagoshi
+
+Chandrasekhar–Sasaki–Nakamura transformation
+
+As seen from the asymptotic behaviors of the radial functions given in Equations (24) and (25), the
+Teukolsky equation is not in the form of a canonical wave equation near the horizon and infinity.
+Therefore, it is desirable to find a transformation that brings the radial Teukolsky equation into
+the form of a standard wave equation.
+In the Schwarzschild case, Chandrasekhar found that the Teukolsky equation can be transformed to the Regge–Wheeler equation, which has the standard form of a wave equation with
+solutions having regular asymptotic behaviors at horizon and infinity [21]. The Regge–Wheeler
+equation was originally derived as an equation governing the odd parity metric perturbation [87].
+The existence of this transformation implies that the Regge–Wheeler equation can describe the
+even parity metric perturbation simultaneously, though the explicit relation of the Regge–Wheeler
+function obtained by the Chandrasekhar transformation with the actual metric perturbation variables has not been given in the literature yet.
+Later, Sasaki and Nakamura succeeded in generalizing the Chandrasekhar transformation to the
+Kerr case [92, 93]. The Chandrasekhar–Sasaki–Nakamura transformation was originally introduced
+to make the potential in the radial equation short-ranged, and to make the source term well-behaved
+at the horizon and at infinity. Since we are interested only in bound orbits, it is not necessary
+to perform this transformation. Nevertheless, because its flat-space limit reduces to the standard
+radial wave equation in the Minkowski spacetime, it is convenient to apply the transformation when
+dealing with the post-Minkowski or post-Newtonian expansion, at least at low orders of expansion.
+We transform the homogeneous Teukolsky equation to the Sasaki–Nakamura equation [92, 93],
+which is given by
+)︂
+(︂ 2
+𝑑
+𝑑
+− 𝐹 (𝑟) * − 𝑈 (𝑟) 𝑋ℓ𝑚𝜔 = 0.
+(50)
+𝑑𝑟*2
+𝑑𝑟
+The function 𝐹 (𝑟) is given by
+𝜂,𝑟 Δ
+,
+𝜂 𝑟2 + 𝑎2
+
+(51)
+
+𝑐1
+𝑐2
+𝑐3
+𝑐4
++ 2 + 3 + 4,
+𝑟
+𝑟
+𝑟
+𝑟
+
+(52)
+
+𝐹 (𝑟) =
+where
+𝜂 = 𝑐0 +
+with
+
+𝑐0 = −12𝑖𝜔𝑀 + 𝜆(𝜆 + 2) − 12𝑎𝜔(𝑎𝜔 − 𝑚),
+𝑐1 = 8𝑖𝑎[3𝑎𝜔 − 𝜆(𝑎𝜔 − 𝑚)],
+𝑐2 = −24𝑖𝑎𝑀 (𝑎𝜔 − 𝑚) + 12𝑎2 [1 − 2(𝑎𝜔 − 𝑚)2 ],
+3
+
+(53)
+
+2
+
+𝑐3 = 24𝑖𝑎 (𝑎𝜔 − 𝑚) − 24𝑀 𝑎 ,
+𝑐4 = 12𝑎4 .
+The function 𝑈 (𝑟) is given by
+𝑈 (𝑟) =
+
+Δ𝑈1
+Δ𝐺,𝑟
++ 𝐺2 + 2
+− 𝐹 𝐺,
+(𝑟2 + 𝑎2 )2
+𝑟 + 𝑎2
+
+(54)
+
+where
+𝑟Δ
+2(𝑟 − 𝑀 )
++ 2
+,
+𝑟2 + 𝑎2
+(𝑟 + 𝑎2 )2
+[︃(︂
+)︂
+(︂
+)︂]︃
+Δ2
+𝛽,𝑟
+𝜂,𝑟
+𝛽,𝑟
+𝑈1 = 𝑉 +
+2𝛼 +
+−
+𝛼+
+,
+𝛽
+Δ ,𝑟
+𝜂
+Δ
+𝐺=−
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(55)
+(56)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+𝐾𝛽
+6Δ
++ 3𝑖𝐾,𝑟 + 𝜆 + 2 ,
+2
+Δ
+𝑟 )︂
+(︂
+2Δ
+𝛽 = 2Δ −𝑖𝐾 + 𝑟 − 𝑀 −
+.
+𝑟
+
+𝛼 = −𝑖
+
+The relation between 𝑅ℓ𝑚𝜔 and 𝑋ℓ𝑚𝜔 is
+[︂(︂
+)︂
+]︂
+1
+𝛽,𝑟
+𝛽
+𝑅ℓ𝑚𝜔 =
+𝛼+
+𝜒ℓ𝑚𝜔 − 𝜒ℓ𝑚𝜔,𝑟 ,
+𝜂
+Δ
+Δ
+where 𝜒ℓ𝑚𝜔 = 𝑋ℓ𝑚𝜔 Δ/(𝑟2 + 𝑎2 )1/2 . Conversely, we can express 𝑋ℓ𝑚𝜔 in terms of 𝑅ℓ𝑚𝜔 as
+)︂
+(︂
+1
+𝑅
+𝑋ℓ𝑚𝜔 = (𝑟2 + 𝑎2 )1/2 𝑟2 𝐽− 𝐽−
+ℓ𝑚𝜔 ,
+𝑟2
+
+17
+
+(57)
+(58)
+
+(59)
+
+(60)
+
+where 𝐽− = (𝑑/𝑑𝑟) − 𝑖(𝐾/Δ).
+If we set 𝑎 = 0, this transformation reduces to the Chandrasekhar transformation for the
+Schwarzschild black hole [21]. The explicit form of the transformation is
+)︂ 2 (︂
+)︂
+(︂
+Δ
+𝑟
+𝑑
+𝑑
++ 𝑖𝜔
++ 𝑖𝜔 𝑟𝑋ℓ𝑚𝜔 ,
+(61)
+𝑅ℓ𝑚𝜔 =
+𝑐0 𝑑𝑟*
+Δ 𝑑𝑟*
+(︂
+)︂
+(︂
+)︂
+𝑟5
+𝑑
+𝑟2
+𝑑
+𝑅ℓ𝑚𝜔
+𝑋ℓ𝑚𝜔 =
+−
+𝑖𝜔
++ 𝑖𝜔
+,
+(62)
+Δ 𝑑𝑟*
+Δ 𝑑𝑟*
+𝑟2
+where 𝑐0 , defined in Equation (53), reduces to 𝑐0 = (ℓ − 1)ℓ(ℓ + 1)(ℓ + 2) − 12𝑖𝑀 𝜔. In this case, the
+Sasaki–Nakamura equation (50) reduces to the Regge–Wheeler equation [87], which is given by
+)︂
+(︂ 2
+𝑑
+2
++ 𝜔 − 𝑉 (𝑟) 𝑋ℓ𝜔 (𝑟) = 0,
+(63)
+𝑑𝑟*2
+where
+
+(︂
+)︂ (︂
+)︂
+2𝑀
+ℓ(ℓ + 1) 6𝑀
+𝑉 (𝑟) = 1 −
+− 3 .
+𝑟
+𝑟2
+𝑟
+
+(64)
+
+As is clear from the above form of the equation, the lowest order solutions are given by the spherical
+Bessel functions. Hence it is intuitively straightforward to apply the post-Newtonian expansion to
+it. Some useful techniques for the post-Newtonian expansion were developed for the Schwarzschild
+case by Poisson [83] and Sasaki [91].
+The asymptotic behavior of the ingoing wave solution 𝑋 in which corresponds to Equation (19)
+is
+{︃ ref 𝑖𝜔𝑟*
+−𝑖𝜔𝑟 *
+for 𝑟* → ∞,
+𝐴ℓ𝑚𝜔 𝑒
++ 𝐴inc
+ℓ𝑚𝜔 𝑒
+in
+(65)
+𝑋ℓ𝑚𝜔 →
+*
+−𝑖𝑘𝑟
+𝐴trans
+for 𝑟* → −∞.
+ℓ𝑚𝜔 𝑒
+The coefficients 𝐴inc , 𝐴ref , and 𝐴trans are related to 𝐵 inc , 𝐵 ref , and 𝐵 trans , defined in Equation (19),
+by
+1 inc
+𝐴
+,
+4𝜔 2 ℓ𝑚𝜔
+4𝜔 2 ref
+ref
+𝐵ℓ𝑚𝜔
+=−
+𝐴
+,
+𝑐0 ℓ𝑚𝜔
+1
+trans
+𝐵ℓ𝑚𝜔
+𝐴trans ,
+=
+𝑑ℓ𝑚𝜔 ℓ𝑚𝜔
+inc
+𝐵ℓ𝑚𝜔
+=−
+
+(66)
+(67)
+(68)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+18
+
+Misao Sasaki and Hideyuki Tagoshi
+
+where
+𝑑ℓ𝑚𝜔 =
+
+√︀
+
+[︀
+2
+2𝑀 𝑟+ (8 − 24𝑖𝑀 𝜔 − 16𝑀 2 𝜔 2 )𝑟+
++(12𝑖𝑎𝑚 − 16𝑀 + 16𝑎𝑚𝑀 𝜔 + 24𝑖𝑀 2 𝜔)𝑟+
+]︀
+−4𝑎2 𝑚2 − 12𝑖𝑎𝑚𝑀 + 8𝑀 2 .
+
+(69)
+
+In the following sections, we present a method of post-Newtonian expansion based on the above formalism in the case of the Schwarzschild background. In the Kerr case, although a post-Newtonian
+expansion method developed in previous work [94, 101] was based on the Sasaki–Nakamura equation, we will not present it in this paper. Instead, we present a different formalism, namely the
+one developed by Mano, Suzuki, and Takasugi which allows us to solve the Teukolsky equation in
+a more systematic manner, albeit very mathematical [68]. The reason is that the equations in the
+Kerr case are already complicated enough even if one uses the Sasaki–Nakamura equation, so that
+there is not much advantage in using it. In contrast, in the Schwarzschild case, it is much easier to
+obtain physical insight into the role of relativistic corrections if we deal with the Regge–Wheeler
+equation.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+3
+
+19
+
+Post-Newtonian Expansion of the Regge–Wheeler Equation
+
+In this section, we review a post-Newtonian expansion method for the Schwarzschild background,
+based on the Regge–Wheeler equation. We focus on the gravitational waves emitted to infinity,
+but not on those absorbed by the black hole. The black hole absorption is deferred to Section 4,
+in which we review the Mano–Suzuki–Takasugi method for solving the Teukolsky equation.
+Since we are interested in the waves emitted to infinity, as seen from Equation (25), what we
+in
+need is a method to evaluate the ingoing wave Teukolsky function 𝑅ℓ𝑚𝜔
+, or its counterpart in the
+in
+Regge–Wheeler equation, 𝑋ℓ𝑚𝜔
+, which are related by Equation (59). In addition, we assume 𝜔 > 0
+whenever it is necessary throughout this section. Formulae and equations for 𝜔 < 0 are obtained
+¯ in = 𝑋 in
+from the symmetry 𝑋
+ℓ𝑚𝜔
+ℓ−𝑚−𝜔 .
+
+3.1
+
+Basic assumptions
+
+We consider the case of a test particle with mass 𝜇 in a nearly circular orbit around a black hole
+with mass 𝑀 ≫ 𝜇. For a nearly circular orbit, say at 𝑟 ∼ 𝑟0 , what we need to know is the behavior
+in
+in
+of 𝑅ℓ𝑚𝜔
+at 𝑟 ∼ 𝑟0 . In addition, the contribution of 𝜔 to 𝑅ℓ𝑚𝜔
+comes mainly from 𝜔 ∼ 𝑚Ω𝜙 , where
+3 1/2
+Ω𝜙 ∼ (𝑀/𝑟0 )
+is the orbital angular frequency.
+Thus, if we express the Regge–Wheeler equation (63) in terms of a non-dimensional variable 𝑧 ≡
+in
+𝜔𝑟, with a non-dimensional parameter 𝜖 ≡ 2𝑀 𝜔, we are interested in the behavior of 𝑋ℓ𝑚𝜔
+(𝑧) at
+1/2
+3/2
+3
+1/2
+𝑧 ∼ 𝜔𝑟0 ∼ 𝑚(𝑀/𝑟0 )
+∼ 𝑣 with 𝜖 ∼ 2𝑚(𝑀/𝑟0 )
+∼ 𝑣 , where 𝑣 ≡ (𝑀/𝑟0 )
+is the characteristic
+orbital velocity. The post-Newtonian expansion assumes that 𝑣 is much smaller than the velocity
+of light: 𝑣 ≪ 1. Consequently, we have 𝜖 ≪ 𝑣 ≪ 1 in the post-Newtonian expansion.
+in
+To obtain 𝑋ℓ𝑚𝜔
+(which we denote below by 𝑋ℓ for simplicity) under these assumptions, we
+find it convenient to rewrite the Regge–Wheeler equation in an alternative form. It is
+(︂
+]︂
+)︂]︂
+[︂
+[︂ 2
+)︀
+ℓ(ℓ + 1)
+2 𝑑
+1 𝑑 (︀ 𝑖𝑧 2
+𝑑
+−𝑖𝑧 𝑑
++ 1−
+𝑒 𝑧 𝜉ℓ (𝑧) ,
+(70)
++
+𝜉ℓ (𝑧) = 𝜖𝑒
+𝑑𝑧 2
+𝑧 𝑑𝑧
+𝑧2
+𝑑𝑧 𝑧 3 𝑑𝑧
+where 𝜉ℓ is a function related to 𝑋ℓ as
+𝑋ℓ = 𝑧𝑒−𝑖𝜖 ln(𝑧−𝜖) 𝜉ℓ .
+The ingoing wave boundary condition of 𝜉ℓ is derived from Equations (65) and (71) as
+{︃ inc 𝑖𝜖 ln 𝜖 −1 −𝑖𝑧
+−𝑖𝜖 ln 𝜖 −1 𝑖(𝑧+2𝜖 ln 𝑧)
+𝐴ℓ 𝑒
+𝑧 𝑒
++ 𝐴ref
+𝑧 𝑒
+for 𝑟* → ∞,
+ℓ 𝑒
+𝜉ℓ →
+𝐴trans
+𝜖−1 𝑒𝑖𝜖(ln 𝜖−1)
+for 𝑟* → −∞.
+ℓ
+
+(71)
+
+(72)
+
+The above form of the Regge–Wheeler equation is used in Sections 3.2, 3.3, 3.4, and 3.5.
+It should be noted that if we reinstate the gravitational constant 𝐺, we have 𝜖 = 2𝐺𝑀 𝜔.
+Thus, the expansion in terms of 𝜖 corresponds to the post-Minkowski expansion, and expanding
+the Regge–Wheeler equation with the assumption 𝜖 ≪ 1 gives a set of iterative wave equations
+on the flat spacetime background. One of the most significant differences between the black hole
+perturbation theory and any theory based on the flat spacetime background is the presence of the
+black hole horizon in the former case. Thus, if we naively expand the Regge–Wheeler equation
+with respect to 𝜖, the horizon boundary condition becomes unclear, since there is no horizon on the
+flat spacetime. To establish the boundary condition at the horizon, we need to treat the Regge–
+Wheeler equation near the horizon separately. We thus have to find a solution near the horizon,
+and the solution obtained by the post-Minkowski expansion must be matched with it in the region
+where both solutions are valid.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+20
+
+Misao Sasaki and Hideyuki Tagoshi
+
+It may be of interest to note the difference between the matching used in the BDI approach
+for the post-Newtonian expansion [7, 12] and the matching used here. In the BDI approach,
+the matching is done between the post-Minkowskian metric and the near-zone post-Newtonian
+metric. In our case, the matching is done between the post-Minkowskian gravitational field and
+the gravitational field near the black hole horizon.
+
+3.2
+
+Horizon solution; 𝑧 ≪ 1
+
+In this section, we first consider the solution near the horizon, which we call the horizon solution,
+based on [85]. To do so, we assume 𝑧 ≪ 1 and treat 𝜖 as a small number, but leave the ratio 𝑧/𝜖
+arbitrary. We change the independent variable to 𝑥 = 1 − 𝑧/𝜖 and the wave function to
+𝑍=
+
+(︁ 𝜖 )︁3
+𝑧
+
+(︁ 𝜖 )︁2
+𝑋ℓ
+𝜖 𝜉ℓ
+.
+=
+trans
+𝐴trans
+𝑧
+𝐴ℓ 𝑒𝑖𝜖(ln 𝜖−1)
+ℓ
+
+Note that the horizon corresponds to 𝑥 = 0. We then have
+[︀
+]︀
+[︀
+]︀
+𝑥(𝑥 − 1)𝑍 ′′ + 2(3 − 𝑖𝜖)𝑥 − (1 − 2𝑖𝜖) 𝑍 ′ + 6 − ℓ(ℓ + 1) − 5𝑖𝜖 + 𝜖2 (2 − 3𝑥 + 𝑥2 ) 𝑍 = 0,
+
+(73)
+
+(74)
+
+where a prime denotes differentiation with respect to 𝑥. We look for a solution which is regular at
+𝑥 = 0.
+First, we consider the lowest order solution by setting 𝜖 = 0 in Equation (74). The boundary
+condition (72) requires that 𝑍 = 1 at 𝑥 = 0. The solution that satisfies the boundary condition is
+𝑍=
+
+ℓ−2
+∑︁
+(2 − ℓ)𝑛 (ℓ + 3)𝑛
+𝑛=0
+
+𝑛!
+
+𝑥𝑛 ,
+
+(𝑎)𝑛 =
+
+Γ(𝑎 + 𝑛)
+.
+Γ(𝑎)
+
+(75)
+
+Thus, the lowest order solution is a polynomial of order ℓ − 2 in 𝑥 = 1 − 𝑧/𝜖.
+Next, we consider the solution accurate to 𝒪(𝜖). We neglect the terms of 𝒪(𝜖2 ) in Equation (74).
+Then, the wave equation takes the form of a hypergeometric equation,
+[︀
+]︀
+𝑥(𝑥 − 1)𝑍 ′′ + (𝑎 + 𝑏 + 1)𝑥 − 𝑐 𝑍 ′ + 𝑎𝑏𝑍 = 0,
+(76)
+with parameters
+𝑎 = −(ℓ − 2) − 𝑖𝜖 + 𝒪(𝜖2 ),
+𝑏 = ℓ + 3 − 𝑖𝜖 + 𝒪(𝜖2 ),
+𝑐 = 1 − 2𝑖𝜖.
+
+(77)
+
+The two linearly independent solutions are 𝐹 (𝑎, 𝑏; 𝑐; 𝑥) and 𝑥1−𝑐 𝐹 (𝑎+1−𝑐, 𝑏+1−𝑐; 2−𝑐; 𝑥), where
+𝐹 is the hypergeometric function. However, only the first solution is regular at 𝑥 = 0. Therefore,
+we obtain
+(︁ )︁2 (︁
+𝑧 )︁
+−1 𝑖𝜖(ln 𝜖−1) 𝑧
+𝜉ℓ (𝑧) = 𝐴trans
+𝜖
+𝑒
+𝐹
+𝑎,
+𝑏;
+𝑐;
+1
+−
+.
+(78)
+ℓ
+𝜖
+𝜖
+The above solution must be matched with the solution obtained from the post-Minkowski
+expansion of Equation (70), which we call the outer solution, in a region where both solutions are
+valid. It is the region where the post-Newtonian expansion is applied, i.e., the region 𝜖 ≪ 𝑧 ≪ 1.
+For this purpose, we rewrite Equation (78) as (see, e.g., Equation (15.3.8) of [1])
+[︂(︁ )︁
+𝜖 )︁
+𝑧 ℓ+𝑖𝜖 Γ(𝑐)Γ(𝑏 − 𝑎) (︁
+−1 𝑖𝜖(ln 𝜖−1)
+𝜉ℓ = 𝐴trans
+𝜖
+𝑒
+𝐹
+𝑎,
+𝑐
+−
+𝑏;
+𝑎
+−
+𝑏
++
+1;
+ℓ
+𝜖
+Γ(𝑏)Γ(𝑐 − 𝑎)
+𝑧
+]︂
+(︁ 𝑧 )︁−ℓ−1+𝑖𝜖 Γ(𝑐)Γ(𝑎 − 𝑏) (︁
+𝜖 )︁
++
+𝐹 𝑏, 𝑐 − 𝑎; 𝑏 − 𝑎 + 1;
+.
+(79)
+𝜖
+Γ(𝑎)Γ(𝑐 − 𝑏)
+𝑧
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+21
+
+This naturally allows the expansion in 𝜖/𝑧. It should be noted that the second term in the square
+brackets of the above expression is meaningless as it is, since the factor Γ(𝑎 − 𝑏) diverges for integer
+ℓ. So, when evaluating the second term, we first have to extend ℓ to a non-integer number. Then,
+only after expanding it in terms of 𝜖, we should take the limit of an integer ℓ. One then finds
+that this procedure gives rise to an additional factor of 𝒪(𝜖). For 𝜖/𝑧 ≪ 1, it therefore becomes
+𝒪(𝜖2ℓ+2 ) higher in 𝜖 than the first term. Then, we obtain
+[︂
+]︂
+(ℓ − 2)(ℓ + 2) 𝜖
+𝑧ℓ
+(2ℓ)!
+2
+1
++
+𝑖𝜖(𝑎
++
+ln
+𝑧)
+−
++
+𝒪(𝜖
+𝜉ℓ (𝜖 ≪ 𝑧 ≪ 1) =
+)
+,
+(80)
+ℓ
+(ℓ − 2)!(ℓ + 2)! 𝜖ℓ+1
+2ℓ
+𝑧
+where
+𝑎ℓ = 2𝛾 + 𝜓(ℓ − 1) + 𝜓(ℓ + 3) − 1,
+
+(81)
+
+and 𝜓(𝑛) is the digamma function,
+𝜓(𝑛) = −𝛾 +
+
+𝑛−1
+∑︁
+
+𝑘 −1 ,
+
+(82)
+
+𝑘=1
+
+and 𝛾 ≃ 0.57721 is the Euler constant.
+As we will see below, the above solution is accurate enough to determine the boundary condition
+of the outer solution up to the 6PN order of expansion.
+
+3.3
+
+Outer solution; 𝜖 ≪ 1
+
+We now solve Equation (70) in the limit 𝜖 ≪ 1, i.e., by applying the post-Minkowski expansion to
+it. In this section, we consider the solution to 𝒪(𝜖). Then we match the solution to the horizon
+solution given by Equation (80) at 𝜖 ≪ 𝑧 ≪ 1.
+By setting
+∞
+∑︁
+(𝑛)
+𝜖𝑛 𝜉ℓ (𝑧),
+(83)
+𝜉ℓ (𝑧) =
+𝑛=0
+(𝑛)
+each 𝜉ℓ (𝑧) is found to satisfy
+
+[︂
+
+(︂
+)︂]︂
+[︂
+]︂
+2 𝑑
+ℓ(ℓ + 1)
+1 𝑑 (︁ 𝑖𝑧 2 (𝑛−1) )︁
+𝑑2
+(𝑛)
+−𝑖𝑧 𝑑
++
++ 1−
+𝜉ℓ = 𝑒
+𝑒 𝑧 𝜉ℓ
+(𝑧) .
+𝑑𝑧 2
+𝑧 𝑑𝑧
+𝑧2
+𝑑𝑧 𝑧 3 𝑑𝑧
+
+(84)
+
+Equation (84) is an inhomogeneous spherical Bessel equation. It is the simplicity of this equation
+that motivated the introduction of the auxiliary function 𝜉ℓ [91].
+(0)
+The zeroth-order solution 𝜉ℓ satisfies the homogeneous spherical Bessel equation, and must
+be a linear combination of the spherical Bessel functions of the first and second kinds, 𝑗ℓ (𝑧) and
+𝑛ℓ (𝑧). Here, we demand the compatibility with the horizon solution (80). Since 𝑗ℓ (𝑧) ∼ 𝑧 ℓ and
+𝑛ℓ (𝑧) ∼ 𝑧 −ℓ−1 , 𝑛ℓ (𝑧) does not match with the horizon solution at the leading order of 𝜖. Therefore,
+we have
+(0)
+(0)
+𝜉ℓ (𝑧) = 𝛼ℓ 𝑗ℓ (𝑧).
+(85)
+(0)
+
+The constant 𝛼ℓ represents the overall normalization of the solution. Since it can be chosen
+(0)
+arbitrarily, we set 𝛼ℓ = 1 below.
+(1)
+The procedure to obtain 𝜉ℓ (𝑧) was described in detail in [91]. Using the Green function
+′
+𝐺(𝑧, 𝑧 ) = 𝑗ℓ (𝑧< )𝑛ℓ (𝑧> ), Equation (84) may be put into an indefinite integral form,
+]︂′
+[︂
+]︂′
+[︂
+∫︁ 𝑧
+∫︁ 𝑧
+1
+1
+(𝑛)
+(𝑛−1)
+(𝑛−1)
+𝜉ℓ = 𝑛ℓ
+𝑑𝑧𝑧 2 𝑒−𝑖𝑧 𝑗ℓ 3 (𝑒𝑖𝑧 𝑧 2 𝜉ℓ
+(𝑧))′ − 𝑗ℓ
+𝑑𝑧𝑧 2 𝑒−𝑖𝑧 𝑛ℓ 3 (𝑒𝑖𝑧 𝑧 2 𝜉ℓ
+(𝑧))′ . (86)
+𝑧
+𝑧
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+22
+
+Misao Sasaki and Hideyuki Tagoshi
+
+(𝑛)
+
+The calculation is tedious but straightforward. All the necessary formulae to obtain 𝜉ℓ for 𝑛 ≤ 2
+are given in the Appendix of [91] or Appendix D of [71]. Using those formulae, for 𝑛 = 1 we have
+(1)
+
+𝜉ℓ
+
+(1)
+
+(1)
+
+= 𝛼ℓ 𝑗ℓ + 𝛽ℓ 𝑛ℓ
+(︂ 2
+)︂
+ℓ −4
+2ℓ − 1
+(ℓ − 1)(ℓ + 3)
+𝑗ℓ+1 −
++
+𝑗ℓ−1
+2(ℓ + 1)(2ℓ + 1)
+2ℓ(2ℓ + 1) ℓ(ℓ − 1)
+)︂
+ℓ−2 (︂
+∑︁
+1
+1
++𝑅ℓ,0 𝑗0 +
++
+𝑅ℓ,𝑚 𝑗𝑚 − 2𝐷ℓ𝑛𝑗 + 𝑖𝑗ℓ ln 𝑧.
+𝑚
+𝑚
++
+1
+𝑚=1
++
+
+(87)
+
+Here, 𝐷ℓ𝑛𝑗 and 𝑅ℓ,𝑚 are functions defined as follows. The function 𝐷ℓ𝑛𝑗 is given by
+1
+[𝑗ℓ Si(2𝑧) − 𝑛ℓ (Ci(2𝑧) − 𝛾 − ln 2𝑧)] ,
+(88)
+2
+∫︀ ∞
+∫︀ 𝑥
+where Ci(𝑥) = − 𝑥 𝑑𝑡 cos 𝑡/𝑡 and Si(𝑥) = 0 𝑑𝑡 sin 𝑡/𝑡. The function 𝑅𝑚,𝑘 is defined by 𝑅𝑚,𝑘 =
+𝑧 2 (𝑛𝑚 𝑗𝑘 − 𝑗𝑚 𝑛𝑘 ). It is a polynomial in inverse powers of 𝑧 given by
+𝐷ℓ𝑛𝑗 =
+
+𝑅𝑚,𝑘 =
+
+⎧
+⎪
+⎪
+⎨
+
+1
+2 (𝑚−𝑘−1)
+
+−
+
+∑︁
+𝑟=0
+
+⎪
+⎪
+⎩
+
+(︀
+)︀ (︂ )︂𝑚−𝑘−1−2𝑟
+Γ(𝑚 − 𝑘 − 𝑟)Γ 𝑚 + 12 − 𝑟
+2
+(︀
+)︀
+(−1)
+𝑧
+𝑟! Γ(𝑚 − 𝑘 − 2𝑟)Γ 𝑘 + 23 + 𝑟
+𝑟
+
+−𝑅𝑘,𝑚
+
+for 𝑚 > 𝑘,
+
+(89)
+
+for 𝑚 < 𝑘.
+
+Here, we again perform the matching with the horizon solution (80). It should be noted that
+(1)
+(1)
+𝜉ℓ , given by Equation (87), is regular in the limit 𝑧 → 0 except for the term 𝛽ℓ 𝑛ℓ . By examining
+(1)
+the asymptotic behavior of Equation (87) at 𝑧 ≪ 1, we find 𝛽ℓ = 0, i.e., the solution is regular
+(1)
+(0)
+(1)
+at 𝑧 = 0. As for 𝛼ℓ , it only contributes to the renormalization of 𝛼ℓ . Hence, we set 𝛼ℓ = 0
+and the transmission amplitude 𝐴trans
+is determined to 𝒪(𝜖) as
+ℓ
+𝐴trans
+=
+ℓ
+
+(ℓ − 2)!(ℓ + 2)! ℓ+1
+𝜖 [1 − 𝑖𝜖 𝑎ℓ + 𝒪(𝜖2 )].
+(2ℓ)!(2ℓ + 1)!
+
+(90)
+
+It may be noted that this explicit expression for 𝐴trans
+is unnecessary for the evaluation of graviℓ
+tational waves at infinity. It is relevant only for the evaluation of the black hole absorption.
+
+3.4
+
+More on the inner boundary condition of the outer solution
+
+In this section, we discuss the inner boundary condition of the outer solution in more detail. As
+we have seen in Section 3.3, the boundary condition on 𝜉ℓ is that it is regular at 𝑧 → 0, at least to
+𝒪(𝜖), while in the full non-linear level, the horizon boundary is at 𝑧 = 𝜖. We therefore investigate
+to what order in 𝜖 the condition of regularity at 𝑧 = 0 can be applied.
+Let us consider the general form of the horizon solution. With 𝑥 = 1 − 𝑧/𝜖, it is expanded in
+the form
+{0}
+{1}
+{2}
+𝜉ℓ = 𝜉ℓ (𝑥) + 𝜖 𝜉ℓ (𝑥) + 𝜖2 𝜉ℓ (𝑥) + . . .
+(91)
+{0}
+
+The lowest order solution 𝜉ℓ (𝑥) is given by the polynomial (75). Apart from the common overall
+factor, it is schematically expressed as
+[︃
+(︂ )︂ℓ−2 ]︃
+(︁ 𝑧 )︁ℓ
+𝜖
+𝜖
+{0}
+1 + 𝑐1 + . . . + 𝑐ℓ−2
+.
+(92)
+𝜉ℓ =
+𝜖
+𝑧
+𝑧
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+{0}
+
+23
+
+{0}
+
+Thus, 𝜉ℓ does not have a term matched with 𝑛ℓ , but it matches with 𝑗ℓ . We have 𝜉ℓ =
+{1}
+𝑧 ℓ 𝜖−ℓ ∼ 𝜖−ℓ 𝑗ℓ . A term that matches with 𝑛ℓ first appears in 𝜉ℓ . This can be seen from the
+horizon solution valid to 𝒪(𝜖), Equation (79). The second term in the square brackets of it
+produces a term 𝜖 (𝑧/𝜖)−ℓ−1 = 𝜖ℓ+2 𝑧 −ℓ−1 ∼ 𝜖ℓ+2 𝑛ℓ . This term therefore becomes 𝒪(𝜖2ℓ+2 /𝑧 2ℓ+1 )
+higher than the lowest order term 𝜖−ℓ 𝑗ℓ . Since ℓ ≥ 2, this effect first appears at 𝒪(𝜖6 ) in the
+post-Minkowski expansion, while it first appears at 𝒪(𝑣 13 ) in the post-Newtonian expansion if
+we note that 𝜖 = 𝒪(𝑣 3 ) and 𝑧 = 𝒪(𝑣). This implies, in particular, that if we are interested in
+the gravitational waves emitted to infinity, we may simply impose the regularity at 𝑧 = 0 as the
+inner boundary condition of the outer solution for the calculation up to 6PN order beyond the
+quadrupole formula.
+The above fact that a non-trivial boundary condition due to the presence of the black hole
+horizon appears at 𝒪(𝜖2ℓ+2 ) in the post-Minkowski expansion can be more easily seen as follows.
+*
+Since 𝑗ℓ = 𝒪(𝑧 ℓ ) as 𝑧 → 0, we have 𝑋ℓ → 𝒪(𝜖ℓ+1 )𝑒−𝑖𝑧 , or 𝐴trans
+= 𝒪(𝜖ℓ+1 ), where 𝑧 * =
+ℓ
+𝑧 + 𝜖 ln(𝑧 − 𝜖). On the other hand, from the asymptotic behavior of 𝑗ℓ at 𝑧 = ∞, the coefficients
+𝐴inc
+and 𝐴ref
+ℓ
+ℓ must be of order unity. Then, using the Wronskian argument, we find
+ref
+|𝐴inc
+ℓ | − |𝐴ℓ | =
+
+|2
+|𝐴trans
+ℓ
+= 𝒪(𝜖2ℓ+2 ).
+inc
+|𝐴ℓ | + |𝐴ref
+|
+ℓ
+
+(93)
+
+Thus, we immediately see that a non-trivial boundary condition appears at 𝒪(𝜖2ℓ+2 ).
+It is also useful to keep in mind the above fact when we solve for 𝜉ℓ under the post-Minkowski
+expansion. It implies that we may choose a phase such that 𝐴inc
+and 𝐴ref
+ℓ
+ℓ are complex conjugate
+2ℓ+1
+to each other, to 𝒪(𝜖
+). With this choice, the imaginary part of 𝑋ℓ , which reflects the boundary
+condition at the horizon, does not appear until 𝒪(𝜖2ℓ+2 ) because the Regge–Wheeler equation is
+(𝑛)
+real. Then, recalling the relation of 𝜉ℓ to 𝑋ℓ , Equation (71), Im (𝜉ℓ ) for a given 𝑛 ≤ 2ℓ + 1 is
+(𝑟)
+completely determined in terms of Re (𝜉ℓ ) for 𝑟 ≤ 𝑛 − 1. That is, we may focus on solving only
+the real part of Equation (84).
+
+3.5
+
+Structure of the ingoing wave function to 𝒪(𝜖2 )
+
+With the boundary condition discussed in Section 2, we can integrate the ingoing wave Regge–
+Wheeler function iteratively to higher orders of 𝜖 in the post-Minkowskian expansion, 𝜖 ≪ 1. This
+was carried out in [91] to 𝒪(𝜖2 ) and in [105] to 𝒪(𝜖3 ) (See [71] for details). Here, we do not
+recapitulate the details of the calculation since it is already quite involved at 𝒪(𝜖2 ), with much
+less space for physical intuition. Instead, we describe the general properties of the ingoing wave
+function to 𝒪(𝜖2 ).
+As discussed in Section 2, the ingoing wave Regge–Wheeler function 𝑋ℓ can be made real up
+to 𝒪(𝜖2ℓ+1 ), or to 𝒪(𝜖5 ) of the post-Minkowski expansion, if we recall ℓ ≥ 2. Choosing the phase
+(𝑛)
+of 𝑋ℓ in this way, let us explicitly write down the expressions of Im(𝜉ℓ ) (𝑛 = 1, 2) in terms of
+(𝑚)
+(𝑛)
+Re(𝜉ℓ ) (𝑚 ≤ 𝑛 − 1). We decompose the real and imaginary parts of 𝜉ℓ as
+(𝑛)
+
+𝜉ℓ
+
+(𝑛)
+
+= 𝑓ℓ
+
+(𝑛)
+
++ 𝑖𝑔ℓ .
+
+(94)
+
+Inserting this expression into Equation (71), and expanding the result with respect to 𝜖 (and noting
+(0)
+(0)
+𝑓ℓ = 𝑗ℓ and 𝑔ℓ = 0), we find
+[︁
+(︁
+)︁
+(︁
+)︁
+]︁
+(1)
+(1)
+(2)
+(2)
+𝑋ℓ = 𝑒−𝑖𝜖 ln(𝑧−𝜖) 𝑧 𝑗ℓ + 𝜖 𝑓ℓ + 𝑖𝑔ℓ
++ 𝜖2 𝑓ℓ + 𝑖𝑔ℓ
++ ...
+[︂
+(︂
+)︂
+]︂
+1
+(1)
+(2)
+(1)
+= 𝑧 𝑗ℓ + 𝜖𝑓ℓ + 𝜖2 𝑓ℓ + 𝑔ℓ ln 𝑧 − 𝑗ℓ (ln 𝑧)2 + . . .
+2
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+24
+
+Misao Sasaki and Hideyuki Tagoshi
+
+[︂
++𝑖𝑧
+
+(1)
+𝜖(𝑔ℓ − 𝑗ℓ ln 𝑧) + 𝜖2
+
+(︂
+
+1
+(1)
+(2)
+𝑔ℓ + 𝑗ℓ − 𝑓ℓ ln 𝑧
+𝑧
+
+)︂
+
+]︂
++ ... .
+
+(95)
+
+...
+
+(96)
+
+Hence, we have
+1
+(1)
+= − 𝑗ℓ + 𝑓ℓ ln 𝑧,
+𝑧
+We thus have the post-Minkowski expansion of 𝑋ℓ as
+(1)
+
+𝑔ℓ
+
+𝑋ℓ =
+
+∞
+∑︁
+
+(𝑛)
+
+= 𝑗ℓ ln 𝑧,
+
+(0)
+
+𝜖𝑛 𝑋ℓ ,
+
+with 𝑋ℓ
+
+= 𝑧 𝑗ℓ ,
+
+(2)
+
+𝑔ℓ
+
+(1)
+
+𝑋ℓ
+
+(1)
+
+(2)
+
+= 𝑧𝑓ℓ ,
+
+𝑋ℓ
+
+𝑛=0
+
+)︂
+(︂
+1
+(2)
+= 𝑧 𝑓ℓ + 𝑗ℓ (ln 𝑧)2 ,
+2
+
+...
+
+(97)
+(1)
+(2)
+Now, let us consider the asymptotic behavior of 𝑋ℓ at 𝑧 ≪ 1. As we know that 𝜉ℓ and 𝜉ℓ
+are regular at 𝑧 = 0, it is readily obtained by simply assuming Taylor expansion forms for them
+(including possible ln 𝑧 terms), inserting them into Equation (84), and comparing the terms of the
+(𝑛)
+same order on both sides of the equation. We denote the right-hand side of Equation (84) by 𝑆ℓ .
+For 𝑛 = 1, we have
+(︂
+)︂
+1 ′′ 1 ′ 4 + 𝑧 2
+(1)
+𝑗ℓ + 𝑗ℓ −
+𝑗
+Re (𝑆ℓ ) =
+ℓ
+𝑧
+𝑧
+𝑧2
+{︂
+𝒪(𝑧)
+for ℓ = 2,
+=
+(98)
+𝒪(𝑧 ℓ−3 ) for ℓ ≥ 3.
+Inserting this into Equation (84) with 𝑛 = 1, we find
+{︂
+𝒪(𝑧 3 ) for ℓ = 2,
+(1)
+(1)
+Re (𝜉ℓ ) = 𝑓ℓ =
+𝒪(𝑧 ℓ−1 ) for ℓ ≥ 3.
+
+(99)
+
+Of course, this behavior is consistent with the full post-Minkowski solution given in Equation (87).
+For 𝑛 = 2, we then have
+)︂
+)︂
+(︂
+(︂
+1
+4 + 𝑧 2 (1)
+1
+1 (1)
+1 (1)
+(2)
+(1)
+(1) ′
+Re(𝑆ℓ ) =
+𝑓
+−
+𝑔
+𝑓ℓ ′′ + 𝑓ℓ ′ −
+2𝑔
++
+ℓ
+ℓ
+𝑧
+𝑧
+𝑧2
+𝑧
+𝑧 ℓ
+{︂
+𝒪(𝑧 ℓ−2 ) for ℓ = 2, 3,
+1
+1
+′
+= − (𝑗ℓ ln 𝑧) − 2 𝑗ℓ ln 𝑧 +
+(100)
+𝑧
+𝑧
+𝒪(𝑧 ℓ−4 ) for ℓ ≥ 4.
+This gives
+(2)
+
+(2)
+
+Re(𝜉ℓ ) = 𝑓ℓ
+
+{︂
+=
+
+𝒪(𝑧 ℓ ) + 𝒪(𝑧 ℓ ) ln 𝑧 − 12 𝑗ℓ (ln 𝑧)2 for ℓ = 2, 3,
+𝒪(𝑧 ℓ−2 ) + 𝒪(𝑧 ℓ ) ln 𝑧 − 21 𝑗ℓ (ln 𝑧)2 for ℓ ≥ 4.
+(1)
+
+(101)
+(2)
+
+Note that the ln 𝑧 terms in Equation (100) arising from 𝑔ℓ give the (ln 𝑧)2 term in 𝑓ℓ that just
+(2)
+cancels the 𝑗ℓ (ln 𝑧)2 /2 term of 𝑋ℓ in Equation (97).
+Inserting Equations (99) and (101) into the relevant expressions in Equation (97), we find
+{︀
+}︀
+𝑋2 = 𝑧 3 𝒪(1) + 𝜖𝒪(𝑧) + 𝜖2 [𝒪(1) + 𝒪(1) ln 𝑧] + . . . ,
+{︀
+}︀
+𝑋3 = 𝑧 3 𝒪(𝑧) + 𝜖𝒪(1) + 𝜖2 [𝒪(𝑧) + 𝒪(𝑧) ln 𝑧] + . . . ,
+(102)
+{︀
+[︀
+]︀
+}︀
+3
+ℓ−2
+ℓ−3
+2
+ℓ−4
+ℓ−2
+𝑋ℓ = 𝑧 𝒪(𝑧 ) + 𝜖𝒪(𝑧 ) + 𝜖 𝒪(𝑧 ) + 𝒪(𝑧 ) ln 𝑧 + . . .
+for ℓ ≥ 4.
+(𝑛)
+
+Note that, for ℓ = 2 and 3, the leading behavior of 𝑋ℓ at 𝑛 = ℓ − 1 is more regular than the
+naively expected behavior, ∼ 𝑧 ℓ+1−𝑛 , which propagates to the consecutive higher order terms in
+𝜖. This behavior seems to hold for general ℓ, but we do not know a physical explanation for it.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+25
+
+Given a post-Newtonian order to which we want to calculate, by setting 𝑧 = 𝒪(𝑣) and 𝜖 =
+(𝑛)
+𝒪(𝑣 3 ), the above asymptotic behaviors tell us the highest order of 𝑋ℓ we need. We also see the
+(2)
+presence of ln 𝑧 terms in 𝑋ℓ . The logarithmic terms appear as a consequence of the mathematical
+(𝑛)
+structure of the Regge–Wheeler equation at 𝑧 ≪ 1. The simple power series expansion of 𝑋ℓ in
+2
+terms of 𝑧 breaks down at 𝒪(𝜖 ), and we have to add logarithmic terms to obtain the solution.
+These logarithmic terms will give rise to ln 𝑣 terms in the wave-form and luminosity formulae at
+infinity, beginning at 𝒪(𝑣 6 ) [99, 100]. It is not easy to explain physically how these ln 𝑣 terms
+appear. But the above analysis suggests that the ln 𝑣 terms in the luminosity originate from some
+spatially local curvature effects in the near-zone.
+Now we turn to the asymptotic behavior at 𝑧 = ∞. For this purpose, let the asymptotic form
+(𝑛)
+of 𝑓ℓ be
+(𝑛)
+(𝑛)
+(𝑛)
+𝑓ℓ → 𝑃ℓ 𝑗ℓ + 𝑄ℓ 𝑛ℓ
+as 𝑧 → ∞.
+(103)
+*
+
+Noting Equation (97) and the equality 𝑒−𝑖𝜖 ln(𝑧−𝜖) = 𝑒−𝑖𝑧 𝑒𝑖𝑧 , the asymptotic form of 𝑋ℓ is expressed as
+*
+
+*
+
+−𝑖(𝑧 −𝜖 ln 𝜖)
+𝑖(𝑧 −𝜖 ln 𝜖)
+𝑋ℓ → 𝐴inc
++ 𝐴ref
+,
+ℓ 𝑒
+ℓ 𝑒
+{︂
+[︁
+(︁
+)︁]︁
+1
+(1)
+(1)
+𝐴inc
+= 𝑖ℓ+1 𝑒−𝑖𝜖 ln 𝜖 1 + 𝜖 𝑃ℓ + 𝑖 𝑄ℓ + ln 𝑧
+ℓ
+2
+}︂
+[︁(︁
+}︁
+(︁
+)︁]︁
+(2)
+(1)
+(2)
+(1)
++ 𝜖2 𝑃ℓ − 𝑄ℓ ln 𝑧 + 𝑖 𝑄ℓ + 𝑃ℓ ln 𝑧 + . . . .
+
+Note that
+
+(︂
+
+𝑟 − 2𝑀
+𝜔𝑟 = 𝜔 𝑟 + 2𝑀 ln
+2𝑀
+*
+
+)︂
+
+= 𝑧 * − 𝜖 ln 𝜖,
+
+(104)
+
+(105)
+
+(106)
+
+because of our definition of 𝑧 * , 𝑧 * = 𝑧 + 𝜖 + ln(𝑧 − 𝜖). The phase factor 𝑒−𝑖𝜖 ln 𝜖 of 𝐴inc
+originates
+ℓ
+from this definition, but it represents a physical phase shift due to wave propagation on the curved
+background.
+As one may immediately notice, the above expression for 𝐴inc
+contains ln 𝑧-dependent terms.
+ℓ
+(𝑛)
+(𝑛)
+inc
+Since 𝐴ℓ should be constant, 𝑃ℓ and 𝑄ℓ should contain appropriate ln 𝑧-dependent terms
+which exactly cancel the ln 𝑧-dependent terms in Equation (105). To be explicit, we must have
+(1)
+
+= 𝑝ℓ ,
+
+(1)
+
+= 𝑞ℓ − ln 𝑧,
+
+(2)
+
+= 𝑝ℓ + 𝑞ℓ ln 𝑧 − (ln 𝑧)2 ,
+
+(2)
+
+= 𝑞ℓ − 𝑝ℓ ln 𝑧,
+
+𝑃ℓ
+
+𝑄ℓ
+𝑃ℓ
+
+𝑄ℓ
+(𝑛)
+
+(1)
+
+(1)
+
+(2)
+
+(1)
+
+(2)
+
+(1)
+
+(107)
+
+(𝑛)
+
+where 𝑝ℓ and 𝑞ℓ are constants. These relations can be used to check the consistency of the
+(𝑛)
+(𝑛)
+solution 𝑓 (𝑛) obtained by integration. In terms of 𝑝ℓ and 𝑞ℓ , 𝐴inc
+is expressed as
+ℓ
+𝐴inc
+ℓ =
+
+(︁
+)︁
+(︁
+)︁
+]︁
+1 ℓ+1 −𝑖𝜖 ln 𝜖 [︁
+(1)
+(1)
+(2)
+(2)
+𝑖 𝑒
+1 + 𝜖 𝑝ℓ + 𝑖𝑞ℓ
++ 𝜖2 𝑝ℓ + 𝑖𝑞ℓ
++ ... .
+2
+
+(108)
+
+Note that the above form of 𝐴inc
+implies that the so-called tail of radiation, which is due to
+ℓ
+the curvature scattering of waves, will contain ln 𝑣 terms as phase shifts in the waveform, but will
+not give rise to such terms in the luminosity formula. This supports our previous argument on the
+origin of the ln 𝑣 terms in the luminosity. That is, it is not due to the wave propagation effect but
+due to some near-zone curvature effect.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+26
+
+Misao Sasaki and Hideyuki Tagoshi
+
+4
+
+Analytic Solutions of the Homogeneous Teukolsky Equation by Means of the Series Expansion of Special Functions
+
+In this section, we review a method developed by Mano, Suzuki, and Takasugi [68], who found
+analytic expressions of the solutions of the homogeneous Teukolsky equation. In this method, the
+exact solutions of the radial Teukolsky equation (14) are expressed in two kinds of series expansions.
+One is given by a series of hypergeometric functions and the other by a series of the Coulomb wave
+functions. The former is convergent at horizon and the latter at infinity. The matching of these
+two solutions is done exactly in the overlapping region of convergence. They also found that the
+series expansions are naturally related to the low frequency expansion. Properties of the analytic
+solutions were studied in detail in [69]. Thus, the formalism is quite powerful when dealing with
+the post-Newtonian expansion, especially at higher orders.
+In many cases, when we study the perturbation of a Kerr black hole, it is more convenient to
+use the Sasaki–Nakamura equation, since it has the form of a standard wave equation, similar to
+the Regge–Wheeler equation. However, it is not quite suited for investigating analytic properties
+of the solution near the horizon. In contrast, the Mano–Suzuki–Takasugi (MST) formalism allows
+us to investigate analytic properties of the solution near the horizon systematically. Hence, it can
+be used to compute the higher order post-Newtonian terms of the gravitational waves absorbed
+into a rotating black hole.
+We also note that this method is the only existing method that can be used to calculate the
+gravitational waves emitted to infinity to an arbitrarily high post-Newtonian order in principle.
+
+4.1
+
+Angular eigenvalue
+
+The solutions of the angular equation (15) that reduce to the spin-weighted spherical harmonics in
+the limit 𝑎𝜔 → 0 are called the spin-weighted spheroidal harmonics. They are the eigenfunctions
+of Equation (15), with 𝜆 being the eigenvalues. The eigenvalues 𝜆 are necessary for discussions of
+the radial Teukolsky equation. For general spin weight 𝑠, the spin weighted spheroidal harmonics
+obey
+[︂
+]︂
+}︂
+{︂
+𝑑
+(𝑚 + 𝑠 cos 𝜃)2
+1 𝑑
+sin 𝜃
+− 𝑎2 𝜔 2 sin2 𝜃 −
+−
+2𝑎𝜔𝑠
+cos
+𝜃
++
+𝑠
++
+2𝑚𝑎𝜔
++
+𝜆
+𝑠 𝑆ℓ𝑚 = 0.
+sin 𝜃 𝑑𝜃
+𝑑𝜃
+sin2 𝜃
+(109)
+In the post-Newtonian expansion, the parameter 𝑎𝜔 is assumed to be small. Then, it is straightforward to obtain a spheroidal harmonic 𝑠 𝑆ℓ𝑚 of spin-weight 𝑠 and its eigenvalue 𝜆 perturbatively
+by the standard method [86, 101, 94].
+It is also possible to obtain the spheroidal harmonics by expansion in terms of the Jacobi
+functions [35]. In this method, if we calculate numerically, we can obtain them and their eigenvalues
+for an arbitrary value of 𝑎𝜔.
+Here we only show an analytic formula for the eigenvalue 𝜆 accurate to 𝒪((𝑎𝜔)2 ), which is
+needed for the calculation of the radial functions. It is given by
+𝜆 = 𝜆0 + 𝑎𝜔𝜆1 + 𝑎2 𝜔 2 𝜆2 + 𝒪((𝑎𝜔)3 ),
+
+(110)
+
+𝜆0 = ℓ(ℓ + 1) − 𝑠(𝑠 + 1),
+(︁
+)︁
+𝑠2
+,
+𝜆1 = −2𝑚 1 + ℓ(ℓ+1)
+
+(111)
+
+where
+
+𝜆2 = 𝐻(ℓ + 1) − 𝐻(ℓ),
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+𝐻(ℓ) =
+
+4.2
+
+2(ℓ2 − 𝑚2 )(ℓ2 − 𝑠2 )2
+.
+(2ℓ − 1)ℓ3 (2ℓ + 1)
+
+27
+
+(112)
+
+Horizon solution in series of hypergeometric functions
+
+As in Section 3, we focus on the ingoing wave function of the radial Teukolsky equation (14). Since
+the analysis below is applicable to any spin, |𝑠| = 0, 1/2, 1, 3/2, and 2, we do not specify it except
+when it is needed. Also, the analysis is not restricted to the case 𝑎𝜔 ≪ 1 unless so stated explicitly.
+For general spin weight 𝑠, the homogeneous Teukolsky equation is given by
+(︂
+)︂ (︂ 2
+)︂
+𝐾 − 2𝑖𝑠(𝑟 − 𝑀 )𝐾
+𝑠+1 𝑑𝑅ℓ𝑚𝜔
+−𝑠 𝑑
+Δ
++
++ 4𝑖𝑠𝜔𝑟 − 𝜆 𝑅ℓ𝑚𝜔 = 0.
+(113)
+Δ
+𝑑𝑟
+𝑑𝑟
+Δ
+¯ ℓ𝑚𝜔 = 𝑅ℓ−𝑚−𝜔 , we may assume 𝜖 = 2𝑀 𝜔 > 0 if
+As before, taking account of the symmetry 𝑅
+necessary.
+The Teukolsky equation has two regular singularities at 𝑟 = 𝑟± , and one irregular singularity
+at 𝑟 = ∞. This implies that it cannot be represented in the form of a single hypergeometric
+equation. However, if we focus on the solution near the horizon, it may be approximated by a
+hypergeometric equation. This motivates us to consider the solution expressed in terms of a series
+of hypergeometric functions.
+We define the independent variable 𝑥 in place of 𝑧 (= 𝜔𝑟) as
+𝑥=
+
+𝑧+ − 𝑧
+,
+𝜖𝜅
+
+𝜅=
+
+√︀
+
+(114)
+
+where
+𝑧± = 𝜔𝑟± ,
+
+1 − 𝑞2 ,
+
+𝑞=
+
+𝑎
+.
+𝑀
+
+(115)
+
+For later convenience, we also introduce 𝜏 = (𝜖 − 𝑚𝑞)/𝜅 and 𝜖± = (𝜖 ± 𝜏 )/2. Taking into account
+in
+the structure of the singularities at 𝑟 = 𝑟± , we put the ingoing wave Teukolsky function 𝑅ℓ𝑚𝜔
+as
+in
+𝑅ℓ𝑚𝜔
+= 𝑒𝑖𝜖𝜅𝑥 (−𝑥)−𝑠−𝑖(𝜖+𝜏 )/2 (1 − 𝑥)𝑖(𝜖−𝜏 )/2 𝑝in (𝑥).
+
+(116)
+
+Then the radial Teukolsky equation becomes
+𝑥(1 − 𝑥)𝑝in ′′ + [1 − 𝑠 − 𝑖𝜖 − 𝑖𝜏 − (2 − 2𝑖𝜏 )𝑥]𝑝in ′ + [𝑖𝜏 (1 − 𝑖𝜏 ) + 𝜆 + 𝑠(𝑠 + 1)]𝑝in =
+2𝑖𝜖𝜅[−𝑥(1 − 𝑥)𝑝in ′ + (1 − 𝑠 + 𝑖𝜖 − 𝑖𝜏 )𝑥𝑝in ] + [𝜖2 − 𝑖𝜖𝜅(1 − 2𝑠)]𝑝in , (117)
+where a prime denotes 𝑑/𝑑𝑥. The left-hand side of Equation (117) is in the form of a hypergeometric
+equation. In the limit 𝜖 → 0, noting Equation (110), we find that a solution that is finite at 𝑥 = 0
+is given by
+𝑝in (𝜖 → 0) = 𝐹 (−ℓ − 𝑖𝜏, ℓ + 1 − 𝑖𝜏, 1 − 𝑠 − 𝑖𝜏, 𝑥).
+(118)
+For a general value of 𝜖, Equation (117) suggests that a solution may be expanded in a series of
+hypergeometric functions with 𝜖 being a kind of expansion parameter. This idea was extensively
+developed by Leaver [64]. Leaver obtained solutions of the Teukolsky equation expressed in a series
+of the Coulomb wave functions. The MST formalism is an elegant reformulation of the one by
+Leaver [64].
+The essential point is to introduce the so-called renormalized angular momentum 𝜈, which is a
+generalization of ℓ, to a non-integer value such that the Teukolsky equation admits a solution in a
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+28
+
+Misao Sasaki and Hideyuki Tagoshi
+
+convergent series of hypergeometric functions. Namely, we add the term [𝜈(𝜈 + 1) − 𝜆 − 𝑠(𝑠 + 1)] 𝑝in
+to both sides of Equation (117) to rewrite it as
+𝑥(1 − 𝑥)𝑝in ′′ + [1 − 𝑠 − 𝑖𝜖 − 𝑖𝜏 − (2 − 2𝑖𝜏 )𝑥]𝑝in ′ + [𝑖𝜏 (1 − 𝑖𝜏 ) + 𝜈(𝜈 + 1)]𝑝in =
+2𝑖𝜖𝜅[−𝑥(1 − 𝑥)𝑝in ′ + (1 − 𝑠 + 𝑖𝜖 − 𝑖𝜏 )𝑥𝑝in ]
++[𝜈(𝜈 + 1) − 𝜆 − 𝑠(𝑠 + 1) + 𝜖2 − 𝑖𝜖𝜅(1 − 2𝑠)]𝑝in . (119)
+Of course, no modification is done to the original equation, and 𝜈 is just an irrelevant parameter
+at this stage. A trick is to consider the right-hand side of the above equation as a perturbation,
+and look for a formal solution specified by the index 𝜈 in a series expansion form. Then, only after
+we obtain the formal solution, we require that the series should converge, and this requirement
+determines the value of 𝜈. Note that, if we take the limit 𝜖 → 0, we must have 𝜈 → ℓ (or 𝜈 → −ℓ−1)
+to assure [𝜈(𝜈 + 1) − 𝜆 − 𝑠(𝑠 + 1)] → 0 and to recover the solution (118).
+Let us denote the formal solution specified by a value of 𝜈 by 𝑝𝜈in . We express it in the series
+form,
+∞
+∑︁
+𝑝𝜈in =
+𝑎𝑛 𝑝𝑛+𝜈 (𝑥),
+(120)
+𝑛=−∞
+𝑝𝑛+𝜈 (𝑥) = 𝐹 (𝑛 + 𝜈 + 1 − 𝑖𝜏, −𝑛 − 𝜈 − 𝑖𝜏 ; 1 − 𝑠 − 𝑖𝜖 − 𝑖𝜏 ; 𝑥).
+Here, the hypergeometric functions 𝑝𝑛+𝜈 (𝑥) satisfy the recurrence relations [68],
+(𝑛 + 𝜈 + 1 − 𝑠 − 𝑖𝜖)(𝑛 + 𝜈 + 1 − 𝑖𝜏 )
+𝑝𝑛+𝜈+1
+2(𝑛 + 𝜈 + 1)(2𝑛 + 2𝜈 + 1)
+[︂
+]︂
+1
+𝑖𝜏 (𝑠 + 𝑖𝜖)
++ 1+
+𝑝𝑛+𝜈
+2
+(𝑛 + 𝜈)(𝑛 + 𝜈 + 1)
+(𝑛 + 𝜈 + 𝑠 + 𝑖𝜖)(𝑛 + 𝜈 + 𝑖𝜏 )
+𝑝𝑛+𝜈−1 ,
+−
+2(𝑛 + 𝜈)(2𝑛 + 2𝜈 + 1)
+
+𝑥𝑝𝑛+𝜈 = −
+
+𝑥(1 − 𝑥)𝑝′𝑛+𝜈 =
+
+(𝑛 + 𝜈 + 𝑖𝜏 )(𝑛 + 𝜈 + 1 − 𝑖𝜏 )(𝑛 + 𝜈 + 1 − 𝑠 − 𝑖𝜖)
+𝑝𝑛+𝜈+1
+2(𝑛 + 𝜈 + 1)(2𝑛 + 2𝜈 + 1)
+[︂
+]︂
+1
+𝑖𝜏 (1 − 𝑖𝜏 )
++ (𝑠 + 𝑖𝜖) 1 +
+𝑝𝑛+𝜈
+2
+(𝑛 + 𝜈)(𝑛 + 𝜈 + 1)
+(𝑛 + 𝜈 + 1 − 𝑖𝜏 )(𝑛 + 𝜈 + 𝑖𝜏 )(𝑛 + 𝜈 + 𝑠 + 𝑖𝜖)
+−
+𝑝𝑛+𝜈−1 ,
+2(𝑛 + 𝜈)(2𝑛 + 2𝜈 + 1)
+
+(121)
+
+(122)
+
+Inserting the series (120) into Equation (119) and using the above recurrence relations, we obtain
+a three-term recurrence relation among the expansion coefficients 𝑎𝑛 . It is given by
+𝛼𝑛𝜈 𝑎𝑛+1 + 𝛽𝑛𝜈 𝑎𝑛 + 𝛾𝑛𝜈 𝑎𝑛−1 = 0,
+
+(123)
+
+where
+𝑖𝜖𝜅(𝑛 + 𝜈 + 1 + 𝑠 + 𝑖𝜖)(𝑛 + 𝜈 + 1 + 𝑠 − 𝑖𝜖)(𝑛 + 𝜈 + 1 + 𝑖𝜏 )
+,
+(𝑛 + 𝜈 + 1)(2𝑛 + 2𝜈 + 3)
+𝜖(𝜖 − 𝑚𝑞)(𝑠2 + 𝜖2 )
+𝛽𝑛𝜈 = −𝜆 − 𝑠(𝑠 + 1) + (𝑛 + 𝜈)(𝑛 + 𝜈 + 1) + 𝜖2 + 𝜖(𝜖 − 𝑚𝑞) +
+,
+(𝑛 + 𝜈)(𝑛 + 𝜈 + 1)
+𝑖𝜖𝜅(𝑛 + 𝜈 − 𝑠 + 𝑖𝜖)(𝑛 + 𝜈 − 𝑠 − 𝑖𝜖)(𝑛 + 𝜈 − 𝑖𝜏 )
+𝛾𝑛𝜈 = −
+.
+(𝑛 + 𝜈)(2𝑛 + 2𝜈 − 1)
+
+𝛼𝑛𝜈 =
+
+(124)
+
+The convergence of the series (120) is determined by the asymptotic behaviors of the coefficients
+𝑎𝜈𝑛 at 𝑛 → ±∞. We thus discuss properties of the three-term recurrence relation (123) and the
+role of the parameter 𝜈 in detail.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+29
+
+The general solution of the recurrence relation (123) is expressed in terms of two linearly
+(1)
+(2)
+independent solutions {𝑓𝑛 } and {𝑓𝑛 } (𝑛 = ±1, ±2, . . .). According to the theory of three-term
+recurrence relations (see [49], Page 31) when there exists a pair of solutions that satisfy
+(︃
+)︃
+(1)
+(1)
+𝑓𝑛
+𝑓𝑛
+=0
+=0 ,
+lim
+(125)
+lim
+𝑛→−∞ 𝑓 (2)
+𝑛→∞ 𝑓 (2)
+𝑛
+𝑛
+(1)
+
+then the solution {𝑓𝑛 } is called minimal as 𝑛 → ∞ (𝑛 → −∞). Any non-minimal solution is
+called dominant. The minimal solution (either as 𝑛 → ∞ or as 𝑛 → −∞) is determined uniquely
+up to an overall normalization factor.
+The three-term recurrence relation is closely related to continued fractions. We introduce
+𝑅𝑛 ≡
+
+𝑎𝑛
+,
+𝑎𝑛−1
+
+𝐿𝑛 ≡
+
+𝑎𝑛
+.
+𝑎𝑛+1
+
+(126)
+
+We can express 𝑅𝑛 and 𝐿𝑛 in terms of continued fractions as
+𝜈
+𝜈
+𝛼𝑛+1 𝛾𝑛+2
+𝛾𝑛𝜈
+𝛾𝑛𝜈 𝛼𝑛 𝛾𝑛+1
+·
+·
+· ...,
+=
+−
+𝜈
+𝜈
+𝛽𝑛𝜈 + 𝛼𝑛𝜈 𝑅𝑛+1
+𝛽𝑛𝜈 − 𝛽𝑛+1
+−
+𝛽𝑛+2
+−
+𝜈
+𝛼𝑛𝜈
+𝛼𝑛𝜈 𝛼𝑛−1 𝛾𝑛𝜈 𝛼𝑛−2 𝛾𝑛−1
+𝐿𝑛 = − 𝜈
+·
+·
+· ....
+=
+−
+𝜈
+𝜈
+𝛽𝑛 + 𝛾𝑛𝜈 𝐿𝑛−1
+𝛽𝑛𝜈 − 𝛽𝑛−1
+−
+𝛽𝑛−2
+−
+
+𝑅𝑛 = −
+
+(127)
+(128)
+
+These expressions for 𝑅𝑛 and 𝐿𝑛 are valid if the respective continued fractions converge. It is
+proved (see [49], Page 31) that the continued fraction (127) converges if and only if the recurrence
+relation (123) possesses a minimal solution as 𝑛 → ∞, and the same for the continued fraction (128)
+as 𝑛 → −∞.
+Analysis of the asymptotic behavior of (123) shows that, as long as 𝜈 is finite, there exists a
+set of two independent solutions that behave as (see, e.g., [49], Page 35)
+(1)
+
+𝑎𝑛
+𝑖𝜖𝜅
+lim 𝑛 (1) =
+,
+𝑛→∞ 𝑎
+2
+𝑛−1
+
+(2)
+
+lim
+
+𝑎𝑛
+
+𝑛→∞ 𝑛𝑎(2)
+𝑛−1
+
+=
+
+2𝑖
+,
+𝜖𝜅
+
+(129)
+
+and another set of two independent solutions that behave as
+(1)
+
+𝑖𝜖𝜅
+𝑏𝑛
+=−
+,
+lim 𝑛
+𝑛→−∞ 𝑏(1)
+2
+𝑛+1
+(1)
+
+(2)
+
+lim
+
+𝑏𝑛
+
+𝑛→−∞ 𝑛𝑏(2)
+𝑛+1
+
+=−
+
+2𝑖
+.
+𝜖𝜅
+
+(130)
+
+(1)
+
+Thus, {𝑎𝑛 } is minimal as 𝑛 → ∞ and {𝑏𝑛 } is minimal as 𝑛 → −∞.
+Since the recurrence relation (123) possesses minimal solutions as 𝑛 → ±∞, the continued
+(1)
+(1)
+fractions on the right-hand sides of Equations (127) and (128) converge for 𝑎𝑛 = 𝑎𝑛 and 𝑎𝑛 = 𝑏𝑛 .
+(1)
+(1)
+In general, however, 𝑎𝑛 and 𝑏𝑛 do not coincide. Here, we use the freedom of 𝜈 to obtain a
+𝜈
+consistent solution. Let {𝑓𝑛 } be a sequence that is minimal for both 𝑛 → ±∞. We then have
+𝜈
+𝜈
+expressions for 𝑓𝑛𝜈 /𝑓𝑛−1
+and 𝑓𝑛𝜈 /𝑓𝑛+1
+in terms of continued fractions as
+𝜈
+𝜈
+𝜈
+˜ 𝑛 ≡ 𝑓𝑛 = − 𝛾𝑛 · 𝛼𝑛 𝛾𝑛+1 · 𝛼𝑛+1 𝛾𝑛+2 · . . . ,
+𝑅
+𝜈
+𝜈
+𝑓𝑛−1
+𝛽𝑛𝜈 − 𝛽𝑛+1 −
+𝛽𝑛+2 −
+𝜈
+𝜈
+𝜈
+˜ 𝑛 ≡ 𝑓𝑛 = − 𝛼𝑛 · 𝛼𝑛−1 𝛾𝑛 · 𝛼𝑛−2 𝛾𝑛−1 · . . . .
+𝐿
+𝜈
+𝜈
+𝑓𝑛+1
+𝛽𝑛𝜈 − 𝛽𝑛−1 −
+𝛽𝑛−2 −
+
+(131)
+(132)
+
+This implies
+˜𝑛𝐿
+˜ 𝑛−1 = 1.
+𝑅
+
+(133)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+30
+
+Misao Sasaki and Hideyuki Tagoshi
+
+Thus, if we choose 𝜈 such that it satisfies the implicit equation for 𝜈, Equation (133), for a certain
+𝑛, we obtain a unique minimal solution {𝑓𝑛𝜈 } that is valid over the entire range of 𝑛, −∞ < 𝑛 < ∞,
+that is
+𝑖𝜖𝜅
+𝑖𝜖𝜅
+𝑓𝜈
+𝑓𝜈
+lim 𝑛 𝜈𝑛 =
+,
+lim 𝑛 𝜈𝑛 = −
+.
+(134)
+𝑛→∞
+𝑛→−∞
+𝑓𝑛−1
+2
+𝑓𝑛+1
+2
+Note that if Equation (133) for a certain value of 𝑛 is satisfied, it is automatically satisfied for any
+other value of 𝑛.
+The minimal solution is also important for the convergence of the series (120). For the minimal
+solution {𝑓𝑛𝜈 }, together with the properties of the hypergeometric functions 𝑝𝑛+𝜈 for large |𝑛|, we
+find
+𝑓 𝜈 𝑝𝑛+𝜈−1 (𝑥)
+𝑓 𝜈 𝑝𝑛+𝜈+1 (𝑥)
+𝑖𝜖𝜅
+= − lim 𝑛 𝑛−1𝜈
+=
+[1 − 2𝑥 + ((1 − 2𝑥)2 − 1)1/2 ].
+lim 𝑛 𝑛+1𝜈
+𝑛→−∞
+𝑛→∞
+𝑓𝑛 𝑝𝑛+𝜈 (𝑥)
+𝑓𝑛 𝑝𝑛+𝜈 (𝑥)
+2
+
+(135)
+
+Thus, the series of hypergeometric functions (120) converges for all 𝑥 in the range 0 ≥ 𝑥 > −∞
+(in fact, for all complex values of 𝑥 except at |𝑥| = ∞), provided that the coefficients are given by
+the minimal solution.
+Instead of Equation (133), we may consider an equivalent but practically more convenient form
+of an equation that determines the value of 𝜈. Dividing Equation (123) by 𝑎𝑛 , we find
+𝛽𝑛𝜈 + 𝛼𝑛𝜈 𝑅𝑛+1 + 𝛾𝑛𝜈 𝐿𝑛−1 = 0,
+
+(136)
+
+where 𝑅𝑛+1 and 𝐿𝑛+1 are those given by the continued fractions (131) and (132), respectively.
+Although the value of 𝑛 in this equation is arbitrary, it is convenient to set 𝑛 = 0 to solve for 𝜈.
+For later use, we need a series expression for 𝑅in with better convergence properties at large
+|𝑥|. Using analytic properties of hypergeometric functions, we have
+𝑅in = 𝑅0𝜈 + 𝑅0−𝜈−1 ,
+
+(137)
+
+where
+𝑅0𝜈 = 𝑒𝑖𝜖𝜅𝑥 (−𝑥)−𝑠−(𝑖/2)(𝜖+𝜏 ) (1 − 𝑥)(𝑖/2)(𝜖+𝜏 )+𝜈
+∞
+∑︁
+Γ(1 − 𝑠 − 𝑖𝜖 − 𝑖𝜏 ) Γ(2𝑛 + 2𝜈 + 1)
+×
+𝑓𝑛𝜈
+Γ(𝑛
++ 𝜈 + 1 − 𝑖𝜏 ) Γ(𝑛 + 𝜈 + 1 − 𝑠 − 𝑖𝜖)
+𝑛=−∞
+×(1 − 𝑥)𝑛 𝐹 (−𝑛 − 𝜈 − 𝑖𝜏, −𝑛 − 𝜈 − 𝑠 − 𝑖𝜖; −2𝑛 − 2𝜈;
+
+1
+).
+1−𝑥
+
+(138)
+
+This expression explicitly exhibits the symmetry of 𝑅in under the interchange of 𝜈 and −𝜈 − 1.
+This is a result of the fact that 𝜈(𝜈 +1) is invariant under the interchange 𝜈 ↔ −𝜈 −1. Accordingly,
+−𝜈−1
+the recurrence relation (123) has the structure that 𝑓−𝑛
+satisfies the same recurrence relation
+𝜈
+as 𝑓𝑛 .
+Finally, we note that if 𝜈 is a solution of Equation (133) or (136), 𝜈 + 𝑘 with an arbitrary
+integer 𝑘 is also a solution, since 𝜈 appears only in the combination of 𝑛 + 𝜈. Thus, Equation (133)
+or (136) contains an infinite number of roots. However, not all of these can be used to express a
+solution we want. As noted in the earlier part of this section, in order to reproduce the solution
+in the limit 𝜖 → 0, Equation (118), we must have 𝜈 → ℓ (or 𝜈 → −ℓ − 1 by symmetry). Thus, we
+impose a constraint on 𝜈 such that it must continuously approach ℓ as 𝜖 → 0.
+
+4.3
+
+Outer solution as a series of Coulomb wave functions
+
+The solution as a series of hypergeometric functions discussed in Section 4.2 is convergent at any
+finite value of 𝑟. However, it does not converge at infinity, and hence the asymptotic amplitudes,
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+31
+
+𝐵 inc and 𝐵 ref , cannot be determined from it. To determine the asymptotic amplitudes, it is
+necessary to construct a solution that is valid at infinity and to match the two solutions in a region
+where both solutions converge. The solution convergent at infinity was obtained by Leaver as a
+series of Coulomb wave functions [64]. In this section, we review Leaver’s solution based on [69].
+¯ ℓ𝑚𝜔 = 𝑅ℓ−𝑚−𝜔 , we assume 𝜔 > 0 without loss
+In this section again, by noting the symmetry 𝑅
+of generality.
+First, we define a variable 𝑧^ = 𝜔(𝑟 − 𝑟− ) = 𝜖𝜅(1 − 𝑥). Let us denote a Teukolsky function by
+𝑅C . We introduce a function 𝑓 (^
+𝑧 ) by
+(︁
+𝜖𝜅 )︁−𝑠−𝑖(𝜖+𝜏 )/2
+𝑓 (^
+𝑧 ).
+𝑅C = 𝑧^−1−𝑠 1 −
+𝑧^
+
+(139)
+
+Then the Teukolsky equation becomes
+𝑧^2 𝑓 ′′ + [^
+𝑧 2 + (2𝜖 + 2𝑖𝑠)^
+𝑧 − 𝜆 − 𝑠(𝑠 + 1)]𝑓 = 𝜖𝜅^
+𝑧 (𝑓 ′′ + 𝑓 ) + 𝜖𝜅(𝑠 − 1 + 2𝑖𝜖)𝑓 ′
+𝜖
+− [𝜅 − 𝑖(𝜖 − 𝑚𝑞)](𝑠 − 1 + 𝑖𝜖)𝑓
+𝑧^
++[−2𝜖2 + 𝜖𝑚𝑞 + 𝜅(𝜖2 + 𝑖𝜖𝑠)]𝑓.
+
+(140)
+
+We see that the right-hand side is explicitly of 𝒪(𝜖) and the left-hand side is in the form of the
+Coulomb wave equation. Therefore, in the limit 𝜖 → 0, we obtain a solution
+𝑓 (^
+𝑧 ) = 𝐹ℓ (−𝑖𝑠 − 𝜖, 𝑧^),
+
+(141)
+
+where 𝐹𝐿 (𝜂, 𝑧^) is a Coulomb wave function given by
+𝐹𝐿 (𝜂, 𝑧^) = 𝑒−𝑖^𝑧 2𝐿 𝑧^𝐿+1
+
+Γ(𝐿 + 1 − 𝑖𝜂)
+Φ(𝐿 + 1 − 𝑖𝜂, 2𝐿 + 2; 2𝑖^
+𝑧 ),
+Γ(2𝐿 + 2)
+
+(142)
+
+and Φ is the regular confluent hypergeometric function (see [1], Section 13) which is regular at
+𝑧^ = 0.
+In the same spirit as in Section 4.2, we introduce the renormalized angular momentum 𝜈. That
+is, we add [𝜆 + 𝑠(𝑠 + 1) − 𝜈(𝜈 + 1)]𝑓 (^
+𝑧 ) to both sides of Equation (140) to rewrite it as
+𝑧^2 𝑓 ′′ + [^
+𝑧 2 + (2𝜖 + 2𝑖𝑠)^
+𝑧 − 𝜈(𝜈 + 1)]𝑓 = 𝜖𝜅^
+𝑧 (𝑓 ′′ + 𝑓 ) + 𝜖𝜅(𝑠 − 1 + 2𝑖𝜖+ )𝑓 ′
+𝜖
+− [𝜅 − 𝑖(𝜖 − 𝑚𝑞)](𝑠 − 1 + 𝑖𝜖)𝑓
+𝑧^
++[−𝜈(𝜈 + 1) + 𝜆 + 𝑠(𝑠 + 1) − 2𝜖2 + 𝜖𝑚𝑞 + 𝜅(𝜖2 + 𝑖𝜖𝑠)]𝑓.
+(143)
+We denote the formal solution specified by the index 𝜈 by 𝑓𝜈 (^
+𝑧 ), and expand it in terms of the
+Coulomb wave functions as
+𝑓𝜈 =
+
+∞
+∑︁
+
+(−𝑖)𝑛
+
+𝑛=−∞
+
+(𝜈 + 1 + 𝑠 − 𝑖𝜖)𝑛
+𝑏𝑛 𝐹𝑛+𝜈 (−𝑖𝑠 − 𝜖, 𝑧^),
+(𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑛
+
+(144)
+
+where (𝑎)𝑛 = Γ(𝑎 + 𝑛)/Γ(𝑎). Then, using the recurrence relations among 𝐹𝑛+𝜈 ,
+1
+(𝑛 + 𝜈 + 1 + 𝑠 − 𝑖𝜖)
+𝐹𝑛+𝜈 =
+𝐹𝑛+𝜈+1
+𝑧
+(𝑛 + 𝜈 + 1)(2𝑛 + 2𝜈 + 1)
+𝑖𝑠 + 𝜖
++
+𝐹𝑛+𝜈
+(𝑛 + 𝜈)(𝑛 + 𝜈 + 1)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+32
+
+Misao Sasaki and Hideyuki Tagoshi
+
++
+
+(𝑛 + 𝜈 − 𝑠 + 𝑖𝜖)
+𝐹𝑛+𝜈−1 ,
+(𝑛 + 𝜈)(2𝑛 + 2𝜈 + 1)
+
+(𝑛 + 𝜈)(𝑛 + 𝜈 + 1 + 𝑠 − 𝑖𝜖)
+𝐹𝑛+𝜈+1
+(𝑛 + 𝜈 + 1)(2𝑛 + 2𝜈 + 1)
+𝑖𝑠 + 𝜖
++
+𝐹𝑛+𝜈
+(𝑛 + 𝜈)(𝑛 + 𝜈 + 1)
+(𝑛 + 𝜈 + 1)(𝑛 + 𝜈 − 𝑠 + 𝑖𝜖)
+𝐹𝑛+𝜈−1 ,
++
+(𝑛 + 𝜈)(2𝑛 + 2𝜈 + 1)
+
+(145)
+
+′
+𝐹𝑛+𝜈
+=−
+
+(146)
+
+we can derive the recurrence relation among 𝑏𝑛 . The result turns out to be identical to the one
+given by Equation (123) for 𝑎𝑛 . We mention that the extra factor (𝜈 +1+𝑠−𝑖𝜖)𝑛 /(𝜈 +1−𝑠+𝑖𝜖)𝑛 in
+Equation (144) is introduced to make the recurrence relation exactly identical to Equation (123).
+The fact that we have the same recurrence relation as Equation (123) implies that if we choose
+the parameter 𝜈 in Equation (144) to be the same as the one given by a solution of Equation (133)
+or (136), the sequence {𝑓𝑛𝜈 } is also the solution for {𝑏𝑛 }, which is minimal for both 𝑛 → ±∞. Let
+us set
+(𝜈 + 1 + 𝑠 − 𝑖𝜖)𝑛 𝜈
+𝑓 .
+(147)
+𝑔𝑛𝜈 = (−𝑖)𝑛
+(𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑛 𝑛
+By choosing 𝜈 as stated above, we have the asymptotic value for the ratio of two successive terms
+of 𝑔𝑛𝜈 as
+lim 𝑛
+
+𝑛→∞
+
+𝑔𝑛𝜈
+
+𝑔𝜈
+𝜖𝜅
+= lim 𝑛 𝜈 𝑛 = .
+𝜈
+𝑛→−∞
+𝑔𝑛−1
+𝑔𝑛+1
+2
+
+(148)
+
+Using an asymptotic property of the Coulomb wave functions, we have
+𝑔𝑛𝜈 𝐹𝑛+𝜈 (𝑧)
+𝑔 𝜈 𝐹𝑛+𝜈 (𝑧)
+𝜖𝜅
+= lim 𝜈 𝑛
+= .
+𝜈
+𝑛→∞ 𝑔
+𝑛→−∞
+𝐹
+(𝑧)
+𝑔
+𝐹
+(𝑧)
+𝑧
+𝑛−1 𝑛+𝜈−1
+𝑛−1 𝑛+𝜈+1
+lim
+
+(149)
+
+We thus find that the series (144) converges at 𝑧^ > 𝜖𝜅 or equivalently 𝑟 > 𝑟+ .
+The fact that we can use the same 𝜈 as in the case of hypergeometric functions to obtain the
+convergence of the series of the Coulomb wave functions is crucial to match the horizon and outer
+solutions.
+Here, we note an analytic property of the confluent hypergeometric function (see [34], Page 259),
+Φ(𝑎, 𝑐; 𝑥) =
+
+Γ(𝑐) 𝑖𝑎𝜋
+Γ(𝑐) 𝑖𝜋(𝑎−𝑐) 𝑥
+𝑒 Ψ(𝑎, 𝑐; 𝑥) +
+𝑒
+𝑒 Ψ(𝑐 − 𝑎, 𝑐; −𝑥),
+Γ(𝑐 − 𝑎)
+Γ(𝑎)
+
+(150)
+
+where Ψ is the irregular confluent hypergeometric function, and Im(𝑥) > 0 is assumed. Using this
+with the identities
+𝑎 = 𝑛 + 𝜈 + 1 − 𝑠 + 𝑖𝜖,
+𝑐 = 2(𝑛 + 𝜈 + 1),
+
+(151)
+
+𝑥 = 2𝑖^
+𝑧,
+𝜈
+we can rewrite 𝑅C
+(for 𝜔 > 0) as
+𝜈
+𝜈
+𝜈
+𝑅C
+= 𝑅+
++ 𝑅−
+,
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(152)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+where
+𝜈
+𝑅+
+= 2𝜈 𝑒−𝜋𝜖 𝑒𝑖𝜋(𝜈+1−𝑠)
+
+×
+
+∞
+∑︁
+
+33
+
+Γ(𝜈 + 1 − 𝑠 + 𝑖𝜖) −𝑖^𝑧 𝜈+𝑖𝜖+
+(^
+𝑧 − 𝜖𝜅)−𝑠−𝑖𝜖+
+𝑒 𝑧^
+Γ(𝜈 + 1 + 𝑠 − 𝑖𝜖)
+
+𝑖𝑛 𝑓𝑛𝜈 (2^
+𝑧 )𝑛 Ψ(𝑛 + 𝜈 + 1 − 𝑠 + 𝑖𝜖, 2𝑛 + 2𝜈 + 2; 2𝑖^
+𝑧 ),
+
+𝑛=−∞
+𝜈
+𝑧 − 𝜖𝜅)−𝑠−𝑖𝜖+
+𝑅−
+= 2𝜈 𝑒−𝜋𝜖 𝑒−𝑖𝜋(𝜈+1+𝑠) 𝑒𝑖^𝑧 𝑧^𝜈+𝑖𝜖+ (^
+
+×
+
+∞
+∑︁
+
+𝑛=−∞
+
+𝑖𝑛
+
+(153)
+
+(𝜈 + 1 + 𝑠 − 𝑖𝜖)𝑛 𝜈
+𝑓 (2^
+𝑧 )𝑛
+(𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑛 𝑛
+
+×Ψ(𝑛 + 𝜈 + 1 + 𝑠 − 𝑖𝜖, 2𝑛 + 2𝜈 + 2; −2𝑖^
+𝑧 ).
+By noting an asymptotic behavior of Ψ(𝑎, 𝑐; 𝑥) at large |𝑥|,
+Ψ(𝑎, 𝑐; 𝑥) → 𝑥−𝑎
+
+as |𝑥| → ∞,
+
+(154)
+
+we find
+𝜈
+𝑅+
+= 𝐴𝜈+ 𝑧 −1 𝑒−𝑖(𝑧+𝜖 ln 𝑧) ,
+
+(155)
+
+𝜈
+𝑅−
+= 𝐴𝜈− 𝑧 −1−2𝑠 𝑒𝑖(𝑧+𝜖 ln 𝑧) ,
+
+(156)
+
+where
+𝐴𝜈+ = 𝑒−(𝜋/2)𝜖 𝑒(𝜋/2)𝑖(𝜈+1−𝑠) 2−1+𝑠−𝑖𝜖
+
++∞
+Γ(𝜈 + 1 − 𝑠 + 𝑖𝜖) ∑︁ 𝜈
+𝑓 ,
+Γ(𝜈 + 1 + 𝑠 − 𝑖𝜖) 𝑛=−∞ 𝑛
+
+𝐴𝜈− = 2−1−𝑠+𝑖𝜖 𝑒−(𝜋/2)𝑖(𝜈+1+𝑠) 𝑒−(𝜋/2)𝜖
+
++∞
+∑︁
+
+(−1)𝑛
+
+𝑛=−∞
+
+(𝜈 + 1 + 𝑠 − 𝑖𝜖)𝑛 𝜈
+𝑓 .
+(𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑛 𝑛
+
+(157)
+
+(158)
+
+𝜈
+𝜈
+are incoming-wave and outgoing wave solutions at
+and 𝑅−
+We can see that the functions 𝑅+
+infinity, respectively. In particular, we have the upgoing solution, defined for 𝑠 = −2 by the
+asymptotic behavior (20), expressed in terms of a series of Coulomb wave functions as
+𝜈
+𝑅up = 𝑅−
+.
+
+4.4
+
+(159)
+
+Matching of horizon and outer solutions
+
+𝜈
+. Note that both of them are convergent in a
+Now, we match the two types of solutions 𝑅0𝜈 and 𝑅C
+very large region of 𝑟, namely for 𝜖𝜅 < 𝑧^ < ∞. We see that both solutions behave as 𝑧^𝜈 multiplied
+𝜈
+by a single-valued function of 𝑧^ for large |^
+𝑧 |. Thus, the analytic properties of 𝑅0𝜈 and 𝑅C
+are the
+same, which implies that these two are identical up to a constant multiple. Therefore, we set
+𝜈
+𝑅0𝜈 = 𝐾𝜈 𝑅C
+.
+
+(160)
+
+In the region 𝜖𝜅 < 𝑧^ < ∞, we may expand both solutions in powers of 𝑧^ except for analytically
+non-trivial factors. We have
+(︂
+)︂−𝑠−𝑖𝜖+ ∑︁
+∞ ∑︁
+∞
+𝑧^
+𝑅0𝜈 = 𝑒𝑖𝜖𝜅 𝑒−𝑖^𝑧 (𝜖𝜅)−𝜈−𝑖𝜖+ 𝑧^𝜈+𝑖𝜖+
+−1
+𝐶𝑛,𝑗 𝑧^𝑛−𝑗
+𝜖𝜅
+𝑛=−∞ 𝑗=0
+(︂
+)︂−𝑠−𝑖𝜖+ ∑︁
+∞
+∞
+∑︁
+𝑧^
+= 𝑒𝑖𝜖𝜅 𝑒−𝑖^𝑧 (𝜖𝜅)−𝜈−𝑖𝜖+ 𝑧^𝜈+𝑖𝜖+
+−1
+𝐶𝑛,𝑛−𝑘 𝑧^𝑘 ,
+(161)
+𝜖𝜅
+𝑘=−∞ 𝑛=𝑘
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+34
+
+Misao Sasaki and Hideyuki Tagoshi
+
+𝜈
+𝑅C
+= 𝑒−𝑖^𝑧 2𝜈 (𝜖𝜅)−𝑠−𝑖𝜖+ 𝑧^𝜈+𝑖𝜖+
+
+= 𝑒−𝑖^𝑧 2𝜈 (𝜖𝜅)−𝑠−𝑖𝜖+ 𝑧^𝜈+𝑖𝜖+
+
+(︂
+
+(︂
+
+𝑧^
+−1
+𝜖𝜅
+
+)︂−𝑠−𝑖𝜖+ ∑︁
+∞ ∑︁
+∞
+
+𝑧^
+−1
+𝜖𝜅
+
+)︂−𝑠−𝑖𝜖+ ∑︁
+∞
+
+𝐷𝑛,𝑗 𝑧^𝑛+𝑗
+
+𝑛=−∞ 𝑗=0
+𝑘
+∑︁
+
+𝐷𝑛,𝑘−𝑛 𝑧^𝑘 ,
+
+(162)
+
+𝑘=−∞ 𝑛=−∞
+
+where
+𝐶𝑛,𝑗 =
+
+Γ(1 − 𝑠 − 2𝑖𝜖+ ) Γ(2𝑛 + 2𝜈 + 1)
+Γ(𝑛 + 𝜈 + 1 − 𝑖𝜏 )Γ(𝑛 + 𝜈 + 1 − 𝑠 − 𝑖𝜖)
+(−𝑛 − 𝜈 − 𝑖𝜏 )𝑗 (−𝑛 − 𝜈 − 𝑠 − 𝑖𝜖)𝑗
+×
+(𝜖𝜅)−𝑛+𝑗 𝑓𝑛 ,
+(−2𝑛 − 2𝜈)𝑗 (𝑗!)
+Γ(𝑛 + 𝜈 + 1 − 𝑠 + 𝑖𝜖) (𝜈 + 1 + 𝑠 − 𝑖𝜖)𝑛
+Γ(2𝑛 + 2𝜈 + 2)
+(𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑛
+(𝑛 + 𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑗
+𝑓𝑛 .
+×
+(2𝑛 + 2𝜈 + 2)𝑗 (𝑗!)
+
+(163)
+
+𝐷𝑛,𝑗 = (−1)𝑛 (2𝑖)𝑛+𝑗
+
+(164)
+
+Then, by comparing each integer power of 𝑧^ in the summation, in the region 𝜖𝜅 ≪ 𝑧^ < ∞, and
+using the formula Γ(𝑧) Γ(1 − 𝑧) = 𝜋/ sin 𝜋𝑧, we find
+(︃ 𝑟
+)︃−1 (︃ ∞
+)︃
+∑︁
+∑︁
+𝑖𝜖𝜅
+𝑠−𝜈 −𝜈
+𝐾𝜈 = 𝑒 (𝜖𝜅) 2
+𝐷𝑛,𝑟−𝑛
+𝐶𝑛,𝑛−𝑟
+𝑖𝜖𝜅
+
+=
+
+𝑛=−∞
+𝑠−𝜈−𝑟 −𝑠 𝑟
+
+𝑛=𝑟
+
+𝑒 (2𝜖𝜅)
+2 𝑖 Γ(1 − 𝑠 − 2𝑖𝜖+ ) Γ(𝑟 + 2𝜈 + 2)
+Γ(𝑟 + 𝜈 + 1 − 𝑠 + 𝑖𝜖) Γ(𝑟 + 𝜈 + 1 + 𝑖𝜏 ) Γ(𝑟 + 𝜈 + 1 + 𝑠 + 𝑖𝜖)
+(︃ ∞
+)︃
+∑︁
+𝑛 Γ(𝑛 + 𝑟 + 2𝜈 + 1) Γ(𝑛 + 𝜈 + 1 + 𝑠 + 𝑖𝜖) Γ(𝑛 + 𝜈 + 1 + 𝑖𝜏 ) 𝜈
+×
+(−1)
+𝑓
+(𝑛 − 𝑟)!
+Γ(𝑛 + 𝜈 + 1 − 𝑠 − 𝑖𝜖) Γ(𝑛 + 𝜈 + 1 − 𝑖𝜏 ) 𝑛
+𝑛=𝑟
+(︃ 𝑟
+)︃−1
+∑︁
+(−1)𝑛
+(𝜈 + 1 + 𝑠 − 𝑖𝜖)𝑛 𝜈
+×
+𝑓
+,
+(𝑟 − 𝑛)!(𝑟 + 2𝜈 + 2)𝑛 (𝜈 + 1 − 𝑠 + 𝑖𝜖)𝑛 𝑛
+𝑛=−∞
+
+(165)
+
+where 𝑟 can be any integer, and the factor 𝐾𝜈 should be independent of the choice of 𝑟. Although
+this fact is not manifest from Equation (165), we can check it numerically, or analytically by
+expanding it in terms of 𝜖.
+We thus have two expressions for the ingoing wave function 𝑅in . One is given by Equation (116),
+with 𝑝𝜈in expressed in terms of a series of hypergeometric functions as given by Equation (120) (a
+series which converges everywhere except at 𝑟 = ∞). The other is expressed in terms of a series of
+Coulomb wave functions given by
+−𝜈−1
+𝜈
+𝑅in = 𝐾𝜈 𝑅C
++ 𝐾−𝜈−1 𝑅C
+,
+
+(166)
+
+which converges at 𝑟 > 𝑟+ , including 𝑟 = ∞. Combining these two, we have a complete analytic
+solution for the ingoing wave function.
+Now we can obtain analytic expressions for the asymptotic amplitudes of 𝑅in , 𝐵 trans , 𝐵 inc , and
+𝐵 ref . By investigating the asymptotic behaviors of the solution at 𝑟 → ∞ and 𝑟 → 𝑟+ , they are
+found to be1
+∞
+(︁ 𝜖𝜅 )︁2𝑠
+∑︁
+2 ln 𝜅
+𝑒𝑖𝜅𝜖+ (1+ 1+𝜅 )
+𝑓𝑛𝜈 ,
+(167)
+𝐵 trans =
+𝜔
+𝑛=−∞
+1 In the first version of this article, these asymptotic amplitudes contained errors in the phase. We thank
+W. Throwe and S.A. Hughes for pointing out these errors.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+−1
+
+(︂
+
+)︂
+
+−𝑖𝜋𝜈 sin 𝜋(𝜈 − 𝑠 + 𝑖𝜖)
+
+35
+
+1−𝜅
+
+𝐾−𝜈−1 𝐴𝜈+ 𝑒−𝑖(𝜖 ln 𝜖− 2 𝜖) ,
+sin 𝜋(𝜈 + 𝑠 − 𝑖𝜖)
+(︀
+)︀
+1−𝜅
+𝐵 ref = 𝜔 −1−2𝑠 𝐾𝜈 + 𝑖𝑒𝑖𝜋𝜈 𝐾−𝜈−1 𝐴𝜈− 𝑒𝑖(𝜖 ln 𝜖− 2 𝜖) .
+
+𝐵
+
+inc
+
+=𝜔
+
+𝐾𝜈 − 𝑖𝑒
+
+(168)
+(169)
+
+Incidentally, since we have the upgoing solution in the outer region (159), it is straightforward
+to obtain the asymptotic outgoing amplitude at infinity 𝐶 trans from Equation (153). We find
+1−𝜅
+
+𝐶 trans = 𝜔 −1−2𝑠 𝐴𝜈− 𝑒𝑖(𝜖 ln 𝜖− 2 𝜖) .
+
+4.5
+
+(170)
+
+Low frequency expansion of the hypergeometric expansion
+
+So far, we have considered exact solutions of the Teukolsky equation. Now, let us consider their
+low frequency approximations and determine the value of 𝜈. We solve Equation (136) with 𝑛 = 0,
+𝛽0𝜈 + 𝛼0𝜈 𝑅1 + 𝛾0𝜈 𝐿−1 = 0,
+
+(171)
+
+with a requirement that 𝜈 → ℓ as 𝜖 → 0.
+To solve Equation (174), we first note the following. Unless the value of 𝜈 is such that the
+denominator in the expression of 𝛼𝑛𝜈 or 𝛾𝑛𝜈 happens to vanish, or 𝛽𝑛𝜈 happens to vanish in the
+limit 𝜖 → 0, we have 𝛼𝑛𝜈 = 𝒪(𝜖), 𝛾𝑛𝜈 = 𝒪(𝜖), and 𝛽𝑛𝜈 = 𝒪(1). Also, from the asymptotic behavior
+of the minimal solution 𝑓𝑛𝜈 as 𝑛 → ±∞ given by Equation (134), we have 𝑅𝑛 (𝜈) = 𝒪(𝜖) and
+𝐿−𝑛 (𝜈) = 𝒪(𝜖) for sufficiently large 𝑛. Thus, except for exceptional cases mentioned above, the
+order of 𝑎𝜈𝑛 in 𝜖 increases as |𝑛| increases. That is, the series solution naturally gives the postMinkowski expansion.
+First, let us consider the case of 𝑅𝑛 (𝜈) for 𝑛 > 0. It is easily seen that 𝛼𝑛𝜈 = 𝒪(𝜖), 𝛾𝑛𝜈 = 𝒪(𝜖),
+and 𝛽𝑛𝜈 = 𝒪(1) for all 𝑛 > 0. Therefore, we have 𝑅𝑛 (𝜈) = 𝒪(𝜖) for all 𝑛 > 0.
+On the other hand, for 𝑛 < 0, the order of 𝐿−𝑛 (𝜈) behaves irregularly for certain values of 𝑛.
+For the moment, let us assume that 𝐿−1 (𝜈) = 𝒪(𝜖). We see from Equations (124) that 𝛼0𝜈 = 𝒪(𝜖),
+𝛾0𝜈 = 𝒪(𝜖), since 𝜈 = ℓ + 𝒪(𝜖). Then, Equation (174) implies 𝛽0𝜈 = 𝒪(𝜖2 ). Using the expansion of
+𝜆 given by Equation (110), we then find 𝜈 = ℓ + 𝒪(𝜖2 ) (i.e., there is no term of 𝒪(𝜖) in 𝜈). With
+this estimate of 𝜈, we see from Equation (128) that 𝐿−1 (𝜈) = 𝒪(𝜖) is justified if 𝐿−2 (𝜈) is of order
+unity or smaller.
+The general behavior of the order of 𝐿−𝑛 (𝜈) in 𝜖 for general values of 𝑠 is rather complicated.
+However, if we assume 𝑠 to be a non-integer and ℓ ≥ |𝑠|, and 𝜏 = (𝜖 − 𝑚𝑞)/𝜅 = 𝒪(1), it is relatively
+easily studied. With the assumption that 𝜈 = ℓ + 𝒪(𝜖2 ), we find there are three exceptional cases:
+∙ For 𝑛 = −2ℓ − 1, we have 𝛼𝑛 = 𝒪(𝜖), 𝛽 = 𝒪(𝜖2 ), and 𝛾𝑛 = 𝒪(𝜖).
+∙ For 𝑛 = −ℓ − 1, we have 𝛼𝑛𝜈 = 𝒪(1/𝜖), 𝛽𝑛𝜈 = 𝒪(1/𝜖), and 𝛾𝑛 = 𝒪(𝜖).
+∙ For 𝑛 = −ℓ, we have 𝛼𝑛 = 𝒪(𝜖), 𝛽𝑛 = 𝒪(1/𝜖), and 𝛾𝑛 = 𝒪(1/𝜖).
+These imply that 𝐿−2ℓ−1 (𝜈) = 𝒪(1/𝜖), 𝐿−ℓ−1 (𝜈) = 𝒪(1), and 𝐿−ℓ (𝜈) = 𝒪(𝜖2 ), respectively. To
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+36
+
+Misao Sasaki and Hideyuki Tagoshi
+
+summarize, we have
+𝑅𝑛 (𝜈) =
+𝐿−ℓ (𝜈) =
+
+𝑓𝑛𝜈
+= 𝒪(𝜖)
+𝜈
+𝑓𝑛−1
+𝜈
+𝑓−ℓ
+𝜈
+𝑓−ℓ+1
+
+for all 𝑛 > 0,
+
+= 𝒪(𝜖2 ),
+
+𝐿−ℓ−1 (𝜈) =
+
+𝜈
+𝑓−ℓ−1
+= 𝒪(1),
+𝜈
+𝑓−ℓ
+
+𝐿−2ℓ−1 (𝜈) =
+
+𝜈
+𝑓−2ℓ−1
+= 𝒪(1/𝜖),
+𝜈
+𝑓−2ℓ
+
+𝐿𝑛 (𝜈) =
+
+𝑓𝑛𝜈
+= 𝒪(𝜖)
+𝜈
+𝑓𝑛+1
+
+(172)
+
+for all the other 𝑛 < 0.
+
+With these results, we can calculate the value of 𝜈 to 𝒪(𝜖), which is given by
+(︂
+)︂
+1
+𝑠2
+[(ℓ + 1)2 − 𝑠2 ]2
+(ℓ2 − 𝑠2 )2
+𝜈 = ℓ+
+−2 −
++
+−
+𝜖2 +𝒪(𝜖3 ). (173)
+2ℓ + 1
+ℓ(ℓ + 1) (2ℓ + 1)(2ℓ + 2)(2ℓ + 3) (2ℓ − 1)2ℓ(2ℓ + 1)
+Now one can take the limit of an integer value of 𝑠. In particular, the above holds also for 𝑠 = 0.
+Interestingly, 𝜈 is found to be independent of the azimuthal eigenvalue 𝑚 to 𝒪(𝜖2 ).
+The post-Minkowski expansion of homogeneous Teukolsky functions can be obtained with arbitrary accuracy by solving Equation (123) to a desired order, and by summing up the terms to
+a sufficiently large |𝑛|. The first few terms of the coefficients 𝑓𝑛𝜈 are explicitly given in [68]. A
+calculation up to a much higher order in 𝒪(𝜖) was performed in [98], in which the black hole
+absorption of gravitational waves was calculated to 𝒪(𝑣 8 ) beyond the lowest order.
+
+4.6
+
+Property of 𝜈
+
+In this section, we discuss the property of the solution of Equation (136) which we recapitulate:
+𝑔𝑛 (𝜈) ≡ 𝛽𝑛𝜈 + 𝛼𝑛𝜈 𝑅𝑛+1 + 𝛾𝑛𝜈 𝐿𝑛−1 = 0.
+
+(174)
+
+The numerical evaluation of this equation was not done very much before. Leaver [64] briefly
+mentioned a numerical implementation of a code to obtain 𝜈 by solving Equation (174). In the
+Schwarzschild case, Tagoshi and Nakamura [99] solved Equation (174) numerically to obtain 𝜈.
+They evaluated the homogeneous solution numerically based on Leaver’s method [64] by using the
+value of 𝜈 obtained numerically. Later, Fujita and Tagoshi [40] tried a numerical implementation
+of the MST method. They found that, as 𝜔 becomes large, it becomes impossible to obtain a
+solution of (174) if 𝜈 is restricted to a real number. In a subsequent paper [41], they found that
+when the real solution ceases to exist, a complex solution appears. They also found that when 𝜈
+is complex, the real part of 𝜈 is always either an integer or half-integer. As an example, we show
+the value of 𝜈 as a function of 𝑀 𝜔 in Table 1.
+The fact that we only have an integer or half-integer as the real part of 𝜈 is strongly suggested
+from the property of 𝑔𝑛 (𝜈) [37]. Let us summarize the argument. We first convert 𝜈 to 𝑦 as
+𝜈 = 𝑝/2 + 𝑖𝑦, where 𝑝 is an arbitrary integer and 𝑦 is an arbitrary complex number. We note that
+for an arbitrary integer 𝑛,
+𝑝/2+𝑖𝑦 *
+
+(𝛽𝑛𝑝/2+𝑖𝑦 )* = 𝛽−𝑛−𝑝−1 ,
+𝑝/2+𝑖𝑦 *
+
+(𝛼𝑛𝑝/2+𝑖𝑦 𝛾𝑛+1
+
+𝑝/2+𝑖𝑦 *
+
+𝑝/2+𝑖𝑦 *
+
+) = 𝛼−𝑛−𝑝−2 𝛾−𝑛−𝑝−1 ,
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(175)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+37
+
+where * denotes complex conjugation. From these relations, we find that if 𝜈 = 𝑝/2 + 𝑖𝑦 is a
+solution of 𝑔𝑛 (𝜈) = 0, we have
+0 = (𝑔𝑛 (𝑝/2 + 𝑖𝑦))* = 𝑔−𝑛−𝑝−1 (𝑝/2 + 𝑖𝑦 * ) = 𝑔𝑛 (𝑝/2 − 𝑝 − 2𝑛 − 1 + 𝑖𝑦 * ),
+
+(176)
+
+where we used the relation, 𝑔𝑛+1 (𝜈) = 𝑔𝑛 (𝜈 + 1). We see that in this case 𝜈 ′ = 𝑝/2 − 𝑝 − 2𝑛 − 1 + 𝑖𝑦 *
+is also an solution of 𝑔𝑛 = 0. As already discussed at the end of Section 4.2, when 𝜈 is a solution of
+𝑔𝑛 = 0, 𝜈 +𝑘 and −𝜈 −1+𝑘 with an arbitrary integer 𝑘 are also solutions. We assume that there are
+no other solutions. Although we do not have a formal proof of it, numerical investigations suggest
+that this is so. Under this assumption, since both 𝜈 = 𝑝/2 + 𝑖𝑦 and 𝜈 ′ = 𝑝/2 − 𝑝 − 2𝑛 − 1 + 𝑖𝑦 * are
+solutions of 𝑔𝑛 = 0, we have two possibilities about the property of 𝑦:
+𝑖𝑦 * = 𝑖𝑦,
+
+𝑖𝑦 * = −𝑖𝑦.
+
+or
+
+(177)
+
+In the former case, 𝑦 is real. In this case, 𝜈 is complex with real part 𝑝/2 (integer or half-integer).
+In the later case, 𝑦 is pure imaginary. In this case, 𝜈 is real.
+It becomes possible to determine 𝜈 in the wide range of 𝜔 by allowing Im(𝜈) ̸= 0. The MST
+formalism is now very useful in the fully numerical evaluation of homogeneous solutions of the
+Teukolsky equation. As a first step, Fujita, Hikida and Tagoshi [38] considered generic bound
+geodesic orbits around a Kerr black hole and evaluate the energy and angular momentum flux to
+infinity as well as the rate of change of the Carter constant in a wide range of orbital parameters.
+The critical value of 𝜔 when 𝜈 becomes complex is not very small. The complex 𝜈 does not
+appear in the analytic evaluation of 𝜈 in the low frequency expansion in powers of 𝜖 = 2𝑀 𝜔. Thus,
+at the first glance, it seems impossible to express the complex 𝜈 in the power series expansion of 𝜖.
+However, Hikida et al. [52] pointed out that it is possible to evaluate sin2 (𝜋𝜈) very accurately in
+terms of the power series expansion of 𝜖, even if 𝜔 is larger than a critical value and 𝜈 is complex.
+Such an analytical expression of 𝜈 is very useful in the numerical root finding of Equation (174) as
+well as in the analytical calculation of the homogeneous solutions.
+Table 1: The value of 𝜈 for various value of 𝑀 𝜔 in the case 𝑠 = −2, 𝑙 = 𝑚 = 2 and 𝑞 = 0.
+
+𝑀𝜔
+
+Re(𝜈)
+
+Im(𝜈)
+
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+0.8
+0.9
+1.0
+2.0
+3.0
+
+1.9793154547208
+1.9129832302687
+1.7792805424199
+1.5000000000000
+1.5000000000000
+1.7878302655744
+2.0000000000000
+2.0000000000000
+2.0000000000000
+2.0000000000000
+2.0000000000000
+2.0000000000000
+
+0.0000000000000
+0.0000000000000
+0.0000000000000
+0.1862468531447
+0.3618806153941
+0.0000000000000
+0.8003377636925
+1.1099466644118
+1.3699138540831
+1.6085538776570
+3.6867890278893
+5.5939000509184
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+38
+
+Misao Sasaki and Hideyuki Tagoshi
+
+5
+
+Gravitational Waves from a Particle Orbiting a Black
+Hole
+
+Based on the ingoing wave functions discussed in Section 3 and 4, we can derive the gravitational
+wave energy and angular momentum flux emitted to infinity. The formula for the energy and the
+angular momentum luminosity to infinity are given by Equations (48) and (49). Since most of the
+calculations are very long, we show only the final results. In [71], some details of the calculations
+are summarized. We define the post-Newtonian expansion parameter by 𝑥 ≡ (𝑀 Ω𝜙 )1/3 , where 𝑀
+is the mass of the black hole and Ω𝜙 is the orbital angular frequency of the particle. Since the
+parameter 𝑥 is directly related to the observable frequency, this result can be compared with the
+results by another method easily.
+
+5.1
+
+Circular orbit around a Schwarzschild black hole
+
+First, we present the gravitational wave luminosity for a particle in a circular orbit around a
+Schwarzschild black hole [100, 105]. In this case, Ω𝜙 is given by Ω𝜙 = (𝑀/𝑟03 )1/2 ≡ Ωc , where 𝑟0
+is the orbital radius, in standard Schwarzschild coordinates. The luminosity to 𝒪(𝑥11 ) is given by
+⟨
+
+𝑑𝐸
+𝑑𝑡
+
+⟩
+
+(︂
+=
+
+𝑑𝐸
+𝑑𝑡
+[︃
+
+)︂
+
+× 1−
+
+N
+
+1247 2
+44711 4 8191 5
+𝑥 + 4𝜋𝑥3 −
+𝑥 −
+𝜋𝑥
+336
+9072
+672
+
+(︂
+)︂
+6643739519 1712
+16
+3424
+1712
+16285 7
++
+−
+𝛾 + 𝜋2 −
+ln 2 −
+ln 𝑥 𝑥6 −
+𝜋𝑥
+69854400
+105
+3
+105
+105
+504
+(︂
+323105549467 232597
+1369 2
++ −
++
+𝛾−
+𝜋
+3178375200
+4410
+126
+)︂
+39931
+47385
+232597
++
+ln 2 −
+ln 3 +
+ln 𝑥 𝑥8
+294
+1568
+4410
+(︂
+)︂
+265978667519
+6848
+13696
+6848
++
+𝜋−
+𝜋𝛾 −
+𝜋 ln 2 −
+𝜋 ln 𝑥 𝑥9
+745113600
+105
+105
+105
+(︂
+2500861660823683 916628467
+424223 2
++ −
++
+𝛾−
+𝜋
+2831932303200
+7858620
+6804
+)︂
+83217611
+47385
+916628467
+−
+ln 2 +
+ln 3 +
+ln 𝑥 𝑥10
+1122660
+196
+7858620
+(︂
+8399309750401
+177293
++
+𝜋+
+𝜋𝛾
+101708006400
+1176
+)︂ ]︃
+8521283
+142155
+177293
++
+𝜋 ln 2 −
+𝜋 ln 3 +
+𝜋 ln 𝑥 𝑥11 ,
+(178)
+17640
+784
+1176
+where (𝑑𝐸/𝑑𝑡)N is the Newtonian quadrupole luminosity given by
+(︂
+
+𝑑𝐸
+𝑑𝑡
+
+)︂
+=
+N
+
+32𝜇2 𝑀 3
+32 (︁ 𝜇 )︁2 10
+=
+𝑥 .
+5𝑟05
+5 𝑀
+
+(179)
+
+This is the 5.5PN formula beyond the lowest, Newtonian quadrupole formula. We can find that
+our result agrees with the standard post-Newtonian results up to 𝒪(𝑥5 ) [13] in the limit 𝜇/𝑀 ≪ 1.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+5.2
+
+39
+
+Circular orbit on the equatorial plane around a Kerr black hole
+
+Next, we consider a particle in a circular orbit on the equatorial plane around a Kerr black
+hole [101]. In this case, the orbital angular frequency Ω𝜙 is given by
+[︀
+]︀
+Ω𝜙 = Ωc 1 − 𝑞𝑣 3 + 𝑞 2 𝑣 6 + 𝒪(𝑣 9 ) ,
+(180)
+where Ωc is the orbital angular frequency of the circular orbit in the Schwarzschild case, 𝑣 =
+(𝑀/𝑟0 )1/2 , 𝑞 = 𝑎/𝑀 , and 𝑟0 is the orbital radius in the Boyer–Lindquist coordinate. The effect of
+the angular momentum of the black hole is given by the corrections depending on the parameter
+𝑞. Here, 𝑞 is arbitrary as long as |𝑞| < 1. The luminosity is given up to 𝒪(𝑥8 ) (4PN order) by
+⟩ (︂
+)︂ [︃
+⟨
+𝑑𝐸
+11
+33
+59
+𝑑𝐸
+=
+1 + (𝑞-independent terms) − 𝑞𝑥3 + 𝑞 2 𝑥4 − 𝑞𝑥5
+𝑑𝑡
+𝑑𝑡 N
+4
+16
+16
+(︂
+)︂
+(︂
+)︂
+65
+611 2
+162035
+65
+71
++ − 𝜋𝑞 +
+𝑞 𝑥6 +
+𝑞 + 𝜋𝑞 2 − 𝑞 3 𝑥7
+6
+504
+3888
+8
+24
+(︂
+)︂ ]︃
+359
+22667 2 17 4
++ −
+𝜋𝑞 +
+𝑞 + 𝑞 𝑥8 .
+(181)
+14
+4536
+16
+
+5.3
+
+Waveforms in the case of circular orbit
+
+In the previous two subsections, we only considered the luminosity formulas for the energy and the
+angular momentum. Here, focusing on circular orbits, we review the previous calculation of the
+gravitational waveforms.
+On the other hand, the gravitational waveforms have also been calculated. In the case of circular
+orbit around a Schwarzschild black hole, Poisson [83] derived the 1.5PN waveform and Tagoshi and
+Sasaki [100] derived the 4PN waveform. These were done by using the post-Newtonian expansion
+of the Regge–Wheeler equation discussed in Section 3. Recently, Fujita and Iyer [39] derived
+the 5.5PN waveform by using the MST formalism. They also discussed factorized re-summed
+waveforms which is useful to obtain better agreement with accurate numerical data.
+In the case of circular orbit around a Kerr black hole, Poisson [83] derived the 1.5PN waveform
+under the assumption of slow rotation of the black hole. In [94] and [101], although the luminosity
+was derived up to 2.5PN and 4PN order respectively, the waveform was not derived up to the
+same order. Recently, Tagoshi and Fujita [97] computed the all multipolar modes 𝑍˜𝑙𝑚𝜔 necessary
+to derive the waveform up to 4PN order, and the results were used to derive the factorized, resummed, multipolar waveform in [78].
+From Equations (46) and (47), we have
+𝑎𝜔𝑛
+*
+2 ∑︁
+−2 𝑆
+𝑍ℓ𝑚𝜔𝑛 √ ℓ𝑚 𝑒𝑖𝜔𝑛 (𝑟 −𝑡)+𝑖𝑚𝜙
+𝑟
+2𝜋
+ℓ𝑚𝑛
+∑︁
+×
+≡
+(ℎ+
+ℓ𝑚 − 𝑖ℎℓ𝑚 )
+
+ℎ+ − 𝑖ℎ× = −
+
+(182)
+
+ℓ𝑚
+
+Since the formulas for the waveform are very complicated, we only show the mode for ℓ = 𝑚 = 2
++,×
+up to 4PN order in the Schwarzschild case. We define 𝜁ℓ,−𝑚
+as [83]
+𝜇
++,×
+2/3 +,×
+ℎ+,×
+𝜁ℓ,𝑚 .
+ℓ𝑚 + ℎℓ,−𝑚 = − (𝑀 Ω𝜙 )
+𝑟
+
+(183)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+40
+
+Misao Sasaki and Hideyuki Tagoshi
+
++,×
+𝜁2,2
+are given as
+
+(︂
+107 𝑣 2 cos(2 𝜓)
++
+𝜁2,2
+= (3 + cos(2 𝜃)) cos(2 𝜓) −
+(︂
+(︂
+)︂ 42
+)︂
+17
+2173 𝑣 4 cos(2 𝜓)
+3
++𝑣
+2 𝜋 cos(2 𝜓) + − + 4 ln 2 sin(2 𝜓) −
+3(︂
+(︂
+)︂
+)︂ 1512
+−107
+𝜋
+cos(2
+𝜓)
+1819
+214
+ln
+2
++𝑣 5
++
+−
+sin(2 𝜓)
+21(︂
+126
+21
+(︂
+)︂
+49928027 856 𝛾
+2 𝜋2
+668 ln 2
+856 ln 𝑣
+2
++𝑣 6 cos(2 𝜓)
+−
++
++
+− 8 (ln 2) −
+1940400
+105 )︂
+3
+105
+105
+)︂
+(︂
+−254 𝜋
++ 8 𝜋 ln 2 sin(2 𝜓)
++
+(︂ 35
+(︂
+)︂
+)︂
+−2173 𝜋 cos(2 𝜓)
+36941 2173 ln 2
+7
++𝑣
++
+−
+sin(2 𝜓)
+756
+4536
+378
+(︂
+(︂
+326531600453 45796 𝛾
+107 𝜋 2
++𝑣 8 cos(2 𝜓) −
++
+−
+12713500800
+2205)︃
+63
+2
+45796 ln 𝑣
+35738 ln 2 428 (ln 2)
++
++
+−
+2205
+21
+2205
+(︂
+)︂
+)︂)︂
+13589 𝜋 428 𝜋 ln 2
++
+−
+sin(2 𝜓)
+,
+(184)
+735
+21
+(︂
+(︂
+)︂
+)︂
+(︂
+17
+107 𝑣 2 sin(2 𝜓)
+×
++ 𝑣 3 cos(2 𝜓)
+− 4 log(2) + 2 𝜋 sin(2 𝜓)
+𝜁2,2
+= 4 cos(𝜃) sin(2 𝜓) −
+42(︂
+(︂
+)︂ 3
+)︂
+2173 𝑣 4 sin(2 𝜓)
+1819 214 log(2)
+107 𝜋 sin(2 𝜓)
+5
+−
++𝑣
+cos(2 𝜓) −
++
+−
+21
+21
+(︂ 1512 (︂
+)︂ 126
+254
+𝜋
++𝑣 6 cos(2 𝜓)
+− 8 𝜋 log(2)
+35
+(︂
+)︂
+)︂
+2 𝜋2
+668 log(2)
+856 log(𝑣)
+49928027 856 𝛾
+2
+sin(2 𝜓)
+−
++
++
+− 8 log(2) −
++
+1940400 (︂ 105
+3
+105)︂
+(︂
+)︂105
+36941 2173 log(2)
+2173 𝜋 sin(2 𝜓)
++𝑣 7 cos(2 𝜓) −
++
+−
+4536
+378
+)︂ (︂ 756
+(︂
+(︂
+326531600453 45796 𝛾
+−13589 𝜋 428 𝜋 log(2)
+8
++
++ −
++
++𝑣
+cos(2 𝜓)
+735
+21
+12713500800
+)︃
+)︃)︃2205
+2
+2
+107 𝜋
+35738 log(2) 428 log(2)
+45796 log(𝑣)
+−
+−
++
++
+sin(2 𝜓)
+,
+(185)
+63
+2205
+21
+2205
+where
+𝜓 = Ω(𝑡 − 𝑟* ) − 𝜙 − 2𝑣 3 (𝛾 + 2 ln 2 + 3 ln 𝑣).
+
+(186)
+
+Other modes are given in [100] up to 4PN order. (Note however the following errors which were
++
+×
+pointed out in [61, 17, 4, 5, 39]. The signs of 𝜁ℓ𝑚
+are opposite. The sign of 𝜁7,3
+is also opposite.
+×
++
+𝜁8,7 and 𝜁10,6 have errors and the corrected formulas are given in Equations (6.6) and (6.7) in [39].)
+In the literature on the post-Newtonian approximation [17, 4, 5], the post-Newtonian waveforms
+(𝑛/2)
+are express in terms of 𝐻+,× defined as
+ℎ+,× =
+
+2𝜇𝑥 ∑︁ 𝑛/2 (𝑛/2)
+𝑥 𝐻+,× ,
+𝑟 𝑛
+(𝑛/2)
+
+where 𝑥 ≡ (𝑀 Ω𝜙 )2/3 . The expression of 𝐻+,× up to 5.5PN order are given in [39].
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(187)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+5.4
+
+41
+
+Slightly eccentric orbit around a Schwarzschild black hole
+
+Next, we consider a particle in slightly eccentric orbit on the equatorial plane around a Schwarzschild
+black hole (see [71], Section 7). We define 𝑟0 as the minimum of the radial potential 𝑅(𝑟)/𝑟4 . We
+also define an eccentricity parameter 𝑒 from the maximum radius of the orbit 𝑟max , which is given
+by 𝑟max = 𝑟0 (1 + 𝑒). These conditions are explicitly given by
+⃒
+𝜕(𝑅/𝑟4 ) ⃒⃒
+= 0,
+and 𝑅(𝑟0 (1 + 𝑒)) = 0.
+(188)
+𝜕𝑟 ⃒𝑟=𝑟0
+We assume 𝑒 ≪ 1. In this case, Ω𝜙 is given to 𝒪(𝑒2 ) by
+[︀
+]︀
+Ω𝜙 = Ωc 1 − 𝑓 (𝑣)𝑒2 ,
+
+𝑓 (𝑣) =
+
+3(1 − 3𝑣 2 )(1 − 8𝑣 2 )
+,
+2(1 − 2𝑣 2 )(1 − 6𝑣 2 )
+
+(189)
+
+where Ωc = (𝑀/𝑟03 )1/2 is the orbital angular frequency in the circular orbit case. We now present
+the energy and angular momentum luminosity, accurate to 𝒪(𝑒2 ) and to 𝒪(𝑥8 ) beyond Newtonian
+order. They are given by
+⟩ (︂
+)︂ {︃
+⟨
+𝑑𝐸
+𝑑𝐸
+=
+1 + (𝑒-independent terms)
+𝑑𝑡
+𝑑𝑡 N
+[︃
+157 6781 2 2335 3 14929 4 773 5
++𝑒2
+−
+𝑥 +
+𝜋𝑥 −
+𝑥 −
+𝜋𝑥
+24
+168
+48
+189
+3
+(︂
+992 2 80464
+156066596771 106144
+−
+𝛾+
+𝜋 −
+ln 2
++
+69854400
+315
+9
+315
+)︂
+234009
+106144
+32443727 7
+−
+ln 3 −
+ln 𝑥 𝑥6 −
+𝜋𝑥
+560
+315
+48384
+(︂
+31271 2 151336
+3045355111074427 507208
++
+𝛾−
+𝜋 −
+ln 2
++ −
+671272842240
+245
+63
+441
+)︂ ]︃}︃
+12887991
+507208
++
+ln 3 +
+ln 𝑥 𝑥8 ,
+(190)
+3920
+245
+and
+⟨
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+⟩
+
+(︂
+=
+
+𝑑𝐽
+𝑑𝑡
+
+)︂ {︃
+1 + (𝑒-independent terms)
+N
+
+[︃
+2
+
++𝑒
+
+23 3259 2 209 3 1041349 4 785 5
+−
+𝑥 +
+𝜋𝑥 −
+𝑥 −
+𝜋𝑥
+8
+168
+8
+18144
+6
+(︂
+91721955203 41623
+389 2 24503
++
+−
+𝛾+
+𝜋 −
+ln 2
+69854400
+210
+6
+210
+)︂
+78003
+41623
+91565 7
+−
+ln 3 −
+ln 𝑥 𝑥6 −
+𝜋𝑥
+280
+210
+168
+(︂
+105114325363 696923
+4387 2 7051
++ −
++
+𝛾−
+𝜋 −
+ln 2
+72648576
+630
+18
+10
+]︃}︃
+)︂
+696923
+3986901
++
+ln 3 +
+ln 𝑥 𝑥8 ,
+1960
+630
+
+(191)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+42
+
+Misao Sasaki and Hideyuki Tagoshi
+
+where (𝑑𝐽/𝑑𝑡)N is the Newtonian angular momentum flux expressed in terms of 𝑥,
+(︂
+)︂
+𝑑𝐽𝑧
+32 (︁ 𝜇 )︁2
+𝑀 𝑥7 ,
+=
+𝑑𝑡 N 5 𝑀
+
+(192)
+
+and the 𝑒-independent terms in both ⟨𝑑𝐸/𝑑𝑡⟩ and ⟨𝑑𝐽/𝑑𝑡⟩ are the same and are given by the terms
+in the case of circular orbit, Equation (178).
+
+5.5
+
+Slightly eccentric orbit around a Kerr black hole
+
+Next, we consider a particle in a slightly eccentric orbit on the equatorial plane around a Kerr
+black hole [95, 96]. We define the orbital radius 𝑟0 and the eccentricity in the same way as in the
+Schwarzschild case by
+⃒
+𝜕(𝑅/𝑟4 ) ⃒⃒
+= 0,
+and 𝑅(𝑟0 (1 + 𝑒)) = 0.
+(193)
+𝜕𝑟 ⃒
+𝑟=𝑟0
+
+We also assume 𝑒 ≪ 1. In this case, Ω𝜙 is given to 𝒪(𝑒2 ) by
+[︂
+(︂
+)︂
+]︂
+(︀
+)︀
+3 9
+9
+Ω𝜙 = Ωc 1 − 𝑞𝑣 3 + 𝑒2 − + 𝑣 2 − 𝑞𝑣 3 + 3 6 + 𝑞 2 𝑣 4 − 60𝑞𝑣 5 + 𝒪(𝑣 6 ) .
+2 2
+2
+
+(194)
+
+We now give the energy and angular momentum luminosity that are accurate to 𝒪(𝑒2 ) and to
+𝒪(𝑥5 ) beyond Newtonian order:
+⟩ (︂
+)︂ {︃
+⟨
+(︂
+)︂
+(︂
+)︂
+)︂
+(︂
+𝑑𝐸
+𝑑𝐸
+1247 2
+11
+44711 33 2
+8191
+59
+=
+1−
+𝑥 −
+𝑞 + 4𝜋 𝑥3 −
++ 𝑞 𝑥4 −
+𝑞−
+𝜋 𝑥5
+𝑑𝑡
+𝑑𝑡 N
+336
+4
+9072
+16
+16
+672
+[︃
+(︂
+)︂
+(︂
+)︂
+6781 2
+2009
+2335
+14929 281 2
+3
+2 157
+−
+𝑥 + −
+𝑞+
+𝜋 𝑥 + −
++
+𝑞 𝑥4
++𝑒
+24
+168
+72
+48
+189
+16
+(︂
+)︂ ]︃}︃
+3223
+773
++ +
+𝑞−
+𝜋 𝑥5 ,
+(195)
+168
+3
+
+⟨
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+5.6
+
+⟩
+
+(︂
+=
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+)︂ {︃
+
+(︂
+)︂
+(︂
+)︂
+(︂
+)︂
+1247 2
+11
+44711 33 2
+59
+8191
+𝑥 + − 𝑞 + 4𝜋 𝑥3 + −
++ 𝑞 𝑥4 −
+𝑞+
+𝜋 𝑥5
+336
+4
+9072
+16
+16
+672
+[︃
+(︂
+)︂
+23 3259 2
+371
+209
++𝑒2
+−
+𝑥 + −
+𝑞+
+𝜋 𝑥3
+8
+168
+24
+8
+(︂
+)︂ ]︃}︃
+1041349 171 2 949
+785
++ −
++
+𝑞 +
+𝑞−
+𝜋 𝑥5 .
+(196)
+18144
+16
+56
+6
+1−
+
+N
+
+Circular orbit with a small inclination from the equatorial plane
+around a Kerr black hole
+
+Next, we consider a particle in a circular orbit with small inclination from the equatorial plane
+around a Kerr black hole [94]. In this case, apart from the energy ℰ and 𝑧-component of the angular
+momentum 𝑙𝑧 , the particle motion has another constant of motion, the Carter constant 𝐶. The
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+43
+
+orbital plane of the particle precesses around the symmetry axis of the black hole, and the degree
+of precession is determined by the value of the Carter constant. We introduce a dimensionless
+parameter 𝑦 defined by
+𝐶^
+𝑦=
+.
+(197)
+^𝑙2 + 𝑎2 (1 − ℰ^2 )
+𝑧
+Given the Carter constant and the orbital radius 𝑟0 , the energy and angular momentum is uniquely
+determined by 𝑅(𝑟) = 0, and 𝜕𝑅(𝑟)/𝜕𝑟 = 0. By solving the geodesic equation with the assumption
+𝑦 ≪ 1, we find that 𝑦 1/2 is equal to the inclination angle from the equatorial plane. The angular
+frequency Ω𝜙 is determined to 𝒪(𝑦) and 𝒪(𝑣 4 ) as
+[︂
+]︂
+)︀
+3 (︀ 3
+3
+2 4
+6
+Ω𝜙 = Ωc 1 − 𝑞𝑣 + 𝑦 𝑞𝑣 − 𝑞 𝑣 + 𝒪(𝑣 ) .
+(198)
+2
+We now present the energy and the 𝑧-component angular flux to 𝒪(𝑣 5 ):
+)︂
+(︂
+⟩ (︂
+)︂ [︂
+(︂
+)︂
+⟨
+𝑦 )︁
+44711 33 2 527 2
+𝑑𝐸
+1247 2
+73 (︁
+𝑑𝐸
+3
+1−
+𝑞 𝑣 + −
+=
+1−
+𝑣 + 4𝜋 −
++ 𝑞 −
+𝑞 𝑦 𝑣4
+𝑑𝑡
+𝑑𝑡 N
+336
+12
+2
+9072
+16
+96
+(︂
+)︂ ]︂
+3749 (︁
+𝑦 )︁ 5
+8191
+𝜋+
+𝑞 1−
++ −
+𝑣 .
+(199)
+672
+336
+2
+⟨
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+⟩
+
+(︂
+=
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+)︂ {︃(︁
+N
+
+[︂ (︁
+]︂
+𝑦 )︁ 1247 (︁
+𝑦 )︁ 2
+𝑦 )︁ 61 (︁
+𝑦 )︁
+1−
+−
+1−
+𝑣 + 4𝜋 1 −
+−
+1−
+𝑞 𝑣3
+2
+336
+2
+2
+12
+2
+[︂
+(︂
+)︂ ]︂
+44711 (︁
+𝑦 )︁
+33 229
++ −
+1−
++
+−
+𝑦 𝑞2 𝑣4
+9072
+2
+16
+32
+(︂
+)︂ ]︂ }︃
+[︂
+𝑦 )︁
+417 4301
+8191 (︁
+1−
+𝜋+
+−
+𝑦 𝑞 𝑣5 .
+(200)
++ −
+672
+2
+56
+224
+
+Using Equation (198), we can express 𝑣 in terms of 𝑥 = (𝑀 Ω𝜙 )1/3 as
+(︂
+)︂
+)︀
+𝑞
+1 (︀
+𝑣 = 𝑥 1 + 𝑥3 + 𝑦 −𝑞𝑥3 + 𝑞 2 𝑥4 .
+3
+2
+
+(201)
+
+We then express Equations (199) and (200) in terms of 𝑥 as
+⟩ (︂
+)︂ {︃
+(︂
+)︂
+[︂
+(︂
+)︂ ]︂
+⟨
+𝑑𝐸
+1247 2
+11
+47
+44711
+33 47
+𝑑𝐸
+=
+1−
+𝑥 + 4𝜋 − 𝑞 − 𝑞𝑦 𝑥3 + −
++
+− 𝑦 𝑞 2 𝑥4
+𝑑𝑡
+𝑑𝑡 N
+336
+4
+24
+9072
+16 96
+[︂
+(︂
+)︂ ]︂ }︃
+8191
+59 11215
++ −
+𝜋+ − +
+𝑦 𝑞 𝑥5 ,
+(202)
+672
+16
+672
+⟨
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+⟩
+
+(︂
+=
+
+𝑑𝐽𝑧
+𝑑𝑡
+
+)︂ {︃(︁
+N
+
+[︂ (︁
+(︂
+)︂ ]︂
+𝑦 )︁ 1247 (︁
+𝑦 )︁ 2
+𝑦 )︁
+7
+11 (︁
+𝑦 )︁
+1−
+−
+1−
+𝑥 + 4𝜋 1 −
+−
+𝑦+
+1−
+𝑞 𝑥3
+2
+336
+2
+2
+2
+4
+2
+[︂
+(︂
+)︂ ]︂
+44711 (︁
+𝑦 )︁
+33 117
++ −
+1−
++
+−
+𝑦 𝑞 2 𝑥4
+9072
+2
+16
+32
+[︂
+(︂
+)︂ ]︂ }︃
+(︁
+)︁
+8191
+𝑦
+59 687
++ −
+1−
+𝜋+ − +
+𝑦 𝑞 𝑥5 .
+(203)
+672
+2
+16 224
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+44
+
+5.7
+
+Misao Sasaki and Hideyuki Tagoshi
+
+Absorption of gravitational waves by a black hole
+
+In this section, we evaluate the energy absorption rate by a black hole. The energy flux formula is
+given by [107]
+(︂
+)︂ ∑︁ ∫︁
+2
+𝑑𝐸hole
+128𝜔𝑘(𝑘 2 + 4˜
+𝜖2 )(𝑘 2 + 16˜
+𝜖2 )(2𝑀 𝑟+ )5 ˜ H 2
+2𝑆
+𝑑𝜔 ℓ𝑚
+|𝑍ℓ𝑚𝜔 | ,
+=
+(204)
+2
+𝑑𝑡 𝑑Ω
+2𝜋
+|𝐶|
+ℓ𝑚
+
+where 𝜖˜ = 𝜅/(4𝑟+ ), and
+(︀
+)︀ (︀
+)︀
+|𝐶|2 = (𝜆 + 2)2 + 4𝑎𝜔𝑚 − 4𝑎2 𝜔 2 𝜆2 + 36𝑎𝜔𝑚 − 36𝑎2 𝜔 2
++(2𝜆 + 3)(96𝑎2 𝜔 2 − 48𝑎𝜔𝑚) + 144𝜔 2 (𝑀 2 − 𝑎2 ).
+
+(205)
+
+H
+In calculating 𝑍˜ℓ𝑚𝜔
+, we need to evaluate the upgoing solution 𝑅up , and the asymptotic amplitude
+of ingoing and upgoing solutions, 𝐵 inc , 𝐵 trans , and 𝐶 trans in Equations (19) and (20). Evaluation
+of the incident amplitude 𝐵 trans of the ingoing solution is essential in the calculation. Poisson and
+Sasaki [85] evaluated them, in the case of a circular orbit around the Schwarzschild black hole,
+up to 𝒪(𝜖) beyond the lowest order, and obtained the energy flux at the lowest order, using the
+method we have described in Section 3. Later, Tagoshi, Mano, and Takasugi [98] evaluated the
+energy absorption rate in the Kerr case to 𝒪(𝑣 8 ) beyond the lowest order using the method in
+Section 4. Since the resulting formula is very long and complicated, we show it here only to 𝒪(𝑣 3 )
+beyond the lowest order. The energy absorption rate is given by
+[︃
+(︂
+(︂
+)︂
+)︂
+𝑑𝐸
+32 (︁ 𝜇 )︁2 10 5
+3 3
+33 3
+1
+=
+𝑥 𝑥 − 𝑞 − 𝑞 + −𝑞 − 𝑞 𝑥2
+𝑑𝑡 H
+5 𝑀
+4
+4
+16
+(︂
+)︂ ]︃
+1 13 2 35 2 1 4 1
+4
+3
++ 2𝑞𝐵2 + + 𝜅𝑞 + 𝑞 − 𝑞 + 𝜅 + 3𝑞 𝜅 + 6𝑞 𝐵2 𝑥3 ,
+2
+2
+6
+4
+2
+
+(206)
+where
+
+[︃
+(︃
+)︃
+(︃
+)︃]︃
+𝑛𝑖𝑞
+𝑛𝑖𝑞
+1
+(0)
+(0)
+𝐵𝑛 =
+𝜓
+3 + √︀
+−𝜓
+3 − √︀
+,
+2𝑖
+1 − 𝑞2
+1 − 𝑞2
+
+(207)
+
+and 𝜓 (𝑛) (𝑧) is the polygamma function. We see that the absorption effect begins at 𝒪(𝑣 5 ) beyond
+the quadrupole formula in the case 𝑞 ̸= 0. If we set 𝑞 = 0 in the above formula, we have
+(︂
+)︂
+(︂
+)︂
+(︀ 8
+)︀
+𝑑𝐸
+𝑑𝐸
+=
+𝑥 + 𝒪(𝑣 10 ) ,
+(208)
+𝑑𝑡 H
+𝑑𝑡 N
+which was obtained by Poisson and Sasaki [85].
+We note that the leading terms in (𝑑𝐸/𝑑𝑡)H are negative for 𝑞 > 0, i.e., the black hole loses
+energy if the particle is co-rotating. This is because of the superradiance for modes with 𝑘 < 0.
+
+5.8
+
+Adiabatic evolution of Carter constant for orbit with small eccentricity and small inclination angle around a Kerr black hole
+
+In the Schwarzschild case, the particle’s trajectory is characterized by the energy 𝐸 and the zcomponent angular momentum 𝐿𝑧 . In the adiabatic approximation, the rates of change of 𝐸 and
+𝐿𝑧 are equated with those radiated to infinity as gravitational waves or with those absorbed into
+the black hole horizon, in accordance with the conservation of 𝐸 and 𝐿𝑧 . On the other hand, in
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+45
+
+the Kerr case, the Carter constant, 𝑄, is also necessary to specify the particle’s trajectory. In
+this case, the rate of change of 𝑄 is not directly related to the asymptotic gravitational waves.
+Mino [70] proposed a new method for evaluating the average rate of change of the Carter constant
+by using the radiative field in the adiabatic approximation. He showed that the average rate of
+change of the Carter constant as well as the energy and angular momentum can be obtained by
+the radiative field of the metric perturbation. The radiative field is defined as half the retarded
+field minus half the advanced field. Mino’s work gave a proof of an earlier work by Gal’tsov [46]
+in which the radiative field is used to evaluate the average rate of change of the energy and the
+angular momentum without proof. Inspired by this new development, it was demonstrated in [53]
+and [31] that the time-averaged rates of change of the energy and the angular momentum can be
+computed numerically for generic orbits. A first step toward explicit calculation of the rate of
+change of the Carter constant was done in the case of a scalar charged particle in [30]. After that
+a simpler formula for the average rate of change of the Carter constant was found in [90, 89]. This
+new formula relates the rate of change of the Carter constant to the flux evaluated at infinity and
+on the horizon. Based on the new formula, in [89], the rate of change of the Carter constant for
+orbits with small eccentricities and inclinations is derived analytically up to 𝑂(𝑣 5 ) by using the
+MK method discussed in Section 4. In Ref. [48], the method was extended to the case of the orbits
+with small eccentricity but arbitrary inclination angle.
+First we show the results for the small inclination case [89]. We define the radius 𝑟0 and the
+eccentricity 𝑒 as
+⃒
+𝑑𝑅 ⃒⃒
+= 0, and 𝑅(𝑟0 (1 + 𝑒)) = 0.
+(209)
+𝑑𝑟 ⃒𝑟=𝑟0
+In Ref. [89], the parameter which expresses a small inclination from the equatorial plane is defined
+as
+^ ^𝑙𝑧2 .
+𝑦 ′ = 𝐶/
+
+(210)
+
+Note that this definition of 𝑦 ′ is different from 𝑦 in Equation (197). By solving Equation (209)
+with respect to 𝐸 and ^𝑙𝑧 , we obtain
+(︂ 2
+)︂
+3𝑣 4
+𝑣
+𝑣4
+1
+𝑣2
+5
+2
+5
+^
++
+− 𝑞𝑣 − 𝑒
+−
++ 2𝑞𝑣 + 𝑞𝑣 5 𝑦 ′ + 𝑞𝑣 5 𝑒2 𝑦 ′ ,
+(211)
+ℰ =1−
+2
+8
+2
+4
+2
+[︂
+4
+5
+2
+^𝑙𝑧 = 𝑟0 𝑣 1 + 3𝑣 − 3𝑞𝑣 3 + 27𝑣 + 𝑞 2 𝑣 4 − 15𝑞𝑣
+2
+8
+2
+(︂
+)︂
+3𝑣 2
+81𝑣 4
+7𝑞 2 𝑣 4
+63𝑞𝑣 5
+2
+3
++𝑒 −1 +
+− 6𝑞𝑣 +
++
+−
+2
+8
+2
+2 )︂
+(︂
+2
+4
+2 4
+5
+1
+3𝑣
+27𝑣
+3𝑞
+𝑣
+15𝑞𝑣
++𝑦 ′ − −
++ 3𝑞𝑣 3 −
+−
++
+4
+16
+2
+2
+(︂2
+)︂ ]︂
+2
+4
+2 4
+5
+𝑣
+1
+3𝑣
+81𝑣
+19𝑞
+63𝑞𝑣
+2 ′
+3
++𝑒 𝑦
+−
++ 6𝑞𝑣 −
+−
++
+.
+(212)
+2
+4
+16
+4
+2
+By using Equations (4.9) and (4.12) in [89], we find the azimuthal angular frequency Ω𝜙 as
+)︂
+[︂
+(︂
+21𝑞𝑣 3
+3 9𝑣 2
+3
+2
+4
+2 4
+5
++
+−
++ 18𝑣 + 3𝑞 𝑣 − 60𝑞𝑣
+Ω𝜙 = Ω𝑐 1 − 𝑞𝑣 + 𝑒
+2
+2(︂
+2
+(︂
+)︂
+)︂
+]︂
+3𝑞𝑣 3
+3𝑞 2 𝑣 4
+39𝑞𝑣 3
+51𝑞 2 𝑣 4
+75𝑞𝑣 5
++
+−
+𝑦′ +
+−
++
+𝑒2 𝑦 ′ ,
+(213)
+2
+2
+4
+4
+2
+where 𝑣 = (𝑀/𝑟0 )1/2 and Ω𝑐 = (𝑀/𝑟03 )1/2 . From the definition of 𝑥 ≡ (𝑀 Ω𝜙 )1/3 , the parameter
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+46
+
+Misao Sasaki and Hideyuki Tagoshi
+
+𝑣 is expressed with 𝑥 as
+[︂
+(︂
+)︂
+𝑞𝑥3
+1 3𝑥2
+7𝑞𝑥3
+31𝑞𝑥5
+𝑣 =𝑥 1+
++ 𝑒2 − −
++
+− 6𝑥4 − 𝑞 2 𝑥4 +
+3
+2
+2
+3
+2
+(︂
+)︂
+(︂
+)︂]︂
+3
+2 4
+3
+2 4
+5
+𝑞𝑥
+𝑞 𝑥
+3𝑞𝑥
+9𝑞 𝑥
+23𝑞𝑥
++ −
++
+𝑦 ′ + 𝑒2 𝑦 ′ −
++
+−
+.
+2
+2
+2
+4
+4
+
+(214)
+
+By using the above formula, we can express 𝑦 defined in Equation (197) in terms of 𝑦 ′ above as
+𝑦=
+
+𝐶^
+
+^𝑙2 + 𝑎2 (1 − ℰ^2 )
+𝑧
+^𝑙2 𝑦 ′
+𝑧
+=
+^𝑙2 + 𝑎2 (1 − ℰ^2 )
+𝑧
+(︀
+)︀
+(︀
+)︀
+= 1 − 𝑞 2 𝑥4 + 4𝑞 2 𝑥6 𝑦 ′ + 𝑒2 −𝑞 2 𝑥4 + 12𝑞 2 𝑥6 𝑦 ′ .
+
+The average rate of change of ℰ, 𝑙𝑧 and 𝑄 become
+⟨ ⟩
+32 (︁ 𝜇 )︁2 10
+𝑑ℰ
+=−
+𝑣
+𝑑𝑡
+[︂5 𝑀
+(︂
+)︂
+73
+1247 2
+× 1−
+𝑣 −
+𝑞 − 4𝜋 𝑣 3
+12)︂
+(︂ 336
+(︂
+)︂
+44711 33 2 4
+8191
+3749
+−
+− 𝑞 𝑣 +
+𝑞−
+𝜋 𝑣5
+16
+336
+672
+{︂ 9072
+(︂
+)︂
+277 4001 2
+3583
+457
++
+−
+𝑣 +
+𝜋−
+𝑞 𝑣3
+24
+84
+(︂
+)︂ }︂
+)︂48 (︂ 4
+1091291 4
+364337
+58487
+2
++ 42𝑞 −
+𝑞−
+𝜋 𝑣 5 𝑒2
+𝑣 +
+9072
+672
+1344
+(︂
+)︂
+73 3 527 2 4 3749 5 ′
++
+𝑞𝑣 −
+𝑞 𝑣 −
+𝑞𝑣 𝑦
+96
+672
+)︂
+]︂
+(︂ 24
+457 3 5407 2 4 58487 5 2 ′
+𝑞𝑣 −
+𝑞 𝑣 −
+𝑞𝑣 𝑒 𝑦 ,
++
+8
+48
+1344
+⟨
+⟩
+(︁
+)︁
+2
+𝑑𝑙𝑧
+32 𝜇
+=−
+𝑀 𝑣7
+𝑑𝑡
+5
+𝑀
+[︂
+(︂
+)︂
+1247 2
+61
+× 1−
+𝑣 −
+𝑞 − 4𝜋 𝑣 3
+12)︂
+(︂ 336
+(︂
+)︂
+44711 33 2 4
+417
+8191
+−
+− 𝑞 𝑣 +
+𝑞−
+𝜋 𝑣5
+9072
+16
+56
+672
+{︂
+(︂
+)︂
+51 17203 2
+781
+369
++
+−
+𝑣 + −
+𝑞+
+𝜋 𝑣3
+8(︂
+672
+)︂12 (︂ 8
+)︂ }︂
+929 2 1680185 4
+1809
+48373
++
+𝑞 −
+𝑣 +
+𝑞−
+𝜋 𝑣 5 𝑒2
+32
+18144
+336
+{︂
+(︂
+)︂224
+1 1247 2
+61
+3
++ − +
+𝑣 +
+𝑞 − 2𝜋 𝑣
+672
+(︂2
+)︂8
+(︂
+)︂ }︂
+213 2 44711 4
+4301
+8191
+−
+𝑞 −
+𝑣 −
+𝑞−
+𝜋 𝑣5 𝑦′
+32
+18144 (︂
+224
+1344
+{︂
+)︂
+51 17203 2
+1513
+369
++ −
++
+𝑣 +
+𝑞−
+𝜋 𝑣3
+16
+1344
+16
+16
+(︂
+)︂
+(︂
+)︂ }︂
+]︂
+1680185 5981 2 4
+48373
++
+−
+𝑞 𝑣 − 168𝑞 −
+𝜋 𝑣 5 𝑒2 𝑦 ′ ,
+36288
+64
+672
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+(215)
+
+(216)
+
+(217)
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+⟨
+
+𝑑𝑄
+𝑑𝑡
+
+⟩
+
+64 (︁ 𝜇 )︁3 3 6
+𝑀 𝑣
+[︂5 𝑀
+)︂
+(︂
+743 2
+1637
+× 1 − 𝑞𝑣 −
+𝑣 −
+𝑞 − 4𝜋 𝑣 3
+336
+336
+)︂
+(︂
+(︂
+)︂
+4159
+33
+439 2 129193
+151765
+𝑞 −
+− 4𝜋𝑞 𝑣 4 +
+𝑞−
+𝜋 − 𝑞3 𝑣5
++
+18144
+18144 )︂ 672
+16
+(︂
+{︂ 48
+2425 2
+14869
+337
+43 51
+3
+− 𝑞𝑣 −
+𝑣 −
+𝑞−
+𝜋 𝑣
++
+8(︂ 8
+224
+224)︂
+8
+453601 3631 2 369
+−
+−
+𝑞 +
+𝜋𝑞 𝑣 4
+32
+8
+(︂ 4536
+)︂ }︂
+141049
+38029
+929 3 5 2
++
+𝑞−
+𝜋−
+𝑞 𝑣 𝑒
+9072
+672
+32
+{︂
+(︂
+)︂
+1637 3
+1
+1355 2
+𝑞𝑣 −
+𝑞 − 2𝜋𝑞 𝑣 4
++ 𝑞𝑣 +
+2 (︂
+672
+96 }︂
+)︂
+151765
+213 3 5 ′
+−
+𝑞−
+𝑞 𝑣 𝑦
+36288
+32 (︂
+{︂
+)︂
+14869 3
+369
+33257 2 4
+51
+𝑞𝑣 +
+𝑞𝑣 +
+𝜋𝑞 −
+𝑞 𝑣
++
+16(︂
+448
+16)︂ }︂ 192
+]︂
+5981 3 5 2 ′
+141049
+𝑞+
+𝑞 𝑣 𝑒 𝑦 .
++ −
+18144
+64
+
+47
+
+=−
+
+The rate of change of 𝐶 becomes
+⟨
+⟩ ⟨
+⟩
+(︂ ⟨ ⟩ ⟨
+⟩ )︂
+𝑑𝐶
+𝑑𝑄
+𝑑ℰ
+𝑑𝑙𝑧
+=
+− 2(𝑎ℰ − 𝑙𝑧 ) 𝑎
+−
+𝑑𝑡
+𝑑𝑡
+𝑑𝑡
+𝑑𝑡
+[︂
+(︂
+)︂
+(︁
+)︁
+3
+743 2
+85
+64 𝜇
+𝑀 3 𝑣6 𝑦′ 1 −
+𝑣 −
+𝑞 − 4𝜋 𝑣 3
+=−
+5 𝑀
+336
+(︂
+)︂ 8 (︂
+)︂
+129193 307 2 4
+2553
+4159
+−
+−
+𝑞 𝑣 +
+𝑞−
+𝜋 𝑣5
+96 (︂
+224 )︂ 672
+{︂ 18144
+337
+1793
+43 2425 2
+−
+𝑣 +
+𝜋−
+𝑞 𝑣3
++
+8(︂ 224
+8 )︂
+16
+453601 7849 2 4
+−
+−
+𝑞 𝑣
+192 )︂ }︂ ]︂
+(︂ 4536
+3421
+38029
++
+𝑞−
+𝜋 𝑣 5 𝑒2 .
+224
+672
+We can use Equation (214) to express these equations in terms of 𝑥. We obtain
+⟨ ⟩
+[︂
+(︂
+)︂
+𝑑ℰ
+32 (︁ 𝜇 )︁2 10
+11𝑞
+1247𝑥2
+=−
+𝑥 1−
++ 4𝜋 −
+𝑥3
+𝑑𝑡
+5 𝑀
+336 (︂
+4 )︂
+(︂
+)︂
+44711 33𝑞 2
+8191𝜋 59𝑞
++ −
++
+𝑥4 + −
+−
+𝑥5
+9072
+16
+672
+16
+{︂
+(︂
+)︂
+157 6781𝑥2
+2335𝜋 2009𝑞
++𝑒2
+−
++
+−
+𝑥3
+24
+168
+48
+72
+(︂
+)︂
+(︂
+)︂ }︂
+14929 281𝑞 2
+773𝜋 3223𝑞
+4
++ −
++
+𝑥 + −
++
+𝑥5
+189
+16
+3
+168
+(︂
+)︂
+47𝑞𝑥3
+47𝑞 2 𝑥4
+11215𝑞𝑥5
++ −
+−
++
+𝑦′
+24
+96
+672
+(︂
+)︂ ]︂
+617𝑞𝑥3
+1585𝑞 2 𝑥4
+60187𝑞𝑥5
++𝑒2 𝑦 ′ −
+−
++
+,
+48
+96
+336
+
+(218)
+
+(219)
+
+(220)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+48
+
+Misao Sasaki and Hideyuki Tagoshi
+
+⟨
+
+⟨
+
+𝑑𝐶
+𝑑𝑡
+
+𝑑𝑙𝑧
+𝑑𝑡
+
+⟩
+
+⟩
+
+[︂
+(︂
+)︂
+32 (︁ 𝜇 )︁2
+1247𝑥2
+11𝑞
+7
+=−
+𝑀𝑥 1 −
++ 4𝜋 −
+𝑥3
+5
+𝑀
+336
+4
+(︂
+)︂
+(︂
+)︂
+44711 33𝑞 2
+8191𝜋 59𝑞
++ −
++
+𝑥4 + −
+−
+𝑥5
+9072
+16
+672
+16
+{︂
+(︂
+)︂
+23 3259𝑥2
+209𝜋 371𝑞
++𝑒2
+−
++
+−
+𝑥3
+8
+168
+8
+24
+)︂
+(︂
+)︂ }︂
+(︂
+785𝜋 949𝑞
+1041349 171𝑞 2
+4
++
+𝑥 + −
++
+𝑥5
++ −
+18144
+16
+6
+56
+(︂
+)︂
+{︂
+209𝜋 1057𝑞
+23 3259𝑥2
++𝑒2 𝑦 ′ −
++
++ −
++
+𝑥3
+16
+336
+16
+48
+(︂
+)︂
+(︂
+)︂ }︂
+1041349 825𝑞 2
+785𝜋 925𝑞
++
+−
+𝑥4 +
+−
+𝑥5
+36288
+32
+12
+14
+{︂
+(︂
+)︂
+1 1247𝑥2
+71𝑞
++ − +
++ −2𝜋 +
+𝑥3
+2
+672
+24
+(︂
+)︂
+)︂ }︂ ]︂
+(︂
+44711 101𝑞 2
+8191𝜋 687𝑞
++
+−
+𝑥4 +
++
+𝑥5 𝑦 ′ ,
+18144
+32
+1344
+224
+
+[︂
+(︂
+)︂
+743𝑥2
+64 (︁ 𝜇 )︁3 3 6 ′
+69𝑞
+𝑀 𝑥 𝑦 1−
++ 4𝜋 −
+𝑥3
+5
+𝑀
+336
+8
+(︂
+)︂
+(︂
+)︂
+129193 307𝑞 2
+4159𝜋 11089𝑞
+4
++ −
++
+𝑥 + −
++
+𝑥5
+18144
+96
+672
+2016
+{︂
+(︂
+)︂
+193𝜋 89𝑞
+19 7379𝑥2
++𝑒2
+−
++
+−
+𝑥3
+8
+672
+8
+2
+)︂
+(︂
+)︂ }︂]︂
+(︂
+34295𝜋 502051𝑞
+1340159 1209𝑞 2
++
+𝑥4 + −
++
+𝑥5 .
++ −
+18144
+64
+448
+4032
+
+(221)
+
+=−
+
+(222)
+
+We note that if we set 𝑦 ′ = 0, ⟨𝑑ℰ/𝑑𝑡⟩ and ⟨𝑑𝑙𝑧 /𝑑𝑡⟩ agree, respectively, with the rate of emission of
+the energy and the azimuthal angular momentum radiated to infinity, Equations (195) and (196)
+in Section 5.5. We also note that by using the transformation from 𝑦 to 𝑦 ′ , Equation (215), we
+can directly show that Equations (202) and (203) in Section 5.6 agree respectively with ⟨𝑑ℰ/𝑑𝑡⟩
+and ⟨𝑑𝑙𝑧 /𝑑𝑡⟩ in Equations (220) and (221) with 𝑒 = 0.
+
+5.9
+
+Adiabatic evolution of constants of motion for orbits with generic
+inclination angle and with small eccentricity around a Kerr black
+hole
+
+The calculation in Section 5.8 was extended to orbits with generic inclination angle by Ganz
+et al. [48]. We specify the geodesics by the semi-latus rectum 𝑝 and the eccentricity 𝑒 and a
+dimensionless inclination parameter 𝑦 ′ . The outer and inner turning point of the radial motion is
+here define as
+𝑅(𝑝/(1 − 𝑒)) = 0,
+
+𝑅(𝑝/(1 + 𝑒)) = 0.
+
+(223)
+
+The inclination parameter is defined by
+^ ^𝑙2 ,
+𝑦 ′ = 𝐶/
+𝑧
+
+(224)
+√︀
+
+which is the same as Equation (210). We define 𝑣 = 𝑀/𝑝. By solving these equations with
+respect to ℰ^ and ^𝑙𝑧 , we obtain
+{︂
+}︂
+1
+3
+1 2 3 4
+ℰ^ = 1 − 𝑣 2 + 𝑣 4 − 𝑞𝑌 𝑣 5 + 𝑒2
+𝑣 − 𝑣 + 2𝑞𝑌 𝑣 5 ,
+2
+8
+2
+4
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+(︂
+)︂
+^𝑙𝑧
+3𝑌 3
+27𝑌
+= 𝑣𝑌 +
+𝑣 − 3𝑞𝑌 2 𝑣 4 + 𝑞 2 𝑌 3 +
+𝑣5
+𝑝
+2
+8
+{︂
+(︂
+)︂ }︂
+𝑌 3
+9𝑌
++𝑒2
+𝑣 − 𝑞𝑌 2 𝑣 4 + 𝑞 2 𝑌 3 +
+𝑣5 ,
+2
+4
+
+49
+
+(225)
+
+where
+𝑌 ≡√
+
+^𝑙𝑧
+1
+.
+=
+1 + 𝑦′
+𝐶^ + ^𝑙𝑧2
+
+The average rate of change of ℰ, 𝑙𝑧 and 𝐶 become up to 𝑂(𝑒2 , 𝑣 5 ),
+⟨ ⟩
+[︂(︂
+)︂ (︂
+)︂
+𝑑ℰ
+73
+32 (︁ 𝜇 )︁2 10
+1247 9181 2 2
+=−
+𝑣 (1 − 𝑒2 )3/2 1 + 𝑒2 −
++
+𝑒 𝑣
+𝑑𝑡
+5 (︂𝑀
+672
+)︂
+(︂ 24
+)︂336
+73𝑌
+823𝑌 2
+1375 2
+3
+3
+−
++
+𝑒 𝑞𝑣 + 4 +
+𝑒 𝜋𝑣
+24
+48
+(︂ 12
+)︂
+44711 172157 2 4
+−
++
+𝑒 𝑣
+2592 {︂
+(︂ 9072
+}︂ )︂
+2
+329 527𝑌
+4379 6533𝑌 2
+−
+−
++
+−
+𝑒2 𝑞 2 𝑣 4
+96
+96
+192
+192
+)︂
+(︂
+)︂
+]︂
+(︂
+1759𝑌 2
+8191 44531 2
+3749𝑌
++
+𝑒 𝜋𝑣 5 +
++
+𝑒 𝑞𝑣 5 ,
+−
+672
+336
+336 )︂ (︂
+56
+⟨
+⟩
+[︂(︂
+)︂
+𝑑𝑙𝑧
+32 (︁ 𝜇 )︁2
+7𝑌 2
+1247𝑌
+425𝑌 2 2
+7
+2 3/2
+=−
+𝑀 𝑣 (1 − 𝑒 )
+𝑌 +
+𝑒 −
++
+𝑒 𝑣
+𝑑𝑡
+5 (︂𝑀
+336)︂
+{︂
+}︂ 8 )︂
+(︂ 336
+61 61𝑌 2
+63 91𝑌 2
+97𝑌
++
+−
++
+−
+𝑒2 𝜋𝑣 3
+𝑒2 𝑞𝑣 3 + 4𝑌 +
+8
+8
+8
+(︂ 24
+)︂4
+44711𝑌
+302893𝑌 2 4
+−
++
+𝑒 𝑣
+6048
+(︂ 9072
+{︂
+}︂ )︂
+57𝑌
+45𝑌 3
+201𝑌
+37𝑌 3
+−
+−
++
+−
+𝑒2 𝑞 2 𝑣 4
+16
+8
+16
+2
+)︂
+(︂
+48361𝑌 2
+8191𝑌
++
+𝑒 𝜋𝑣 5
+−
+1344 {︂
+(︂ 672
+}︂ )︂
+]︂
+2633 4301𝑌 2
+66139 18419𝑌 2
+2
+5
+−
+−
++
+−
+𝑒 𝑞𝑣 ,
+224
+224
+1344
+448
+⟨ ⟩
+[︂(︂
+)︂
+(︁
+)︁
+(︀
+)︀
+𝑑𝒞
+64 𝜇 3 3 6
+7 2
+2 3/2
+2
+=−
+𝑀 𝑣 (1 − 𝑒 )
+1−𝑌
+1+ 𝑒
+𝑑𝑡
+5 (︂𝑀
+)︂
+(︂
+)︂ 8
+743 23 2 2
+85𝑌
+211𝑌 2
+−
+− 𝑒 𝑣 −
++
+𝑒 𝑞𝑣 3
+336
+42
+8
+8
+(︂
+)︂
+(︂
+)︂
+97
+129193 84035 2 4
++ 4 + 𝑒2 𝜋𝑣 3 −
++
+𝑒 𝑣
+8
+1728
+(︂
+{︂ 18144
+}︂ )︂
+329 53𝑌 2
+929 163𝑌 2
+−
+−
++
+−
+𝑒2 𝑞 2 𝑣 4
+8
+96
+(︂ 96
+)︂
+(︂8
+)︂
+]︂
+2553𝑌
+553𝑌 2
+4159 21229 2
+5
+5
++
+−
+𝑒 𝑞𝑣 −
++
+𝑒 𝜋𝑣 .
+224
+192
+672
+1344
+
+(226)
+
+(227)
+
+Here, a term (1 − 𝑒2 )3/2 is factored out. We can express 𝑣 in terms of 𝑥 ≡ (𝑀 Ω𝜙 )1/3 by using
+Equation (3.15) in [48] as
+[︂
+(︂
+)︂
+(︂
+)︂
+2
+1 𝑌
+3𝑌 2
+𝑣 = 𝑥 1 + 𝑞𝑥3 − + 𝑌 + 𝑞 2 𝑥4
++ −
+3
+4
+2
+4
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+50
+
+Misao Sasaki and Hideyuki Tagoshi
+
+(︂
+)︂
+(︂
+(︂
+)︂)︂
+1
+4
+5 5𝑌
+19𝑌 2
+2
+3
+4
+2
++𝑒
+− 𝑥 + 𝑞𝑥 − + 3𝑌 + 𝑥 −3 + 𝑞
++
+−
+2
+3
+8
+4
+8
+]︂
+)︀
++𝑞𝑥5 (3 + 3𝑌 ) .
+2
+
+(︂
+
+The average rate of change of ℰ, 𝑙𝑧 and 𝐶 are rewritten as
+⟨ ⟩
+[︂
+(︂
+)︂
+)︀
+𝑑ℰ
+193𝑒2
+32 (︁ 𝜇 )︁2 (︀
+1247 30865𝑒2
+2 3/2 10
+𝑥 1+
+=−
+1−𝑒
++ −
+−
+𝑥2
+𝑑𝑡
+5 (︂ 𝑀
+24
+336
+672
+(︂
+)︂)︂
+20𝑞 47𝑞𝑌
+2623𝜋 1145𝑞 379𝑞𝑌
++𝑥3 4𝜋 −
++
++ 𝑒2
+−
++
+3
+12
+48
+18
+12
+(︂
+44711 89𝑞 2
+193𝑞 2 𝑌 2
+4
+2
++𝑥 −
+−
++ 5𝑞 𝑌 −
+96
+96
+(︂ 9072
+)︂)︂
+2
+2
+4165𝑞
+1205𝑞
+𝑌
+503𝑞 2 𝑌 2
+522439
+2
++𝑒 −
+−
++
+−
+192
+24
+64
+(︂ 6048
+8191𝜋 1247𝑞 11215𝑞𝑌
+5
++𝑥 −
++
+−
+672
+42
+336
+)︂)︂ ]︂
+(︂
+370877𝜋 17723𝑞 39199𝑞𝑌
+2
++𝑒 −
++
+−
+.
+1344
+42
+96
+⟨
+
+(229)
+
+⟩
+
+(︂
+)︂
+[︂
+(︀
+)︀
+32 (︁ 𝜇 )︁2
+1247𝑌
+16777𝑒2 𝑌
+35𝑒2 𝑌
+7
+2 3/2
+2
+=−
+𝑀𝑥 1 − 𝑒
++𝑥 −
+−
+𝑌 +
+5 (︂ 𝑀
+8 (︂
+336
+672
+)︂)︂
+2
+61𝑞
+14𝑞𝑌
+5𝑞𝑌
+247𝑞
+257𝜋𝑌
+329𝑞𝑌
+51𝑞𝑌 2
++𝑥3
++ 4𝜋𝑌 −
+−
++ 𝑒2
++
+−
+−
+3
+8
+12
+8
+12
+4
+(︂ 24
+29𝑞 2 𝑌
+7𝑞 2 𝑌 2
+3𝑞 2 𝑌 3
+44711𝑌
+4
+−
++
++
++𝑥 −
+9072
+16
+2
+8
+(︂
+)︂)︂
+2 2
+83963𝑌
+357𝑞
+𝑌
+399𝑞 2 𝑌 3
+2
+2
++𝑒 −
+− 21𝑞 𝑌 +
++
+1296
+16
+32
+(︂
+2
+2633𝑞
+8191𝜋𝑌
+1247𝑞𝑌
+3181𝑞𝑌
++𝑥5 −
+−
++
+−
+224
+672
+56
+224
+(︂
+)︂)︂ ]︂
+65029𝑞 200413𝜋𝑌
+10651𝑞𝑌
+15065𝑞𝑌 2
+2
++𝑒 −
+−
++
+−
+.
+(230)
+448
+1344
+56
+448
+
+𝑑𝐶
+𝑑𝑡
+
+⟩
+
+𝑑𝑙𝑧
+𝑑𝑡
+
+⟨
+
+(228)
+
+[︂
+(︂
+)︂
+)︀ (︀
+)︀
+31𝑒2
+743 1201𝑒2
+64 (︁ 𝜇 )︁3 3 6 (︀
+2 3/2
+2
+𝑀 𝑥 1−𝑒
+1−𝑌
+1+
++ −
+−
+=−
+𝑥2
+5 (︂ 𝑀
+8
+336
+84
+(︂
+)︂)︂
+37𝑞𝑌
+241𝜋 43𝑞 575𝑞𝑌
++𝑥3 4𝜋 − 4𝑞 −
++ 𝑒2
+−
+−
+8
+8
+2
+16
+(︂
+129193 185𝑞 2
+17𝑞 2 𝑌 2
+4
+2
++𝑥 −
+−
++ 3𝑞 𝑌 +
+18144
+96
+8
+(︂
+)︂)︂
+2
+438271
+141𝑞
+𝑌
+385𝑞 2 𝑌 2
+2
+2
++𝑒 −
+− 18𝑞 +
++
+5184
+8
+16
+(︂
+4159𝜋
+743𝑞
+4229𝑞𝑌
++𝑥5 −
++
+−
+672
+63
+672
+(︂
+)︂)︂ ]︂
+19227𝜋 1799𝑞 3151𝑞𝑌
+2
++𝑒 −
++
++
+.
+(231)
+224
+18
+96
+
+If we assume that the inclination angle is small and 𝑌 = 1 − 𝑦 ′ /2 + 𝑂(𝑦 ′2 ), we find that
+Equations (229) – (231) reduce respectively to (220) – (222) in Section 5.8. As discussed in [48], in
+the case of largely inclined orbits, the fundamental frequency of gravitational waves is expressed
+not only with Ω𝜙 but also the frequency of 𝜃-ocillation, Ω𝜃 .
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+6
+
+51
+
+Conclusion
+
+In this article, we described analytical approaches to calculate gravitational radiation from a particle of mass 𝜇 orbiting a black hole of mass 𝑀 with 𝑀 ≫ 𝜇, based upon the perturbation formalism
+developed by Teukolsky. A review of this formalism was given in Section 2. The Teukolsky equation, which governs the gravitational perturbation of a black hole, is too complicated to be solved
+analytically. Therefore, one has to adopt a certain approximation scheme. The scheme we employed is the post-Minkowski expansion, in which all the quantities are expanded in terms of a
+parameter 𝜖 = 2𝑀 𝜔 where 𝜔 is the Fourier frequency of the gravitational waves. For the source
+term given by a particle in bound orbit, this naturally gives the post-Newtonian expansion.
+In Section 3, we considered the case of a Schwarzschild background. For a Schwarzschild black
+hole, one can transform the Teukolsky equation into the Regge–Wheeler equation. The advantage
+of the Regge–Wheeler equation is that it reduces to the standard Klein–Gordon equation in the
+flat-space limit, and hence it is easier to understand the post-Minkowskian or post-Newtonian
+effects. Therefore, we adopted this method in the case of a Schwarzschild background. However,
+the post-Minkowski expansion of the Regge–Wheeler equation is not quite systematic, and as one
+goes to higher orders, the equations to be solved become increasingly complicated. Furthermore,
+for a Kerr background, although one can perform a transformation similar to the Chandrasekhar
+transformation, it can be done only at the expense of losing the reality of the equation. Thus, the
+resulting equation is not quite suited for analytical treatments.
+In Section 4, we described a different method, developed by Mano, Suzuki, and Takasugi [69, 68],
+that directly deals with the Teukolsky equation, and we considered the case of a Kerr background
+with this method. Although the method is mathematically rather complicated and it is hard to
+obtain physical insights into relativistic effects, it has great advantage in that it allows a systematic post-Minkowski expansion of the Teukolsky equation, even on the Kerr background. We
+gave a thorough review on how this method works and how it gives a systematic post-Minkowski
+expansion.
+Finally, in Section 5, we recapitulated the results of calculations of the gravitational waves for
+various orbits that had been obtained by various authors using the methods described in Sections 3
+and 4. These results are useful not only by themselves for the actual case of a compact star orbiting
+a supermassive black hole, but also because they give us useful insights into higher order postNewtonian effects even for a system of equal-mass binaries.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+52
+
+7
+
+Misao Sasaki and Hideyuki Tagoshi
+
+Acknowledgements
+
+It is our great pleasure to thank Shuhei Mano, Yasushi Mino, Takashi Nakamura, Eric Poisson,
+Masaru Shibata, Eiichi Takasugi and Takahiro Tanaka for collaborations and fruitful discussions.
+We are grateful to Luc Blanchet and Bala Iyer for useful suggestions and comments. We are also
+grateful to Ryuichi Fujita, Norichika Sago and Hiroyuki Nakano for pointing out several typos
+and errors in the first version of this article. We also thank N. Sago for confirming the formulas
+in Section 5.8 and 5.9. This work was supported in part by Grant-in-Aid for Scientific Research,
+Nos. 14047214, 12640269, 16540251, 20540271 and 21244033 of the Ministry of Education, Culture,
+Sports, Science, and Technology of Japan.
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+53
+
+References
+[1] Abramowitz, M. and Stegun, I.A., eds., Handbook of Mathematical Functions with Formulas,
+Graphs, and Mathematical Tables, (Dover, Mineola, NY, 1972). [Google Books]. (Cited on
+pages 20 and 31.)
+[2] Ando, M., et al., “DECIGO and DECIGO pathfinder”, Class. Quantum Grav., 27, 084010,
+(2010). [DOI]. (Cited on page 5.)
+[3] Ando, M., et al., “Stable Operation of a 300-m Laser Interferometer with Sufficient Sensitivity
+to Detect Gravitational-Wave Events within Our Galaxy”, Phys. Rev. Lett., 86, 3950–3954,
+(2001). [DOI]. (Cited on page 5.)
+[4] Arun, K.G., Blanchet, L., Iyer, B.R. and Qusailah, M.S., “The 2.5PN gravitational wave
+polarizations from inspiralling compact binaries in circular orbits”, Class. Quantum Grav.,
+21, 3771–3801, (2004). [DOI]. (Cited on page 40.)
+[5] Arun, K.G., Blanchet, L., Iyer, B.R. and Qusailah, M.S., “The 2.5PN gravitational wave
+polarizations from inspiralling compact binaries in circular orbits”, Class. Quantum Grav.,
+22, 3115–3117, (2005). [DOI]. (Cited on page 40.)
+[6] Bardeen, J.M. and Press, W.H., “Radiation fields in the Schwarzschild background”, J. Math.
+Phys., 14, 7–19, (1973). [DOI]. (Cited on page 8.)
+[7] Blanchet, L., “Energy losses by gravitational radiation in inspiraling compact binaries to 5/2
+post-Newtonian order”, Phys. Rev. D, 54, 1417–1438, (1996). [DOI]. (Cited on pages 6, 7,
+and 20.)
+[8] Blanchet, L., “Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries”, Living Rev. Relativity, 9, lrr-2006-4, (2006). URL (accessed 31 August 2010):
+http://www.livingreviews.org/lrr-2006-4. (Cited on page 7.)
+[9] Blanchet, L., “Post-Newtonian theory and the two-body problem”, in Blanchet, L., Spallicci,
+A. and Whiting, B., eds., Mass and Motion in General Relativity, Proceedings of the CNRS
+School on Mass held in Orléans, France, 23 – 25 June 2008, Fundamental Theories of Physics,
+162, (Springer, Berlin; New York, 2010). [arXiv:0907.3596]. (Cited on page 7.)
+[10] Blanchet, L., Damour, T. and Esposito-Farèse, G., “Dimensional regularization of the third
+post-Newtonian dynamics of point particles in harmonic coordinates”, Phys. Rev. D, 69,
+124007, 1–51, (2004). [DOI]. (Cited on pages 6 and 7.)
+[11] Blanchet, L., Damour, T., Esposito-Farèse, G. and Iyer, B.R., “Gravitational radiation from
+inspiralling compact binaries completed at the third post-Newtonian order”, Phys. Rev. Lett.,
+93, 091101, 1–4, (2004). [DOI]. (Cited on page 7.)
+[12] Blanchet, L., Damour, T. and Iyer, B.R., “Gravitational waves from inspiralling compact
+binaries: Energy loss and waveform to second-post-Newtonian order”, Phys. Rev. D, 51,
+5360–5386, (1995). [DOI]. (Cited on pages 6, 7, and 20.)
+[13] Blanchet, L., Damour, T., Iyer, B.R., Will, C.M. and Wiseman, A.G., “GravitationalRadiation Damping of Compact Binary Systems to Second Post-Newtonian Order”, Phys.
+Rev. Lett., 74, 3515–3518, (1995). [DOI], [gr-qc/9501027]. (Cited on page 38.)
+[14] Blanchet, L. and Faye, G., “General relativistic dynamics of compact binaries at the third
+post-Newtonian order”, Phys. Rev. D, 63, 062005, 1–43, (2001). [DOI]. (Cited on page 7.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+54
+
+Misao Sasaki and Hideyuki Tagoshi
+
+[15] Blanchet, L., Faye, G., Iyer, B.R. and Joguet, B., “Gravitational-wave inspiral of compact
+binariy systems to 7/2 post-Newtonian order”, Phys. Rev. D, 65, 061501(R), 1–5, (2002).
+[DOI]. (Cited on page 7.)
+[16] Blanchet, L., Faye, G., Iyer, B.R. and Joguet, B., “Erratum: Gravitational-wave inspiral of
+compact binary systems to 7/2 post-Newtonian order”, Phys. Rev. D, 71, 129902(E), 1–2,
+(2005). [DOI]. (Cited on page 7.)
+[17] Blanchet, L., Faye, G., Iyer, B.R. and Sinha, S., “The third post-Newtonian gravitational
+wave polarizations and associated spherical harmonic modes for inspiralling compact binaries
+in quasi-circular orbits”, Class. Quantum Grav., 25, 165003, 1–44, (2008). [DOI]. (Cited on
+page 40.)
+[18] Blanchet, L., Iyer, B.R. and Joguet, B., “Gravitational waves from inspiralling compact
+binaries: Energy loss to third post-Newtonian order”, Phys. Rev. D, 65, 064005, 1–41, (2002).
+[DOI]. (Cited on page 7.)
+[19] Blanchet, L., Iyer, B.R. and Joguet, B., “Erratum: Gravitational waves from inspiralling
+compact binaries: Energy loss to third post-Newtonian order”, Phys. Rev. D, 71, 129903(E),
+1–1, (2005). [DOI]. (Cited on page 7.)
+[20] Breuer, R.A., Gravitational Perturbation Theory and Synchrotron Radiation, Lecture Notes
+in Physics, 44, (Springer, Berlin, 1975). (Cited on page 8.)
+[21] Chandrasekhar, S., “On the equations governing the perturbations of the Schwarzschild black
+hole”, Proc. R. Soc. London, Ser. A, 343, 289–298, (1975). (Cited on pages 8, 16, and 17.)
+[22] Chandrasekhar, S., The Mathematical Theory of Black Holes, The International Series of
+Monographs on Physics, 69, (Clarendon, Oxford, 1983). [Google Books]. (Cited on page 8.)
+[23] Chrzanowski, P.L., “Vector potential and metric perturbations of a rotating black hole”,
+Phys. Rev. D, 11, 2042–2062, (1975). [DOI]. (Cited on page 8.)
+[24] Cutler, C., Finn, L.S., Poisson, E. and Sussman, G.J., “Gravitational radiation from a particle in circular orbit around a black hole. II. Numerical results for the nonrotating case”,
+Phys. Rev. D, 47, 1511–1518, (1993). [DOI]. (Cited on page 9.)
+[25] Damour, T. and Deruelle, N., “Lagrangien généralisé du système de deux masses ponctuelles,
+à l’approximation post-post-newtonienne de la relativité générale”, C. R. Acad. Sci. Ser. II,
+293, 537–540, (1981). (Cited on page 6.)
+[26] Damour, T. and Deruelle, N., “Radiation reaction and angular momentum loss in small angle
+gravitational scattering”, Phys. Lett. A, 87, 81–84, (1981). [DOI]. (Cited on page 6.)
+[27] Damour, T., Jaranowski, P. and Schäfer, G., “Dimensional regularization of the gravitational
+interaction of point masses”, Phys. Lett. B, 513, 147–155, (2001). [DOI]. (Cited on pages 6
+and 7.)
+[28] de Andrade, V.C., Blanchet, L. and Faye, G., “Third post-Newtonian dynamics of compact
+binaries: Noetherian conserved quantities and equivalence between the harmonic-coordinate
+and ADM-Hamiltonian formalisms”, Class. Quantum Grav., 18, 753–778, (2001). [DOI].
+(Cited on page 7.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+55
+
+[29] Dixon, W.G., “Extended bodies in general relativity: Their description and motion”, in
+Ehlers, J., ed., Isolated Gravitating Systems in General Relativity (Sistemi gravitazionali
+isolati in relatività generale), Proceedings of the International School of Physics ‘Enrico
+Fermi’, Course 67, Varenna on Lake Como, Villa Monastero, Italy, 28 June – 10 July, 1976,
+pp. 156–219, (North-Holland, Amsterdam; New York, 1979). (Cited on page 9.)
+[30] Drasco, S., Flanagan, É.É. and Hughes, S. A., “Computing inspirals in Kerr in the adiabatic
+regime: I. The scalar case”, Class. Quantum Grav., 22, S801–S846, (2005). [DOI], [arXiv:grqc/0505075]. (Cited on pages 10 and 45.)
+[31] Drasco, S. and Hughes, S. A., “Gravitational wave snapshots of generic extreme mass ratio
+inspirals”, Phys. Rev. D, 73, 024027, 1–26, (2006). [DOI], [arXiv:gr-qc/0509101]. (Cited on
+page 45.)
+[32] Einstein, A., Infeld, L. and Hoffmann, B., “The Gravitational Equations and the Problem of
+Motion”, Ann. Math., 39, 65–100, (1938). [DOI]. (Cited on page 6.)
+[33] Epstein, R. and Wagoner, R.V., “Post-Newtonian generation of gravitational waves”, Astrophys. J., 197, 717–723, (1975). [DOI]. (Cited on page 6.)
+[34] Erdélyi, A., Magnus, W., Oberhettinger, F. and Tricomi, F.G., eds., Higher Transcendental
+Functions, Vol. I, (Krieger, Malabar, FL, 1981). (Cited on page 32.)
+[35] Fackerell, E.D. and Crossman, R.G., “Spin-weighted angular spheroidal functions”, J. Math.
+Phys., 18, 1849–1854, (1977). [DOI]. (Cited on page 26.)
+[36] Folkner, W.M. and Seidel, D.J., “Gravitational Wave Missions from LISA to Big Bang Observer”, AIAA Space 2005 Conference, Long Beach, CA, August 8, 2005, conference paper,
+(2005). Online version (accessed 10 August 2010):
+http://hdl.handle.net/2014/37836. (Cited on page 5.)
+[37] Fujita, R., Gravitational waves from a particle orbiting a Kerr black hole, Ph.D. Thesis,
+(Osaka University, Toyonaka, 2006). (Cited on page 36.)
+[38] Fujita, R., Hikida, W. and Tagoshi, H., “An Efficient Numerical Method for Computing
+Gravitational Waves Induced by a Particle Moving on Eccentric Inclined Orbits around a
+Kerr Black Hole”, Prog. Theor. Phys., 121, 843–874, (2009). [DOI]. (Cited on page 37.)
+[39] Fujita, R. and Iyer, B.R., “Spherical harmonic modes of 5.5 post-Newtonian gravitational
+wave polarisations and associated factorised resummed waveforms for a particle in circular
+orbit around a Schwarzschild black hole”, arXiv e-print, (2010). [arXiv:1005.2266]. (Cited on
+pages 9, 39, and 40.)
+[40] Fujita, R. and Tagoshi, H., “New Numerical Methods to Evaluate Homogeneous Solutions
+of the Teukolsky Equation”, Prog. Theor. Phys., 112, 415–450, (2004). [DOI]. (Cited on
+page 36.)
+[41] Fujita, R. and Tagoshi, H., “New Numerical Methods to Evaluate Homogeneous Solutions of
+the Teukolsky Equation. II – Solutions of the Continued Fraction Equation –”, Prog. Theor.
+Phys., 113, 1165–1182, (2005). [DOI]. (Cited on page 36.)
+[42] Futamase, T., “Strong-field point-particle limit and the equations of motion in the binary
+pulsar”, Phys. Rev. D, 36, 321–329, (1987). [DOI]. (Cited on page 6.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+56
+
+Misao Sasaki and Hideyuki Tagoshi
+
+[43] Futamase, T. and Itoh, Y., “The Post-Newtonian Approximation for Relativistic Compact
+Binaries”, Living Rev. Relativity, 10, lrr-2007-2, (2007). URL (accessed 6 August 2010):
+http://www.livingreviews.org/lrr-2007-2. (Cited on page 7.)
+[44] Futamase, T. and Schutz, B.F., “Newtonian and post-Newtonian approximation are asymptotic to general relativity”, Phys. Rev. D, 28, 2363–2372, (1983). [DOI]. (Cited on page 6.)
+[45] Futamase, T. and Schutz, B.F., “Gravitational radiation and the validity of the far-zone
+quadrupole formula in the Newtonian limit of general relativity”, Phys. Rev. D, 32, 2557–
+2565, (1985). [DOI]. (Cited on page 6.)
+[46] Gal’tsov, D.V., “Radiation reaction in the Kerr gravitational field”, J. Phys. A, 15, 3737–
+3749, (1982). [DOI]. (Cited on pages 9 and 45.)
+[47] Gal’tsov, D.V., Matiukhin, A.A. and Petukhov, V.I., “Relativistic corrections to the gravitational radiation of a binary system and the fine structure of the spectrum”, Phys. Lett. A,
+77, 387–390, (1980). [DOI]. (Cited on page 9.)
+[48] Ganz, K., Hikida, W., Nakano, H., Sago, N. and Tanaka, T., “Adiabatic Evolution of Three
+‘Constants’ of Motion for Greatly Inclined Orbits in Kerr Spacetime”, Prog. Theor. Phys.,
+117, 1041–1066, (2007). [DOI]. (Cited on pages 10, 45, 48, 49, and 50.)
+[49] Gautschi, W., “Computational Aspects of Three-Term Recurrence Relations”, SIAM Rev.,
+9, 24–82, (1967). [DOI]. (Cited on page 29.)
+[50] “GEO600: The German-British Gravitational Wave Detector”, project homepage, MPI for
+Gravitational Physics (Albert Einstein Institute). URL (accessed 09 August 2010):
+http://geo600.aei.mpg.de/. (Cited on page 5.)
+[51] Grishchuk, L.P. and Kopeikin, S.M., “The motion of a pair of gravitating bodies, including
+the radiation reaction force”, Sov. Astron. Lett., 9, 230–232, (1983). (Cited on page 7.)
+[52] Hikida, W., Jhingan, S., Nakano, H., Sago, N., Sasaki, M. and Tanaka, T., “A new analytical
+method for self-force regularization III – eccentric orbit –”, unknown status. (Cited on
+page 37.)
+[53] Hughes, S.A., Drasco, S., Flanagan, É.É. and Franklin, J., “Gravitational Radiation Reaction
+and Inspiral Waveforms in the Adiabatic Limit”, Phys. Rev. Lett., 94, 221101, 1–12, (2005).
+[DOI], [arXiv:gr-qc/0504015]. (Cited on page 45.)
+[54] Itoh, Y., “Equation of motion for relativistic compact binaries with the strong field point
+particle limit: Third post-Newtonian order”, Phys. Rev. D, 69, 064018, 1–43, (2004). [DOI].
+(Cited on pages 6 and 7.)
+[55] Itoh, Y., “Third-and-a-half order post-Newtonian equations of motion for relativistic compact
+binaries using the strong field point particle limit”, Phys. Rev. D, 80, 124003, 1–17, (2009).
+[DOI]. (Cited on page 7.)
+[56] Itoh, Y. and Futamase, T., “New derivation of a third post-Newtonian equation of motion for
+relativistic compact binaries without ambiguity”, Phys. Rev. D, 68, 121501(R), 1–5, (2003).
+[DOI]. (Cited on pages 6 and 7.)
+[57] Itoh, Y., Futamase, T. and Asada, H., “Equation of motion for relativistic compact binaries
+with the strong field point particle limit: Formulation, the first post-Newtonian and multipole
+terms”, Phys. Rev. D, 62, 064002, 1–12, (2000). [DOI]. (Cited on page 6.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+57
+
+[58] Itoh, Y., Futamase, T. and Asada, H., “Equation of motion for relativistic compact binaries
+with the strong field point particle limit: The second and half post-Newtonian order”, Phys.
+Rev. D, 63, 064038, 1–21, (2001). [DOI]. (Cited on page 6.)
+[59] Jaranowski, P. and Schäfer, G., “Third post-Newtonian higher order ADM Hamilton dynamics for two-body point-mass systems”, Phys. Rev. D, 57, 7274–7291, (1998). [DOI]. (Cited
+on page 7.)
+[60] Jaranowski, P. and Schäfer, G., “Binary black-hole problem at the third post-Newtonian
+approximation in the orbital motion: Static part”, Phys. Rev. D, 60, 124003, 1–7, (1999).
+[DOI]. (Cited on page 7.)
+[61] Kidder, L.E., “Using full information when computing modes of post-Newtonian waveforms
+from inspiralling compact binaries in circular orbit”, Phys. Rev. D, 77, 044016, 1–15, (2008).
+[DOI], [arXiv:0710.0614]. (Cited on page 40.)
+[62] Königsdörffer, C., Faye, G. and Schäfer, G., “Binary black-hole dynamics at the third-and-ahalf post-Newtonian order in the ADM formalism”, Phys. Rev. D, 68, 044004, 1–19, (2003).
+[DOI]. (Cited on page 7.)
+[63] Kopeikin, S.M., “General-relativistic equations of binary motion for extended bodies, with
+conservative corrections and radiation damping”, Sov. Astron., 29, 516–523, (1985). (Cited
+on page 7.)
+[64] Leaver, E.W., “Solutions to a generalized spheroidal wave equation: Teukolsky’s equations
+in general relativity, and the two-center problem in molecular quantum mechanics”, J. Math.
+Phys., 27, 1238–1265, (1986). [DOI]. (Cited on pages 27, 31, and 36.)
+[65] “LIGO Laboratory Home Page”, project homepage, California Institute of Technology. URL
+(accessed 21 January 2003):
+http://www.ligo.caltech.edu/. (Cited on page 5.)
+[66] “LISA Home Page (ESA)”, project homepage, European Space Agency. URL (accessed 30
+September 2003):
+http://sci.esa.int/home/lisa. (Cited on page 5.)
+[67] “LISA Home Page (NASA)”, project homepage, Jet Propulsion Laboratory/NASA. URL
+(accessed 21 January 2003):
+http://lisa.jpl.nasa.gov/. (Cited on page 5.)
+[68] Mano, S., Suzuki, H. and Takasugi, E., “Analytic solutions of the Teukolsky equation and
+their low frequency expansions”, Prog. Theor. Phys., 95, 1079–1096, (1996). [DOI]. (Cited
+on pages 9, 18, 26, 28, 36, and 51.)
+[69] Mano, S. and Takasugi, E., “Analytic Solutions of the Teukolsky Equation and Their Properties”, Prog. Theor. Phys., 97, 213–232, (1997). [DOI]. (Cited on pages 26, 31, and 51.)
+[70] Mino, Y., “Perturbative approach to an orbital evolution around a supermassive black hole”,
+Phys. Rev. D, 67, 084027, 1–17, (2003). [DOI]. (Cited on pages 10 and 45.)
+[71] Mino, Y., Sasaki, M., Shibata, M., Tagoshi, H. and Tanaka, T., “Black Hole Perturbation”,
+Prog. Theor. Phys. Suppl., 128, 1–121, (1997). [DOI]. (Cited on pages 22, 23, 38, and 41.)
+[72] Nakamura, T., Oohara, K. and Kojima, Y., “General Relativistic Collapse to Black Holes
+and Gravitational Waves from Black Holes”, Prog. Theor. Phys. Suppl., 90, 1–218, (1987).
+[DOI]. (Cited on page 8.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+58
+
+Misao Sasaki and Hideyuki Tagoshi
+
+[73] Narayan, R., Piran, T. and Shemi, A., “Neutron star and black hole binaries in the Galaxy”,
+Astrophys. J., 379, L17–L20, (1991). [DOI], [ADS]. (Cited on page 5.)
+[74] Newman, E.T. and Penrose, R., “An Approach to Gravitational Radiation by a Method of
+Spin Coefficients”, J. Math. Phys., 3, 566–578, (1962). [DOI], [ADS]. (Cited on page 11.)
+[75] Newman, E.T. and Penrose, R., “Errata: An approach to gravitational radiation by a method
+of spin-coefficients”, J. Math. Phys., 4, 998–998, (1963). [DOI]. (Cited on page 11.)
+[76] Nissanke, S. and Blanchet, L., “Gravitational radiation reaction in the equations of motion
+of compact binaries to 3.5 post-Newtonian order”, Class. Quantum Grav., 22, 1007–1031,
+(2005). [DOI]. (Cited on page 7.)
+[77] Ohashi, A., Tagoshi, H. and Sasaki, M., “Post-Newtonian Expansion of Gravitational Waves
+from a Compact Star Orbiting a Rotating Black Hole in Brans–Dicke Theory: Circular Orbit
+Case”, Prog. Theor. Phys., 96, 713–728, (1996). [DOI]. (Cited on page 9.)
+[78] Pan, Y., Buonanno, A., Fujita, R., Racine, E. and Tagoshi, H., “Post-Newtonian factorized
+multipolar waveforms for spinning, non-precessing black-hole binaries”, arXiv e-print, (2010).
+[arXiv:1006.0431]. (Cited on page 39.)
+[79] Papapetrou, A., “Spinning test-particles in general relativity. I”, Proc. R. Soc. London, Ser.
+A, 209, 248–258, (1951). [ADS]. (Cited on page 9.)
+[80] Pati, M.E. and Will, C.M., “Post-Newtonian gravitational radiation and equations of motion
+via direct integration of the relaxed Einstein equations: Foundations”, Phys. Rev. D, 62,
+124015, 1–28, (2000). [DOI], [gr-qc/0007087]. (Cited on page 7.)
+[81] Pati, M.E. and Will, C.M., “Post-Newtonian gravitational radiation and equations of motion
+via direct integration of the relaxed Einstein equations. II. Two-body equations of motion
+to second post-Newtonian order, and radiation reaction to 3.5 post-Newtonian order”, Phys.
+Rev. D, 65, 104008, 1–21, (2002). [DOI], [gr-qc/0201001]. (Cited on page 7.)
+[82] Phinney, E.S., “The rate of neutron star binary mergers in the universe: Minimal predictions
+for gravity wave detectors”, Astrophys. J. Lett., 380, L17–L21, (1991). [DOI]. (Cited on
+page 5.)
+[83] Poisson, E., “Gravitational radiation from a particle in circular orbit around a black hole.
+I. Analytic results for the nonrotating case”, Phys. Rev. D, 47, 1497–1510, (1993). [DOI].
+(Cited on pages 9, 17, and 39.)
+[84] Poisson, E., “Gravitational radiation from a particle in circular orbit around a black hole.
+IV. Analytical results for the slowly rotating case”, Phys. Rev. D, 48, 1860–1863, (1993).
+[DOI]. (Cited on page 9.)
+[85] Poisson, E. and Sasaki, M., “Gravitational radiation from a particle in circular orbit around
+a black hole. V. Black hole absorption and tail corrections”, Phys. Rev. D, 51, 5753–5767,
+(1995). [DOI]. (Cited on pages 9, 20, and 44.)
+[86] Press, W.H. and Teukolsky, S.A., “Perturbations of a Rotating Black Hole. II. Dynamical
+Stability of the Kerr Metric”, Astrophys. J., 185, 649–673, (1973). [DOI], [ADS]. (Cited on
+page 26.)
+[87] Regge, T. and Wheeler, J.A., “Stability of a Schwarzschild Singularity”, Phys. Rev., 108,
+1063–1069, (1957). [DOI], [ADS]. (Cited on pages 8, 16, and 17.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+Analytic Black Hole Perturbation Approach to Gravitational Radiation
+
+59
+
+[88] Rowan, S. and Hough, J., “Gravitational Wave Detection by Interferometry (Ground and
+Space)”, Living Rev. Relativity, 3, lrr-2000-3, (2000). URL (accessed 21 January 2002):
+http://www.livingreviews.org/lrr-2000-3. (Cited on page 5.)
+[89] Sago, N., Tanaka, T., Hikida, W., Ganz, K. and Nakano, H., “Adiabatic Evolution of Orbital
+Parameters in Kerr Spacetime”, Prog. Theor. Phys., 115, 873–907, (2006). [DOI]. (Cited on
+pages 10 and 45.)
+[90] Sago, N., Tanaka, T., Hikida, W. and Nakano, H., “Adiabatic Radiation Reaction to Orbits
+in Kerr Spacetime”, Prog. Theor. Phys., 114, 509–514, (2005). [DOI]. (Cited on pages 10
+and 45.)
+[91] Sasaki, M., “Post-Newtonian Expansion of the Ingoing-Wave Regge–Wheeler Function”,
+Prog. Theor. Phys., 92, 17–36, (1994). [DOI]. (Cited on pages 9, 17, 21, 22, and 23.)
+[92] Sasaki, M. and Nakamura, T., “A class of new perturbation equations for the Kerr geometry”,
+Phys. Lett. A, 89, 68–70, (1982). [DOI]. (Cited on pages 8 and 16.)
+[93] Sasaki, M. and Nakamura, T., “Gravitational Radiation from a Kerr Black Hole. I – Formulation and a Method for Numerical Analysis –”, Prog. Theor. Phys., 67, 1788–1809, (1982).
+[DOI]. (Cited on pages 8 and 16.)
+[94] Shibata, M., Sasaki, M., Tagoshi, H. and Tanaka, T., “Gravitational waves from a particle
+orbiting around a rotating black hole: Post-Newtonian expansion”, Phys. Rev. D, 51, 1646–
+1663, (1995). [DOI]. (Cited on pages 9, 18, 26, 39, and 42.)
+[95] Tagoshi, H., “Post-Newtonian Expansion of Gravitational Waves from a Particle in Slightly
+eccentric Orbit around a Rotating Black Hole”, Prog. Theor. Phys., 93, 307–333, (1995).
+[DOI]. (Cited on pages 9 and 42.)
+[96] Tagoshi, H., “Errata: Post-Newtonian Expansion of Gravitational Waves from a Particle in
+Slightly eccentric Orbit around a Rotating Black Hole”, Prog. Theor. Phys., 118, 577–579,
+(2007). [DOI]. (Cited on pages 9 and 42.)
+[97] Tagoshi, H. and Fujita, R., in preparation. (Cited on page 39.)
+[98] Tagoshi, H., Mano, S. and Takasugi, E., “Post-Newtonian Expansion of Gravitational Waves
+from a Particle in Circular Orbits around a Rotating Black Hole – Effects of Black Hole
+Absorption –”, Prog. Theor. Phys., 98, 829–850, (1997). [DOI]. (Cited on pages 9, 36,
+and 44.)
+[99] Tagoshi, H. and Nakamura, T., “Gravitational waves from a point particle in circular orbit
+around a black hole: Logarithmic terms in the post-Newtonian expansion”, Phys. Rev. D,
+49, 4016–4022, (1994). [DOI]. (Cited on pages 9, 25, and 36.)
+[100] Tagoshi, H. and Sasaki, M., “Post-Newtonian Expansion of Gravitational Waves from a
+Particle in Circular Orbit around a Schwarzschild Black Hole”, Prog. Theor. Phys., 92, 745–
+771, (1994). [DOI]. (Cited on pages 9, 25, 38, 39, and 40.)
+[101] Tagoshi, H., Shibata, M., Tanaka, T. and Sasaki, M., “Post-Newtonian expansion of gravitational waves from a particle in circular orbits around a rotating black hole: Up to 𝑂(𝑣 8 )
+beyond the quadrupole formula”, Phys. Rev. D, 54, 1439–1459, (1996). [DOI], [gr-qc/9603028].
+(Cited on pages 9, 18, 26, and 39.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+60
+
+Misao Sasaki and Hideyuki Tagoshi
+
+[102] Tagoshi, H., et al. (TAMA Collaboration), “First search for gravitational waves from inspiraling compact binaries using TAMA300 data”, Phys. Rev. D, 63, 062001, 1–5, (2001). [DOI].
+(Cited on page 5.)
+[103] “TAMA300: The 300m Laser Interferometer Gravitational Wave Antenna”, project homepage, National Astronomical Observatory. URL (accessed 21 January 2003):
+http://tamago.mtk.nao.ac.jp/. (Cited on page 5.)
+[104] Tanaka, T., Mino, Y., Sasaki, M. and Shibata, M., “Gravitational waves from a spinning
+particle in circular orbits around a rotating black hole”, Phys. Rev. D, 54, 3762–3777, (1996).
+[DOI]. (Cited on page 9.)
+[105] Tanaka, T., Tagoshi, H. and Sasaki, M., “Gravitational Waves by a Particle in Circular
+Orbits around a Schwarzschild Black Hole – 5.5 Post-Newtonian Formula –”, Prog. Theor.
+Phys., 96, 1087–1101, (1996). [DOI]. (Cited on pages 9, 23, and 38.)
+[106] Teukolsky, S.A., “Perturbations of a Rotating Black Hole. I. Fundamental Equations for
+Gravitational, Electromagnetic, and Neutrino-Field Perturbations”, Astrophys. J., 185, 635–
+647, (1973). [DOI], [ADS]. (Cited on pages 8 and 11.)
+[107] Teukolsky, S.A. and Press, W.H., “Perturbations of a rotating black hole. III. Interaction
+of the hole with gravitational and electromagnetic radiation”, Astrophys. J., 193, 443–461,
+(1974). [DOI]. (Cited on page 44.)
+[108] “Virgo”, project homepage, INFN. URL (accessed 21 January 2003):
+http://www.virgo.infn.it/. (Cited on page 5.)
+[109] Wagoner, R.V. and Will, C.M., “Post-Newtonian gravitational radiation from orbiting point
+masses”, Astrophys. J., 210, 764–775, (1976). [DOI]. (Cited on page 6.)
+[110] Wald, R.M., “Construction of Solutions of Gravitational, Electromagnetic, or Other Perturbation Equations from Solutions of Decoupled Equations”, Phys. Rev. Lett., 41, 203–206,
+(1978). [DOI]. (Cited on page 8.)
+[111] Will, C.M. and Wiseman, A.G., “Gravitational radiation from compact binary systems:
+Gravitational waveforms and energy loss to second post-Newtonian order”, Phys. Rev. D,
+54, 4813–4848, (1996). [DOI]. (Cited on page 6.)
+[112] Zerilli, F.J., “Gravitational Field of a Particle Falling in a Schwarzschild Geometry Analyzed
+in Tensor Harmonics”, Phys. Rev. D, 2, 2141– 2160, (1970). [DOI], [ADS]. (Cited on page 8.)
+
+Living Reviews in Relativity
+http://www.livingreviews.org/lrr-2003-6
+
+

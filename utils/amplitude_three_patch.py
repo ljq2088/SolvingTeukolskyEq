@@ -234,35 +234,143 @@ def _solve_scaled_2x2(M: np.ndarray, y: np.ndarray, floor: float = 1.0e-300):
     }
     return x, diag 
 
+def _auto_z1(omega: float, z_min: float = 0.001, z_max: float = 0.5) -> float:
+    """Heuristic z1 based on ω.
+
+    Three regimes:
+      - |ω| < 1e-2: low ω, z1 = clamp(15·ω, z_min, 0.2)
+      - 1e-2 ≤ |ω| ≤ 3: normal ω, z1 = 0.1
+      - |ω| > 3: high ω, z1 increases to reduce cond(M_left) from r³ growth
+        Formula: z1 = min(0.5, 0.1 + 0.057·(ω-3))
+    """
+    omega = abs(omega)
+    if omega < 1.0e-2:
+        z1 = max(float(15.0 * omega), z_min)
+        return min(z1, 0.2)
+    if omega > 3.0:
+        z1 = 0.1 + 0.057 * (omega - 3.0)
+        return min(max(z1, 0.1), z_max)
+    return 0.1
+
+
+def _auto_z2(omega: float) -> float:
+    """z2=0.5 for low ω (|ω| < 1e-2), 0.9 for normal ω.
+    For high ω (>3), keep middle patch small: z2 = max(0.6, z1+0.15)."""
+    omega = abs(omega)
+    if omega < 1.0e-2:
+        return 0.5
+    return 0.9
+
+
+def _auto_n_mid_subdomains(z1: float, z2: float,
+                           max_span_ratio: float = 60.0) -> int:
+    """Estimate subdomains so each has span ratio < max_span_ratio."""
+    span_ratio = z2 / z1
+    if span_ratio <= max_span_ratio:
+        return 1
+    return int(np.ceil(np.log(span_ratio) / np.log(max_span_ratio)))
+
+
+def _compute_mid_transport_chain(
+    mode: KerrMode,
+    N_mid: int,
+    z1: float,
+    z2: float,
+    n_subdomains: int = 1,
+    *,
+    store_subdomain_sols: bool = False,
+) -> dict:
+    """
+    Compute total T_mid by splitting [z1, z2] into n_subdomains log-spaced
+    sub-intervals and chaining the 2x2 transport matrices.
+
+    When store_subdomain_sols=True, also return per-subdomain raw pairs and
+    z_breaks for profile reconstruction.
+    """
+    if n_subdomains <= 1:
+        mid = solve_middle_raw_pair(mode, N_mid, z1, z2)
+        result: dict = {"T_mid": mid["T_mid"], "n_subdomains": 1}
+        if store_subdomain_sols:
+            result["z_breaks"] = np.array([z1, z2])
+            result["sub_sols"] = [mid]
+            result["T_prefixes"] = [np.eye(2, dtype=complex)]
+        return result
+
+    z_breaks = np.logspace(np.log10(z1), np.log10(z2), n_subdomains + 1)
+    T_total = np.eye(2, dtype=complex)
+    T_prefixes: list[np.ndarray] = [np.eye(2, dtype=complex)]
+    sub_sols: list[dict] = []
+
+    for i in range(n_subdomains):
+        mid = solve_middle_raw_pair(mode, N_mid, z_breaks[i], z_breaks[i + 1])
+        T_total = mid["T_mid"] @ T_total
+        if store_subdomain_sols:
+            T_prefixes.append(T_total.copy())
+            sub_sols.append(mid)
+
+    result = {
+        "T_mid": T_total,
+        "n_subdomains": n_subdomains,
+        "z_breaks": z_breaks,
+    }
+    if store_subdomain_sols:
+        result["sub_sols"] = sub_sols
+        result["T_prefixes"] = T_prefixes
+    return result
+
+
 def compute_smatrix_three_patch_with_abel(
     mode: KerrMode,
     N_left: int = 64,
     N_mid: int = 96,
     N_right: int = 64,
-    z1: float = 0.1,
-    z2: float = 0.9,
+    z1: float | None = None,
+    z2: float | None = None,
     *,
+    n_mid_subdomains: int | None = None,
     return_details: bool = False,
     omega_mp_cut: float = 1.0e-2,
-    mp_dps_loww: int = 80,
+    mp_dps_loww: int = 200,
 ):
     """
-    Three-patch version:
+    Multi-patch Teukolsky radial solver with adaptive ω support.
 
+    Patches:
         left  : [0.0, z1]   with down/up bases
-        mid   : [z1,  z2]   with raw full-R transport basis
+        mid   : [z1,  z2]   with raw full-R transport (split into subdomains)
         right : [z2,  1.0]  with in/out bases
 
-    Matching is done twice:
-        (i)  left -> middle at z=z1
-        (ii) middle -> right at z=z2
-
-    The final amplitudes are still the coefficients of R_in / R_out
-    in the outer (down/up) basis.
+    Adaptive defaults:
+      - z1 auto-adapts: low ω → clamp(15·ω, 0.001, 0.2); high ω (>3) → larger z1
+      - z2=0.5 for low ω, 0.9 otherwise
+      - n_mid_subdomains auto when span ratio > 60
+      - N scaled for ω>2.5 (N_mid ∝ ω); extra N_mid for ω>3
+      - mpmath 2×2 solves for ω<1e-2 OR ω>3
+      - mp_dps_loww=200 for high-precision solves
     """
 
+    # Auto-resolve adaptive parameters
+    is_high_omega = abs(mode.omega) >= 2.5
+
+    if z1 is None:
+        z1 = _auto_z1(mode.omega)
+    if z2 is None:
+        z2 = _auto_z2(mode.omega)
+    if n_mid_subdomains is None or n_mid_subdomains < 1:
+        n_mid_subdomains = _auto_n_mid_subdomains(z1, z2)
+
+    # Resolution scaling (moderate N to avoid Chebyshev conditioning)
+    # For N < ~80 Chebyshev differentiation matrices remain well-conditioned.
+    scale = max(1.0, abs(mode.omega) / 2.5)
+    N_mid_min = max(48, min(int(48 * scale), 80))
+    N_left_min = max(32, min(int(32 * scale), 64))
+    N_right_min = max(32, min(int(32 * scale), 64))
+    N_mid = max(N_mid, N_mid_min)
+    N_left = max(N_left, N_left_min)
+    N_right = max(N_right, N_right_min)
+
     if not (0.0 < z1 < z2 < 1.0):
-        raise ValueError("Require 0 < z1 < z2 < 1")
+        raise ValueError(f"Require 0 < z1 < z2 < 1, got z1={z1}, z2={z2}")
 
     # ---------------------------------------------------------
     # left patch: outer asymptotic basis on [0, z1]
@@ -279,12 +387,11 @@ def compute_smatrix_three_patch_with_abel(
     )
 
     # ---------------------------------------------------------
-    # middle patch: raw full-R transport on [z1, z2]
+    # middle patch(s): raw full-R transport on [z1, z2]
     # ---------------------------------------------------------
-    mid = solve_middle_raw_pair(mode, N_mid, z1, z2)
-    sol_mid_val = mid["sol_mid_val"]
-    sol_mid_der = mid["sol_mid_der"]
-    T_mid = mid["T_mid"]
+    mid_chain = _compute_mid_transport_chain(mode, N_mid, z1, z2, n_subdomains=n_mid_subdomains)
+    T_mid = mid_chain["T_mid"]
+    n_mid_actual = mid_chain["n_subdomains"]
 
     # Propagate the two outer basis solutions from z1 to z2:
     # columns are the [R, R_r] states of down/up at z2 after mid transport
@@ -308,7 +415,7 @@ def compute_smatrix_three_patch_with_abel(
     # first propagate the right states backward to z1 through T_mid^{-1},
     # then decompose on the original left outer basis M_left.
     # ---------------------------------------------------------
-    use_mp = use_mp_backend(mode.omega, omega_mp_cut)
+    use_mp = use_mp_backend(mode.omega, omega_mp_cut) or is_high_omega
 
     if use_mp:
         state_in_z1_back, diag_back_in = solve_2x2_mp(
@@ -414,6 +521,11 @@ def compute_smatrix_three_patch_with_abel(
         "r_match_outer": float(r_match_outer),
         "r_match_inner": float(r_match_inner),
 
+        "n_mid_subdomains": int(n_mid_actual),
+        "N_left": int(N_left),
+        "N_mid": int(N_mid),
+        "N_right": int(N_right),
+
         "cond_M_left": float(np.linalg.cond(M_left)),
         "cond_T_mid": float(np.linalg.cond(T_mid)),
         "cond_M_outer_at_z2": float(np.linalg.cond(M_outer_at_z2)),
@@ -437,6 +549,7 @@ def compute_smatrix_three_patch_with_abel(
         "state_out_z1_recon": state_out_z1_recon,
 
         "use_mp_backend": bool(use_mp),
+        "is_high_omega": bool(is_high_omega),
         "omega_mp_cut": float(omega_mp_cut),
         "mp_dps_loww": int(mp_dps_loww if use_mp else 0),
 
@@ -448,20 +561,31 @@ def compute_smatrix_three_patch_with_abel(
         # True in-mode state at z1 in [R, R_r] variables
         state_in_z1 = M_left @ np.array([Cin_down, Cin_up], dtype=complex)
 
-        result.update(
-            {
-                "sol_down": sol_down,
-                "sol_up": sol_up,
-                "sol_mid_val": sol_mid_val,
-                "sol_mid_der": sol_mid_der,
-                "sol_in": sol_in,
-                "sol_out": sol_out,
-                "M_left": M_left,
-                "T_mid": T_mid,
-                "M_outer_at_z2": M_outer_at_z2,
-                "state_in_z1": state_in_z1,
-            }
-        )
+        extra = {
+            "sol_down": sol_down,
+            "sol_up": sol_up,
+            "sol_in": sol_in,
+            "sol_out": sol_out,
+            "M_left": M_left,
+            "T_mid": T_mid,
+            "M_outer_at_z2": M_outer_at_z2,
+            "state_in_z1": state_in_z1,
+        }
+        # Middle patch raw solutions for profile reconstruction
+        if n_mid_actual == 1:
+            mid = solve_middle_raw_pair(mode, N_mid, z1, z2)
+            extra["sol_mid_val"] = mid["sol_mid_val"]
+            extra["sol_mid_der"] = mid["sol_mid_der"]
+        else:
+            # Re-compute with store_subdomain_sols for profile
+            chain_detailed = _compute_mid_transport_chain(
+                mode, N_mid, z1, z2, n_subdomains=n_mid_actual,
+                store_subdomain_sols=True,
+            )
+            extra["z_breaks"] = chain_detailed["z_breaks"]
+            extra["sub_sols"] = chain_detailed["sub_sols"]
+            extra["T_prefixes"] = chain_detailed["T_prefixes"]
+        result.update(extra)
 
     return result
 
@@ -473,10 +597,12 @@ class TeukRadAmplitudeIn3Patch:
         N_left: int = 64,
         N_mid: int = 96,
         N_right: int = 64,
-        z1: float = 0.1,
-        z2: float = 0.9,
+        z1: float | None = None,
+        z2: float | None = None,
+        *,
+        n_mid_subdomains: int | None = None,
         omega_mp_cut: float = 1.0e-2,
-        mp_dps_loww: int = 80,
+        mp_dps_loww: int = 200,
     ):
         self.mode = mode
         self.M = mode.M
@@ -488,16 +614,25 @@ class TeukRadAmplitudeIn3Patch:
         self.N_left = N_left
         self.N_mid = N_mid
         self.N_right = N_right
-        self.z1 = z1
+        self.z1_param = z1   # store as-is, resolution happens in compute
         self.z2 = z2
+        self.n_mid_subdomains = n_mid_subdomains
 
         self.lam = mode.lam
         self._smatrix: Dict[str, complex | np.ndarray | None] | None = None
         self._result: InAmplitudesResult | None = None
         self.omega_mp_cut = omega_mp_cut
         self.mp_dps_loww = mp_dps_loww
+
     def __call__(self) -> InAmplitudesResult:
         return self.to_result()
+
+    @property
+    def z1(self) -> float:
+        """Return the resolved z1 from smatrix, or the original parameter."""
+        if self._smatrix is not None:
+            return float(self._smatrix.get("z1", 0.1))
+        return float(self.z1_param) if self.z1_param is not None else 0.1
 
     @property
     def smatrix(self) -> Dict[str, complex | np.ndarray | None]:
@@ -507,8 +642,9 @@ class TeukRadAmplitudeIn3Patch:
                 N_left=self.N_left,
                 N_mid=self.N_mid,
                 N_right=self.N_right,
-                z1=self.z1,
+                z1=self.z1_param,
                 z2=self.z2,
+                n_mid_subdomains=self.n_mid_subdomains,
                 return_details=False,
                 omega_mp_cut=self.omega_mp_cut,
                 mp_dps_loww=self.mp_dps_loww,
@@ -578,9 +714,12 @@ class TeukRadAmplitudeIn3PatchWithAbelChecks(TeukRadAmplitudeIn3Patch):
                 N_left=self.N_left,
                 N_mid=self.N_mid,
                 N_right=self.N_right,
-                z1=self.z1,
+                z1=self.z1_param,
                 z2=self.z2,
+                n_mid_subdomains=self.n_mid_subdomains,
                 return_details=False,
+                omega_mp_cut=self.omega_mp_cut,
+                mp_dps_loww=self.mp_dps_loww,
             )
         return self._smatrix
 

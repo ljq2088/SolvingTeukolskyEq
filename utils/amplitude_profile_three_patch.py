@@ -142,8 +142,12 @@ def compute_smatrix_three_patch_with_profile(
     N_left: int = 64,
     N_mid: int = 96,
     N_right: int = 64,
-    z1: float = 0.1,
-    z2: float = 0.9,
+    z1: float | None = None,
+    z2: float | None = None,
+    *,
+    n_mid_subdomains: int | None = None,
+    omega_mp_cut: float = 1.0e-2,
+    mp_dps_loww: int = 200,
 ):
     sm = compute_smatrix_three_patch_with_abel(
         mode,
@@ -152,6 +156,9 @@ def compute_smatrix_three_patch_with_profile(
         N_right=N_right,
         z1=z1,
         z2=z2,
+        n_mid_subdomains=n_mid_subdomains,
+        omega_mp_cut=omega_mp_cut,
+        mp_dps_loww=mp_dps_loww,
         return_details=True,
     )
 
@@ -160,7 +167,7 @@ def compute_smatrix_three_patch_with_profile(
     b_trans = complex(sm["B_trans"])
 
     # ---------------------------------------------------------
-    # left patch true in-solution
+    # left patch: true in-solution from down/up basis
     # ---------------------------------------------------------
     prof_down = _basis_full_profile_three(mode, "down", sm["sol_down"], drop_left=True, drop_right=False)
     prof_up   = _basis_full_profile_three(mode, "up",   sm["sol_up"],   drop_left=True, drop_right=False)
@@ -170,27 +177,46 @@ def compute_smatrix_three_patch_with_profile(
     Rin_left = b_inc * prof_down["R"] + b_ref * prof_up["R"]
     psi_left = Rin_left / leaver_factor(r_left, mode)
 
-    # exact reduced limit at z=0:
-    # A_up / P_Leaver -> 1, A_down / P_Leaver -> 0
     z_left_full = np.concatenate(([0.0], z_left))
     psi_left_full = np.concatenate(([b_ref], psi_left))
 
     # ---------------------------------------------------------
-    # middle patch true in-solution in raw basis
-    # state at z1 is [R(z1), R_r(z1)]
+    # middle patch: true in-solution (handles multi-subdomain)
     # ---------------------------------------------------------
-    prof_mid_val = _basis_full_profile_three(mode, "raw", sm["sol_mid_val"], drop_left=False, drop_right=False)
-    prof_mid_der = _basis_full_profile_three(mode, "raw", sm["sol_mid_der"], drop_left=False, drop_right=False)
-
+    n_mid_actual = int(sm["n_mid_subdomains"])
     state_in_z1 = np.asarray(sm["state_in_z1"], dtype=np.complex128)
-    Rin_mid = state_in_z1[0] * prof_mid_val["R"] + state_in_z1[1] * prof_mid_der["R"]
 
-    z_mid = prof_mid_val["z"]
-    r_mid = prof_mid_val["r"]
+    if n_mid_actual == 1:
+        prof_mid_val = _basis_full_profile_three(
+            mode, "raw", sm["sol_mid_val"], drop_left=False, drop_right=False,
+        )
+        prof_mid_der = _basis_full_profile_three(
+            mode, "raw", sm["sol_mid_der"], drop_left=False, drop_right=False,
+        )
+        Rin_mid = state_in_z1[0] * prof_mid_val["R"] + state_in_z1[1] * prof_mid_der["R"]
+        z_mid = prof_mid_val["z"]
+    else:
+        z_breaks = sm.get("z_breaks")
+        sub_sols = sm.get("sub_sols")
+        T_prefixes = sm.get("T_prefixes")
+        if z_breaks is None or sub_sols is None:
+            raise RuntimeError("Multi-subdomain details missing (z_breaks/sub_sols)")
+
+        z_parts, Rin_parts = [], []
+        for i, (sd, Tpre) in enumerate(zip(sub_sols, T_prefixes)):
+            st = Tpre @ state_in_z1
+            pv = _basis_full_profile_three(mode, "raw", sd["sol_mid_val"], drop_left=False, drop_right=False)
+            pd = _basis_full_profile_three(mode, "raw", sd["sol_mid_der"], drop_left=False, drop_right=False)
+            z_parts.append(pv["z"])
+            Rin_parts.append(st[0] * pv["R"] + st[1] * pd["R"])
+        z_mid = np.concatenate(z_parts)
+        Rin_mid = np.concatenate(Rin_parts)
+
+    r_mid = r_of_z(z_mid, mode)
     psi_mid = Rin_mid / leaver_factor(r_mid, mode)
 
     # ---------------------------------------------------------
-    # right patch true in-solution
+    # right patch: true in-solution from in/out basis
     # ---------------------------------------------------------
     prof_in = _basis_full_profile_three(mode, "in", sm["sol_in"], drop_left=False, drop_right=True)
 
@@ -200,9 +226,7 @@ def compute_smatrix_three_patch_with_profile(
     psi_right = Rin_right / leaver_factor(r_right, mode)
 
     if len(z_right) >= 2:
-        psi_h = _one_sided_linear_extrap(
-            1.0, z_right[-2], z_right[-1], psi_right[-2], psi_right[-1]
-        )
+        psi_h = _one_sided_linear_extrap(1.0, z_right[-2], z_right[-1], psi_right[-2], psi_right[-1])
     else:
         psi_h = psi_right[-1]
 
@@ -217,8 +241,8 @@ def compute_smatrix_three_patch_with_profile(
         psi_mid=psi_mid,
         z_right=z_right_full,
         psi_right=psi_right_full,
-        z1=z1,
-        z2=z2,
+        z1=float(sm["z1"]),
+        z2=float(sm["z2"]),
     )
 
     sm["profile"] = profile
@@ -239,8 +263,12 @@ class TeukRadAmplitudeIn3PatchWithProfile:
         N_left: int = 64,
         N_mid: int = 96,
         N_right: int = 64,
-        z1: float = 0.1,
-        z2: float = 0.9,
+        z1: float | None = None,
+        z2: float | None = None,
+        *,
+        n_mid_subdomains: int | None = None,
+        omega_mp_cut: float = 1.0e-2,
+        mp_dps_loww: int = 200,
     ):
         self.mode = mode
         self.M = mode.M
@@ -252,8 +280,11 @@ class TeukRadAmplitudeIn3PatchWithProfile:
         self.N_left = N_left
         self.N_mid = N_mid
         self.N_right = N_right
-        self.z1 = z1
-        self.z2 = z2
+        self.z1_param = z1
+        self.z2_param = z2
+        self.n_mid_subdomains = n_mid_subdomains
+        self.omega_mp_cut = omega_mp_cut
+        self.mp_dps_loww = mp_dps_loww
 
         self.lam = mode.lam if mode.lam is not None else None
         self._smatrix: Dict[str, complex | np.ndarray | None] | None = None
@@ -266,8 +297,11 @@ class TeukRadAmplitudeIn3PatchWithProfile:
                 N_left=self.N_left,
                 N_mid=self.N_mid,
                 N_right=self.N_right,
-                z1=self.z1,
-                z2=self.z2,
+                z1=self.z1_param,
+                z2=self.z2_param,
+                n_mid_subdomains=self.n_mid_subdomains,
+                omega_mp_cut=self.omega_mp_cut,
+                mp_dps_loww=self.mp_dps_loww,
             )
         return self._smatrix
 
@@ -299,5 +333,5 @@ class TeukRadAmplitudeIn3PatchWithProfile:
         return (
             f"TeukRadAmplitudeIn3PatchWithProfile(l={self.ell}, m={self.m}, a={self.a}, omega={self.omega}, "
             f"N_left={self.N_left}, N_mid={self.N_mid}, N_right={self.N_right}, "
-            f"z1={self.z1}, z2={self.z2})"
+            f"z1={self.z1_param}, z2={self.z2_param})"
         )
