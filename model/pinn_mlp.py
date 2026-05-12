@@ -330,12 +330,26 @@ class PINN_MLP(nn.Module):
         self.omega_head = nn.Linear(self.fusion_dim, 2)
         self.nl_head = nn.Linear(self.fusion_dim, 2)
 
+        # =========================================================
+        # 5) Infinity amplitude correction head (parameter-only, no y)
+        # Log-space multiplicative correction for large B dynamic range:
+        #   B_net = B_spec * exp(log|dB| + i*arg)
+        # Output: [log|dB_inc|, arg_inc, log|dB_ref|, arg_ref]
+        # Zero-init final layer → dB = (1,0) initially.
+        # =========================================================
+        self.amp_head = nn.Sequential(
+            nn.Linear(self.param_in_dim, 32),
+            _make_activation(activation),
+            nn.Linear(32, 4),
+        )
+
         if self.output_activation == "tanh":
             self.out_act = nn.Tanh()
         else:
             self.out_act = None
 
         self._init_weights()
+        self._init_amp_head()
 
     # ---------------------------------------------------------
     # 参数特征
@@ -474,6 +488,48 @@ class PINN_MLP(nn.Module):
                     nn.init.xavier_normal_(module.weight, gain=1.0)
                     if module.bias is not None:
                         nn.init.zeros_(module.bias)
+
+    def _init_amp_head(self):
+        """Zero-init amp_head final layer so dB = (1,0) initially (log=0, phase=0)."""
+        last = self.amp_head[-1]
+        nn.init.zeros_(last.weight)
+        if last.bias is not None:
+            nn.init.zeros_(last.bias)
+
+    def predict_asymptotic_delta(self, a, omega, u=None, v=None):
+        """Predict multiplicative complex correction dB = exp(log|dB| + i*phase) for B_inc, B_ref."""
+        model_param = next(self.parameters())
+        target_device = model_param.device
+        target_dtype = model_param.dtype
+
+        a = a.to(device=target_device, dtype=target_dtype)
+        omega = omega.to(device=target_device, dtype=target_dtype)
+        if u is not None:
+            u = u.to(device=target_device, dtype=target_dtype)
+        if v is not None:
+            v = v.to(device=target_device, dtype=target_dtype)
+
+        if a.ndim == 1:
+            a = a.unsqueeze(-1)
+        if omega.ndim == 1:
+            omega = omega.unsqueeze(-1)
+        if u is not None and u.ndim == 1:
+            u = u.unsqueeze(-1)
+        if v is not None and v.ndim == 1:
+            v = v.unsqueeze(-1)
+
+        feats, _, _ = self._build_param_features(a=a, omega=omega, u=u, v=v)
+        out = self.amp_head(feats)  # (B, 4): [log|dB_inc|, arg_inc, log|dB_ref|, arg_ref]
+
+        cdtype = torch.complex128 if target_dtype == torch.float64 else torch.complex64
+        log_mag_inc = out[:, 0].to(dtype=target_dtype)
+        phase_inc = out[:, 1].to(dtype=target_dtype)
+        log_mag_ref = out[:, 2].to(dtype=target_dtype)
+        phase_ref = out[:, 3].to(dtype=target_dtype)
+
+        dB_inc = torch.exp(log_mag_inc + 1j * phase_inc).to(dtype=cdtype)
+        dB_ref = torch.exp(log_mag_ref + 1j * phase_ref).to(dtype=cdtype)
+        return dB_inc, dB_ref
 
     # ---------------------------------------------------------
     # forward

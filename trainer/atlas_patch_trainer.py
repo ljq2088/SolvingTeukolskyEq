@@ -26,7 +26,13 @@ from utils.mode import KerrMode
 from utils.amplitude import TeukRadAmplitudeInWithInterpolant
 from dataset.sampling import sample_points_chebyshev_grid, sample_points_uniform_grid
 from physical_ansatz.residual import AuxCache, get_lambda_from_cfg
-from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss, compute_integral_consistency_loss
+from physical_ansatz.residual_pinn import (
+    pinn_residual_loss,
+    compute_data_anchor_loss,
+    compute_integral_consistency_loss,
+)
+from physical_ansatz.asymptotic_loss import compute_infinity_asymptotic_loss
+from utils.spectral_coeff_cache import SpectralCoeffCache
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
 from physical_ansatz.mapping import r_plus, r_from_x
 from physical_ansatz.transform_y import (
@@ -154,6 +160,25 @@ class AtlasPatchTrainer:
         self.viz_spectral_N = int(atlas_train_cfg.get("viz_spectral_N", 64))
         self.viz_spectral_z_m = float(atlas_train_cfg.get("viz_spectral_z_m", 0.3))
         self.viz_mma_enabled = bool(atlas_train_cfg.get("viz_mma_enabled", False))
+
+        # Near-infinity asymptotic loss config
+        inf_cfg = atlas_train_cfg.get("infinity_asymptotic", {})
+        self.inf_enabled = bool(inf_cfg.get("enabled", False))
+        self.inf_r_points = list(inf_cfg.get("r_points", [300.0, 500.0, 800.0, 1000.0]))
+        self.inf_beta = float(inf_cfg.get("beta", 1.0))
+        self.inf_relative = bool(inf_cfg.get("relative", True))
+        self.inf_eps = float(inf_cfg.get("eps", 1.0e-12))
+        self.inf_weight_init = float(inf_cfg.get("weight_inf_init", 0.05))
+        self.inf_weight_final = float(inf_cfg.get("weight_inf_final", 0.2))
+        self.inf_weight_ramp_start = int(inf_cfg.get("weight_inf_ramp_start", 1000))
+        self.inf_weight_ramp_end = int(inf_cfg.get("weight_inf_ramp_end", 8000))
+        self.inf_weight_B_init = float(inf_cfg.get("weight_B_init", 1.0))
+        self.inf_weight_B_final = float(inf_cfg.get("weight_B_final", 0.1))
+        self.inf_weight_B_decay_start = int(inf_cfg.get("weight_B_decay_start", 3000))
+        self.inf_weight_B_decay_end = int(inf_cfg.get("weight_B_decay_end", 12000))
+        self.inf_spectral_N = int(inf_cfg.get("spectral_N", self.viz_spectral_N))
+        self.inf_spectral_z_m = float(inf_cfg.get("spectral_z_m", self.viz_spectral_z_m))
+        self.inf_cache_file = str(inf_cfg.get("cache_file", "outputs/domain/spectral_coeff_cache_l2_m2.json"))
 
         self.anchor_enabled = bool(anchor_enabled)
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
@@ -305,6 +330,18 @@ class AtlasPatchTrainer:
             self.int_weight_decay_end = int(int_anneal_cfg.get("decay_end", 15000))
         self.cache = AuxCache()
         self._preload_lambda_cache_from_probe(probe_json)
+
+        self.inf_coeff_cache = None
+        if self.inf_enabled:
+            self.inf_coeff_cache = SpectralCoeffCache(
+                cache_file=self.inf_cache_file,
+                physics_cfg=self.physics_cfg,
+                device=self.device,
+                dtype=self.dtype,
+                N=self.inf_spectral_N,
+                z_m=self.inf_spectral_z_m,
+            )
+
         self.init_checkpoint = init_checkpoint
         self.init_load_optimizer = bool(init_load_optimizer)
         self.resume_checkpoint = resume_checkpoint
@@ -340,6 +377,28 @@ class AtlasPatchTrainer:
     def _vprint(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
+
+    def _linear_schedule(self, step: int, start: int, end: int, w0: float, w1: float) -> float:
+        if end <= start:
+            return float(w1)
+        if step <= start:
+            return float(w0)
+        if step >= end:
+            return float(w1)
+        t = float(step - start) / float(end - start)
+        return float((1.0 - t) * w0 + t * w1)
+
+    def _infinity_loss_weights(self) -> tuple[float, float]:
+        w_inf = self._linear_schedule(
+            self.global_step, self.inf_weight_ramp_start, self.inf_weight_ramp_end,
+            self.inf_weight_init, self.inf_weight_final,
+        )
+        w_B = self._linear_schedule(
+            self.global_step, self.inf_weight_B_decay_start, self.inf_weight_B_decay_end,
+            self.inf_weight_B_init, self.inf_weight_B_final,
+        )
+        return w_inf, w_B
+
     def _tensor_scalar_for_json(self, x: torch.Tensor, name: str = "value", tol: float = 1.0e-10):
         """
         把 0-d tensor 转成可写入 json 的 Python 标量。
@@ -574,7 +633,7 @@ class AtlasPatchTrainer:
     def _load_init_checkpoint(self):
         ckpt = torch.load(self.init_checkpoint, map_location=self.device)
         state_dict = ckpt.get("model_state_dict", ckpt)
-        self.model.load_state_dict(state_dict, strict=True)
+        self.model.load_state_dict(state_dict, strict=False)
 
         if self.init_load_optimizer and "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -584,7 +643,7 @@ class AtlasPatchTrainer:
     def _load_resume_checkpoint(self):
         ckpt = torch.load(self.resume_checkpoint, map_location=self.device)
         state_dict = ckpt.get("model_state_dict", ckpt)
-        self.model.load_state_dict(state_dict, strict=True)
+        self.model.load_state_dict(state_dict, strict=False)
 
         if "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -987,6 +1046,28 @@ class AtlasPatchTrainer:
                 else:
                     info["anchor_failed_count"] += ok_mask.numel()
 
+        # Near-infinity asymptotic loss
+        loss_inf = torch.zeros((), device=self.device, dtype=self.dtype)
+        loss_B = torch.zeros((), device=self.device, dtype=self.dtype)
+        w_inf = 0.0
+        w_B = 0.0
+        inf_info = {}
+
+        if self.inf_enabled and self.inf_coeff_cache is not None:
+            Binc_spec, Bref_spec = self.inf_coeff_cache.get_batch(
+                a_batch=a_batch, omega_batch=omega_batch, lambda_batch=lambda_batch,
+            )
+            loss_inf, loss_B, inf_info = compute_infinity_asymptotic_loss(
+                model=self.model, cfg=self.physics_cfg,
+                a_batch=a_batch, omega_batch=omega_batch, lambda_batch=lambda_batch,
+                u_batch=u_batch, v_batch=v_batch,
+                Binc_spec=Binc_spec, Bref_spec=Bref_spec,
+                r_points=self.inf_r_points,
+                beta=self.inf_beta, relative=self.inf_relative, eps=self.inf_eps,
+            )
+            w_inf, w_B = self._infinity_loss_weights()
+            total_loss = total_loss + w_inf * loss_inf + w_B * loss_B
+
         total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
@@ -1005,6 +1086,14 @@ class AtlasPatchTrainer:
 
         info["total_loss"] = float(total_loss.detach().cpu().item())
         info["grad_norm"] = float(grad_norm.detach().cpu().item())
+        info["loss_inf"] = float(loss_inf.detach().cpu().item())
+        info["loss_B"] = float(loss_B.detach().cpu().item())
+        info["weight_inf"] = float(w_inf)
+        info["weight_B"] = float(w_B)
+        info["mean_abs_Sinf"] = float(inf_info.get("mean_abs_Sinf", 0.0))
+        info["mean_abs_Spred_inf"] = float(inf_info.get("mean_abs_Spred_inf", 0.0))
+        info["mean_abs_dBinc"] = float(inf_info.get("mean_abs_dBinc", 0.0))
+        info["mean_abs_dBref"] = float(inf_info.get("mean_abs_dBref", 0.0))
         return info
 
     # =========================================================

@@ -189,6 +189,24 @@ atlas_training:
     decay_start: 5000
     decay_end: 15000
 
+  infinity_asymptotic:
+    enabled: true
+    r_points: [300.0, 500.0, 800.0, 1000.0]
+    beta: 1.0
+    relative: true
+    eps: 1.0e-12
+    spectral_N: 64
+    spectral_z_m: 0.3
+    cache_file: outputs/domain/spectral_coeff_cache_l2_m2.json
+    weight_inf_init: 0.05
+    weight_inf_final: 0.2
+    weight_inf_ramp_start: 1000
+    weight_inf_ramp_end: 8000
+    weight_B_init: 1.0
+    weight_B_final: 0.1
+    weight_B_decay_start: 3000
+    weight_B_decay_end: 12000
+
   val_fraction: 0.2
   val_param_samples: 24
   val_every: 50
