@@ -1,0 +1,30 @@
+{
+  "per_patch": {
+    "0": {
+      "n_samples": 3,
+      "n_valid": 3,
+      "median_of_median": 0.606349771732924,
+      "worst_median": 13.289136231632813,
+      "best_median": 0.5749502182032118,
+      "median_of_max": 0.6213263365710591,
+      "worst_max": 14.440911549489329,
+      "median_of_p90": 0.6092283481554789
+    }
+  },
+  "overall": {
+    "n_total_samples": 3,
+    "n_valid": 3,
+    "grand_median_rel": 0.606349771732924,
+    "grand_p90_rel": 10.752578939652835,
+    "grand_p99_rel": 13.035480502434815,
+    "global_max_rel": 14.440911549489329
+  },
+  "ranking": [
+    [
+      0,
+      0.606349771732924,
+      14.440911549489329,
+      3
+    ]
+  ]
+}

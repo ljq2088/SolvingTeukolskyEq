@@ -1,0 +1,351 @@
+% ============================================================================
+% References for Atlas-PINN paper
+% ============================================================================
+
+% ---- Teukolsky equation (original) ----
+@article{Teukolsky:1973ha,
+  author  = {Teukolsky, S. A.},
+  title   = {Perturbations of a Rotating Black Hole. {I}. Fundamental Equations
+             for Gravitational, Electromagnetic, and Neutrino-Field Perturbations},
+  journal = {Astrophys. J.},
+  volume  = {185},
+  year    = {1973},
+  pages   = {635--647},
+  doi     = {10.1086/152444}
+}
+
+% ---- Sasaki-Nakamura transformation ----
+@article{Sasaki:1982sx,
+  author  = {Sasaki, M. and Nakamura, T.},
+  title   = {Gravitational Radiation from a {Kerr} Black Hole. {I}.
+             Formulation and a Method for Numerical Analysis},
+  journal = {Prog. Theor. Phys.},
+  volume  = {67},
+  number  = {6},
+  year    = {1982},
+  pages   = {1788--1809},
+  doi     = {10.1143/PTP.67.1788}
+}
+
+% ---- Hughes generalization of SN (GSN) ----
+@article{Hughes:2000jr,
+  author  = {Hughes, Scott A.},
+  title   = {Computing radiation from {Kerr} black holes:
+             {G}eneralization of the {S}asaki-{N}akamura equation},
+  journal = {Phys. Rev. D},
+  volume  = {62},
+  year    = {2000},
+  pages   = {044029},
+  doi     = {10.1103/PhysRevD.62.044029},
+  eprint  = {gr-qc/0002043}
+}
+
+% ---- Sasaki-Tagoshi review ----
+@article{Sasaki:2003lr,
+  author  = {Sasaki, Misao and Tagoshi, Hideyuki},
+  title   = {Analytic Black Hole Perturbation Approach to Gravitational
+             Radiation},
+  journal = {Living Rev. Relativ.},
+  volume  = {6},
+  year    = {2003},
+  pages   = {6},
+  doi     = {10.12942/lrr-2003-6},
+  eprint  = {gr-qc/0306120}
+}
+
+% ---- MST method ----
+@article{Mano:1996gn,
+  author  = {Mano, Shuhei and Suzuki, Hisao and Takasugi, Eiichi},
+  title   = {Analytic solutions of the {Teukolsky} equation and their
+             low frequency expansions},
+  journal = {Prog. Theor. Phys.},
+  volume  = {95},
+  year    = {1996},
+  pages   = {1079--1096},
+  doi     = {10.1143/PTP.95.1079},
+  eprint  = {gr-qc/9603020}
+}
+
+% ---- Jiang & Han (2025) - high-accuracy analytic method ----
+@article{Jiang:2025jh,
+  author  = {Jiang, Ye and Han, Wen-Biao},
+  title   = {A New High-Performing Method for Solving the Homogeneous
+             {Teukolsky} Equation},
+  year    = {2025},
+  eprint  = {2507.15363},
+  archivePrefix = {arXiv},
+  primaryClass  = {gr-qc}
+}
+
+% ---- Pombo & Pizzuti (2025) - Teukolsky by Design / SpectralPINN ----
+@article{Pombo:2025tbyd,
+  author  = {Pombo, Alexandre M. and Pizzuti, Lorenzo},
+  title   = {Teukolsky by Design: {A} Hybrid Spectral-{PINN} solver for
+             {Kerr} Quasinormal Modes},
+  year    = {2025},
+  eprint  = {2511.15796},
+  archivePrefix = {arXiv},
+  primaryClass  = {gr-qc}
+}
+
+% ---- First PINN Teukolsky paper (QNM) ----
+@article{Luna:2022pinn,
+  author  = {Luna, Raimon and Calder\'{o}n Bustillo, Juan and
+             Seoane, Pau Amaro and Torres-Forn\'{e}, Alejandro and
+             Font, Jos\'{e} A.},
+  title   = {Solving the {Teukolsky} equation with physics-informed
+             neural networks},
+  year    = {2022},
+  eprint  = {2212.06103},
+  archivePrefix = {arXiv},
+  primaryClass  = {gr-qc}
+}
+
+% ---- GSN recipes / Rico (2023) ----
+@article{Rico:2023gwl,
+  author  = {Rico, K. L.},
+  title   = {Recipes for computing radiation from a {Kerr} black hole
+             using a generalized {Sasaki-Nakamura} formalism:
+             {H}omogeneous solutions},
+  year    = {2023},
+  eprint  = {2306.16469},
+  archivePrefix = {arXiv},
+  primaryClass  = {gr-qc}
+}
+
+% ---- Original PINNs paper ----
+@article{Raissi:2019pinn,
+  author  = {Raissi, M. and Perdikaris, P. and Karniadakis, G. E.},
+  title   = {Physics-informed neural networks: {A} deep learning
+             framework for solving forward and inverse problems
+             involving nonlinear partial differential equations},
+  journal = {J. Comput. Phys.},
+  volume  = {378},
+  year    = {2019},
+  pages   = {686--707},
+  doi     = {10.1016/j.jcp.2018.10.045}
+}
+
+% ---- Supervised vs unsupervised PINNs for BH QNMs ----
+@article{Cornell:2024supervised,
+  author  = {Cornell, Alan S. and Herbst, Sheldon R. and Nombula, Anele M.
+             and Noshad, H.},
+  title   = {Supervised versus unsupervised physics-informed neural
+             networks for black hole perturbation theory},
+  year    = {2024},
+  eprint  = {2402.11343},
+  archivePrefix = {arXiv},
+  primaryClass  = {gr-qc}
+}
+
+% ---- Fourier features ----
+@article{Tancik:2020fourier,
+  author  = {Tancik, Matthew and others},
+  title   = {Fourier Features Let Networks Learn High Frequency
+             Functions in Low Dimensional Domains},
+  journal = {Adv. Neural Inf. Process. Syst.},
+  volume  = {33},
+  year    = {2020},
+  pages   = {7537--7547},
+  eprint  = {2006.10739}
+}
+
+% ---- FiLM ----
+@inproceedings{Perez:2018film,
+  author  = {Perez, Ethan and Strub, Florian and de Vries, Harm and
+             Dumoulin, Vincent and Courville, Aaron},
+  title   = {{FiLM}: {V}isual Reasoning with a General Conditioning
+             Layer},
+  booktitle = {Proc. AAAI Conf. Artif. Intell.},
+  year    = {2018},
+  doi     = {10.1609/aaai.v32i1.11671},
+  eprint  = {1709.07871}
+}
+
+% ---- EMRI review / LISA ----
+@article{Babak:2017tow,
+  author  = {Babak, Stanislav and others},
+  title   = {Science with the space-based interferometer {LISA}. {V}:
+             {E}xtreme mass-ratio inspirals},
+  journal = {Phys. Rev. D},
+  volume  = {95},
+  year    = {2017},
+  pages   = {103012},
+  doi     = {10.1103/PhysRevD.95.103012},
+  eprint  = {1703.09722}
+}
+
+% ---- Integral-form PINN losses (general) ----
+@article{Saleh:2024integralloss,
+  author  = {Saleh, Ehsan and Ghaffari, Saba and Bretl, Timothy and
+             Olson, Luke and West, Matthew},
+  title   = {Learning from Integral Losses in Physics Informed Neural
+             Networks},
+  journal = {Proc. Mach. Learn. Res.},
+  volume  = {235},
+  year    = {2024},
+  pages   = {43077--43111},
+  eprint  = {2305.17387},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
+}
+
+% ---- Fujita & Hikida (2009)
+@article{Fujita:2009geodesic,
+  author  = {Fujita, Ryuichi and Hikida, Wataru},
+  title   = {Analytical solutions of bound timelike geodesic orbits
+             in {Kerr} spacetime},
+  journal = {Class. Quantum Gravity},
+  volume  = {26},
+  year    = {2009},
+  pages   = {135002},
+  doi     = {10.1088/0264-9381/26/13/135002},
+  eprint  = {0906.1420}
+}
+
+% ---- LIGO first detection ----
+@article{Abbott:2016gw150914,
+  author  = {Abbott, B. P. and others},
+  collaboration = {LIGO Scientific and Virgo},
+  title   = {Observation of Gravitational Waves from a Binary Black Hole Merger},
+  journal = {Phys. Rev. Lett.},
+  volume  = {116},
+  year    = {2016},
+  pages   = {061102},
+  doi     = {10.1103/PhysRevLett.116.061102}
+}
+
+% ---- LISA proposal ----
+@article{AmaroSeoane:2017lisa,
+  author  = {Amaro-Seoane, Pau and others},
+  title   = {Laser Interferometer Space Antenna},
+  year    = {2017},
+  eprint  = {1702.00786},
+  archivePrefix = {arXiv},
+  primaryClass  = {astro-ph.IM}
+}
+
+% ---- Barack \& Cutler EMRI waveforms ----
+@article{Barack:2004emri,
+  author  = {Barack, Leor and Cutler, Curt},
+  title   = {{LISA} capture sources: Approximate waveforms, signal-to-noise
+             ratios, and parameter estimation accuracy},
+  journal = {Phys. Rev. D},
+  volume  = {70},
+  year    = {2004},
+  pages   = {122002},
+  doi     = {10.1103/PhysRevD.70.122002},
+  eprint  = {gr-qc/0409010}
+}
+
+% ---- Leaver continued fraction method ----
+@article{Leaver:1985qnm,
+  author  = {Leaver, E. W.},
+  title   = {An analytic representation for the quasi-normal modes of
+             {Kerr} black holes},
+  journal = {Proc. R. Soc. Lond. A},
+  volume  = {402},
+  year    = {1985},
+  pages   = {285--298},
+  doi     = {10.1098/rspa.1985.0119}
+}
+
+% ---- Drasco \& Hughes EMRI snapshots ----
+@article{Drasco:2006emri,
+  author  = {Drasco, Steve and Hughes, Scott A.},
+  title   = {Gravitational wave snapshots of generic extreme mass ratio
+             inspirals},
+  journal = {Phys. Rev. D},
+  volume  = {73},
+  year    = {2006},
+  pages   = {024027},
+  doi     = {10.1103/PhysRevD.73.024027},
+  eprint  = {gr-qc/0509101}
+}
+
+% ---- Barack \& Pound self-force review ----
+@article{Barack:2019sf,
+  author  = {Barack, Leor and Pound, Adam},
+  title   = {Self-force and radiation reaction in general relativity},
+  journal = {Rep. Prog. Phys.},
+  volume  = {82},
+  year    = {2019},
+  pages   = {016904},
+  doi     = {10.1088/1361-6633/aae552}
+}
+
+% ---- Adiabatic inspiral (Hughes et al.) ----
+@article{Hughes:2005adi,
+  author  = {Hughes, Scott A. and Drasco, Steve and Flanagan,
+             \'{E}anna \'{E}. and Franklin, Joel},
+  title   = {Gravitational radiation reaction and inspiral waveforms
+             in the adiabatic limit},
+  journal = {Phys. Rev. Lett.},
+  volume  = {94},
+  year    = {2005},
+  pages   = {221101},
+  doi     = {10.1103/PhysRevLett.94.221101},
+  eprint  = {gr-qc/0504015}
+}
+
+% ---- TianQin ----
+@article{Luo:2016tianqin,
+  author  = {Luo, Jun and others},
+  title   = {{TianQin}: a space-borne gravitational wave detector},
+  journal = {Class. Quantum Gravity},
+  volume  = {33},
+  year    = {2016},
+  pages   = {035010},
+  doi     = {10.1088/0264-9381/33/3/035010}
+}
+
+% ---- Taiji ----
+@article{Hu:2017taiji,
+  author  = {Hu, Wen-Rui and Wu, Yue-Liang},
+  title   = {The {Taiji} Program in Space for gravitational wave physics
+             and the nature of gravity},
+  journal = {Natl. Sci. Rev.},
+  volume  = {4},
+  year    = {2017},
+  pages   = {685--686},
+  doi     = {10.1093/nsr/nwx116}
+}
+
+% ---- Berti QNM review ----
+@article{Berti:2009qnm,
+  author  = {Berti, Emanuele and Cardoso, Vitor and Starinets, Andrei O.},
+  title   = {Quasinormal modes of black holes and black branes},
+  journal = {Class. Quantum Gravity},
+  volume  = {26},
+  year    = {2009},
+  pages   = {163001},
+  doi     = {10.1088/0264-9381/26/16/163001},
+  eprint  = {0905.2975}
+}
+
+% ---- Flanagan \& Hughes 1998 accuracy requirement ----
+@article{Flanagan:1998acc,
+  author  = {Flanagan, \'{E}anna \'{E}. and Hughes, Scott A.},
+  title   = {Measuring gravitational waves from binary black hole
+             coalescences. {I}. {S}ignal to noise for inspiral, merger,
+             and ringdown},
+  journal = {Phys. Rev. D},
+  volume  = {57},
+  year    = {1998},
+  pages   = {4535--4565},
+  doi     = {10.1103/PhysRevD.57.4535},
+  eprint  = {gr-qc/9701039}
+}
+
+% ---- Detweiler 1978 black hole GW ----
+@article{Detweiler:1978bhgw,
+  author  = {Detweiler, Steven L.},
+  title   = {Black holes and gravitational waves. {I}.
+             {C}ircular orbits about a rotating black hole},
+  journal = {Astrophys. J.},
+  volume  = {225},
+  year    = {1978},
+  pages   = {687--693},
+  doi     = {10.1086/156529}
+}
+

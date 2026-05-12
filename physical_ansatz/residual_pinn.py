@@ -9,15 +9,18 @@ PINN版本的 residual 计算。
 """
 import torch
 import numpy as np
-from .residual import AuxCache, get_lambda_from_cfg
+from .residual import AuxCache, get_lambda_from_cfg, get_ramp_and_p_from_cfg
 from .teukolsky_coeffs import coeffs_x
 from .mapping import r_plus, r_from_x
-from .prefactor import build_prefactor_primitives, Leaver_prefactors
+from .prefactor import build_prefactor_primitives, Leaver_prefactors, prefactor_Q, U_prefactor
 from .transform_y import (
     transform_coeffs_x_to_y,
+    transform_coeffs_x_to_y_S,
     h_factor,
     horizon_regularity_slope,
     compose_reduced_shape_from_f,
+    g_factor,
+    h1_factor,
 )
 
 def compute_f_derivatives_autograd(
@@ -29,8 +32,18 @@ def compute_f_derivatives_autograd(
     v_batch=None,
 ):
     """
-    使用自动微分计算网络输出 f(y), f_y, f_yy
+    Compute f(y), f_y, f_yy.
+
+    If the model has forward_with_derivatives (e.g. ChebCoeffNet), use exact
+    Chebyshev derivatives. Otherwise fall back to autograd.
     """
+    # ChebCoeffNet: exact derivatives, no autograd overhead
+    if hasattr(model, "forward_with_derivatives"):
+        return model.forward_with_derivatives(
+            a_batch, omega_batch, y_points, u=u_batch, v=v_batch
+        )
+
+    # Fallback: autograd
     if not y_points.requires_grad:
         y_points = y_points.clone().requires_grad_(True)
 
@@ -108,14 +121,12 @@ def compute_pointwise_pde_residual(
     s = int(cfg["problem"].get("s", -2))
     m = int(cfg["problem"].get("m", 2))
 
-    f_int, f_y_int, f_yy_int = compute_f_derivatives_autograd(
-        model,
-        a_batch,
-        omega_batch,
-        y_interior,
-        u_batch=u_batch,
-        v_batch=v_batch,
+    model_out, fy_out, fyy_out = compute_f_derivatives_autograd(
+        model, a_batch, omega_batch, y_interior,
+        u_batch=u_batch, v_batch=v_batch,
     )
+
+    output_type = getattr(model, "output_type", "f")
 
     x_int = (y_interior + 1.0) / 2.0
 
@@ -138,23 +149,36 @@ def compute_pointwise_pde_residual(
     A1_int = torch.stack(A1_list, dim=0)
     A0_int = torch.stack(A0_list, dim=0)
 
-    slope = horizon_regularity_slope(
-        a=a_batch,
-        omega=omega_batch,
-        lambda_=lambda_batch,
-        m=m,
-        M=M,
-        s=s,
-    )
+    if output_type == "S":
+        # S-PDE: D2*S_yy + D1*S_y + D0*S = 0
+        rp_vals = torch.stack([r_plus(a_batch[i], M) for i in range(a_batch.shape[0])])
+        r_int = rp_vals.unsqueeze(-1) / x_int.unsqueeze(0)
+        D2_int, D1_int, D0_int = transform_coeffs_x_to_y_S(
+            A2_int, A1_int, A0_int, r_int, a_batch, omega_batch,
+            m=m, M=M, s=s,
+        )
+        residual_int = D2_int * fyy_out + D1_int * fy_out + D0_int * model_out
+        term2 = D2_int * fyy_out
+        term1 = D1_int * fy_out
+        term0 = D0_int * model_out
+    else:
+        slope = horizon_regularity_slope(
+            a=a_batch,
+            omega=omega_batch,
+            lambda_=lambda_batch,
+            m=m,
+            M=M,
+            s=s,
+        )
 
-    B2_int, B1_int, B0_int, rhs = transform_coeffs_x_to_y(
-        A2_int, A1_int, A0_int, y_interior, slope=slope
-    )
+        B2_int, B1_int, B0_int, rhs = transform_coeffs_x_to_y(
+            A2_int, A1_int, A0_int, y_interior, slope=slope
+        )
 
-    residual_int = B2_int * f_yy_int + B1_int * f_y_int + B0_int * f_int - rhs
-    term2 = B2_int * f_yy_int
-    term1 = B1_int * f_y_int
-    term0 = B0_int * f_int
+        residual_int = B2_int * fyy_out + B1_int * fy_out + B0_int * model_out - rhs
+        term2 = B2_int * fyy_out
+        term1 = B1_int * fy_out
+        term0 = B0_int * model_out
 
     pointwise = torch.abs(residual_int) ** 2
 
@@ -390,12 +414,13 @@ def compute_data_anchor_loss(
     eps=1e-12,
     u_batch=None,
     v_batch=None,
+    lambda_batch=None,
 ):
     M = float(cfg["problem"].get("M", 1.0))
     s = int(cfg["problem"].get("s", -2))
     m = int(cfg["problem"].get("m", 2))
 
-    Rprime_pred, _, _ = compute_Rprime_derivatives_autograd(
+    Rprime_pred, _, _ = compute_f_derivatives_autograd(
         model,
         a_batch,
         omega_batch,
@@ -420,10 +445,12 @@ def compute_data_anchor_loss(
 
     U_batch = torch.stack(U_list, dim=0)
     Rprime_mma = R_mma_anchors / U_batch
-    
-    g,_,_ = g_factor(x_anchors)
+
+    slope = horizon_regularity_slope(
+        a=a_batch, omega=omega_batch, lambda_=lambda_batch, m=m, M=M, s=s,
+    )
+    g,_,_ = g_factor(x_anchors, slope)
     h=h_factor(a_batch,omega_batch,m,M,s)
-    Rprime_pred = Rprime_pred*g+h.view(-1, 1)
     err2 = torch.abs(Rprime_pred - Rprime_mma) ** 2
     if relative:
         scale = torch.mean(torch.abs(Rprime_mma.detach()) ** 2, dim=1, keepdim=True)
@@ -483,3 +510,142 @@ def compute_variance_regularizer(
         "loss_var": float(loss_var.detach().cpu().item()),
     }
     return loss_var, info
+
+
+def compute_integral_consistency_loss(
+    model,
+    cfg,
+    a_batch,
+    omega_batch,
+    lambda_batch,
+    y_interior,
+    u_batch=None,
+    v_batch=None,
+    n_anchors=32,
+    # Pre-computed intermediates (speed: avoid double autograd + double coeffs)
+    _f=None,
+    _f_y=None,
+    _S=None,
+    _S_y=None,
+    _A2=None,
+    _A1=None,
+    _A0=None,
+    _slope=None,
+):
+    """
+    Integral consistency loss: penalizes mismatch between S_nn(y_j) and
+    S_int(y_j) obtained by integrating the ODE from the horizon.
+
+    For a linear ODE S_xx = -(A1*S_x + A0*S)/A2, the IVP from x=1 gives:
+        S(x_j) = 1 + c_H*(x_j-1) + ∫_{x_j}^1 (t-x_j) * S_xx_ode(t) dt
+
+    This couples ALL collocation points between x_j and the horizon,
+    preventing the optimizer from converging to wrong fundamental solutions.
+    """
+    M = float(cfg["problem"].get("M", 1.0))
+    s = int(cfg["problem"].get("s", -2))
+    m = int(cfg["problem"].get("m", 2))
+
+    x = (y_interior + 1.0) / 2.0
+    x_b = x.unsqueeze(0) if x.ndim == 1 else x
+
+    if _A2 is not None and _A1 is not None and _A0 is not None:
+        A2, A1, A0 = _A2, _A1, _A0
+    else:
+        A2_list, A1_list, A0_list = [], [], []
+        for i in range(a_batch.shape[0]):
+            A2_i, A1_i, A0_i = coeffs_x(
+                x=x, a=a_batch[i], omega=omega_batch[i],
+                m=m, lambda_=lambda_batch[i], s=s, M=M,
+            )
+            A2_list.append(A2_i)
+            A1_list.append(A1_i)
+            A0_list.append(A0_i)
+        A2 = torch.stack(A2_list, dim=0)
+        A1 = torch.stack(A1_list, dim=0)
+        A0 = torch.stack(A0_list, dim=0)
+
+    if _slope is not None:
+        slope = _slope
+    else:
+        slope = horizon_regularity_slope(
+            a=a_batch, omega=omega_batch, lambda_=lambda_batch,
+            m=m, M=M, s=s,
+        )
+
+    # Compute S and S_x: either directly from model or via ansatz S = W*f + G
+    if _S is not None and _S_y is not None:
+        S = _S                  # (B, N) complex, from model directly
+        S_x = 2.0 * _S_y       # (B, N) dy/dx = 2
+    else:
+        if _f is not None and _f_y is not None:
+            f, f_y = _f, _f_y
+        else:
+            f, f_y, _f_yy = compute_f_derivatives_autograd(
+                model, a_batch, omega_batch, y_interior,
+                u_batch=u_batch, v_batch=v_batch,
+            )
+
+        h1, h1_x, _h1_xx = h1_factor(x_b)
+        g, g_x, _g_xx = g_factor(x_b, slope)
+
+        W = g * h1                      # (B, N)
+        W_x = g_x * h1 + g * h1_x       # (B, N)
+        G = g + 1.0                     # (B, N)
+        G_x = g_x                       # (B, N)
+
+        S = W * f + G                   # (B, N)  complex
+        f_x = 2.0 * f_y                 # (B, N)
+        S_x = W_x * f + W * f_x + G_x   # (B, N)
+
+    # S_xx from ODE: A2*S_xx + A1*S_x + A0*S = 0 => S_xx = -(A1*S_x + A0*S)/A2
+    S_xx_ode = -(A1 * S_x + A0 * S) / A2.clamp_min(1e-12)
+
+    # Sort by x ascending (infinity→horizon)
+    x_1d = x_b[0]
+    sort_idx = torch.argsort(x_1d)
+    x_sorted = x_1d[sort_idx]  # (N,)
+
+    # Select far-field anchors: distribute in x ∈ [x_min, x_mid]
+    n_avail = len(x_sorted)
+    n_anchors_use = min(n_anchors, n_avail // 2)
+    far_end = n_avail // 2
+    anchor_pos = torch.linspace(0, far_end - 1, n_anchors_use,
+                                 dtype=torch.long, device=x_1d.device)
+
+    B = a_batch.shape[0]
+    S_sorted = S[:, sort_idx]            # (B, N)
+    S_xx_sorted = S_xx_ode[:, sort_idx]  # (B, N)
+
+    # Trapezoidal cumulative integration from x_min to each x_k
+    dx = x_sorted[1:] - x_sorted[:-1]  # (N-1,)
+
+    # integrand1: t * S_xx(t), integrand2: S_xx(t)
+    t_avg = 0.5 * (x_sorted[:-1] + x_sorted[1:])  # (N-1,)
+    S_xx_avg = 0.5 * (S_xx_sorted[:, :-1] + S_xx_sorted[:, 1:])  # (B, N-1)
+
+    dS1 = t_avg.unsqueeze(0) * S_xx_avg * dx.unsqueeze(0)  # (B, N-1)
+    dS2 = S_xx_avg * dx.unsqueeze(0)                        # (B, N-1)
+
+    zero_col = torch.zeros(B, 1, device=S.device, dtype=S.dtype)
+    CumSum1 = torch.cat([zero_col, torch.cumsum(dS1, dim=-1)], dim=-1)  # (B, N)
+    CumSum2 = torch.cat([zero_col, torch.cumsum(dS2, dim=-1)], dim=-1)  # (B, N)
+
+    # CumSum[:, k] = ∫_{x_0}^{x_k} integrand dt
+
+    # For anchor at sorted index j:
+    # ∫_{x_j}^{x_max} (t-x_j)*S_xx dt = (CS1_max - CS1_j) - x_j*(CS2_max - CS2_j)
+    CS1_max = CumSum1[:, -1:]   # (B, 1)
+    CS2_max = CumSum2[:, -1:]   # (B, 1)
+    CS1_j = CumSum1[:, anchor_pos]  # (B, n_anchors)
+    CS2_j = CumSum2[:, anchor_pos]  # (B, n_anchors)
+    x_j = x_sorted[anchor_pos].unsqueeze(0)  # (1, n_anchors)
+
+    integral_vals = (CS1_max - CS1_j) - x_j * (CS2_max - CS2_j)  # (B, n_anchors)
+
+    c_H = slope.unsqueeze(-1)  # (B, 1)
+    S_int = 1.0 + c_H * (x_j - 1.0) + integral_vals  # (B, n_anchors)
+    S_nn = S_sorted[:, anchor_pos]  # (B, n_anchors)
+
+    loss = torch.mean(torch.abs(S_nn - S_int) ** 2)
+    return loss

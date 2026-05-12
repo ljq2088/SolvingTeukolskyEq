@@ -323,3 +323,42 @@ def transform_coeffs_x_to_y(
     rhs = -(A2 * G_xx + A1 * G_x + A0 * G)
 
     return B2, B1, B0, rhs
+
+
+def transform_coeffs_x_to_y_S(
+    A2: torch.Tensor,
+    A1: torch.Tensor,
+    A0: torch.Tensor,
+    r: torch.Tensor,
+    a: torch.Tensor,
+    omega: torch.Tensor,
+    m: int = 2,
+    M: float = 1.0,
+    s: int = -2,
+):
+    """Transform Teukolsky coefficients from R-space to S-space in y-coordinates.
+
+    R = P*h2*S. The PDE for S in x-space:
+      A2*S_xx + (2*A2*P_x/P + A1)*S_x + (A2*P_xx/P + A1*P_x/P + A0)*S = 0
+
+    Transform to y (x = (y+1)/2): S_x = 2*S_y, S_xx = 4*S_yy
+      D2*S_yy + D1*S_y + D0*S = 0
+
+    where:
+      D2 = 4*A2
+      D1 = 4*A2*P_x/P + 2*A1
+      D0 = A2*P_xx/P + A1*P_x/P + A0
+
+    No singular W, G factors — clean at horizon and infinity.
+    """
+    from physical_ansatz.prefactor import prefactor_log_derivatives_x
+
+    log_Px, log_Pxx = prefactor_log_derivatives_x(
+        r=r, a=a, omega=omega, m=m, M=M, s=s,
+    )
+
+    D2 = 4.0 * A2
+    D1 = 4.0 * A2 * log_Px + 2.0 * A1
+    D0 = A2 * log_Pxx + A1 * log_Px + A0
+
+    return D2, D1, D0

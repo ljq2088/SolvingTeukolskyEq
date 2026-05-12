@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT))
 
 from utils.mode import KerrMode
 from utils.amplitude import TeukRadAmplitudeInWithAbelChecks
-from utils.amplitude_three_patch import TeukRadAmplitudeIn3PatchWithAbelChecks
+from utils.amplitude_three_patch_modified import TeukRadAmplitudeIn3PatchWithAbelChecks
 
 
 def parse_n_list(text: str):

@@ -1,0 +1,216 @@
+include:
+  physics: config/teukolsky_radial.yaml
+
+# ============================================================
+# Phase 4 PirateNet: PINN_MLP with adaptive residual (α=0 init)
+# ============================================================
+
+initialization:
+  enabled: false
+
+parameter_space:
+  a:
+    center: 0.5
+    range: 0.499
+  omega:
+    center: 5.00005
+    range: 4.99995
+  domain:
+    k_horizon_margin: 1.0e-2
+    resample_factor: 4
+    max_attempts: 32
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+  a_min_local: 0.001
+  a_max_local: 0.999
+  omega_min_local: 0.0001
+  omega_max_local: 10.0
+
+sampling:
+  parameter_batch:
+    mode: fixed_pool
+    sampler: sobol
+    batch_size: 8
+    n_param_samples: 48
+
+  collocation:
+    interior:
+      strategy: chebyshev
+      n_points: 128
+
+    boundary:
+      strategy: none
+      n_points: 0
+
+    adaptive:
+      enabled: true
+      candidate_method: sobol
+      n_candidates: 2048
+      refresh_freq: 50
+      adaptive_frac: 0.7
+      normalize_residual: false
+
+  anchors:
+    mode: chebyshev_plus_adaptive
+    n_base: 32
+    n_adaptive: 8
+    n_random: 0
+
+training:
+  optimizer:
+    lr: 5.0e-4
+
+  anchor:
+    freq: 1
+    start_step: 1
+    n_anchors: 32
+
+  scheduler:
+    enabled: true
+    type: exp_after_warmup
+    warmup_steps: 5000
+    decay_start: 2000
+    decay_rate: 0.99995
+    min_lr: 1.0e-5
+
+  loss:
+    weight_interior: 1.0
+    weight_boundary: 0.0
+    weight_anchor: 0.0
+
+  loss_balance:
+    mode: fixed
+    eps: 1.0e-12
+
+  validation:
+    mode: fixed_pool
+    val_freq: 50
+    val_n_points: 200
+    n_param_samples: 24
+    param_sampler: sobol
+    monitor: mean
+    track_worst: true
+    sobol_seed: 4321
+    sobol_skip: 0
+    save_best_freq: 50
+
+  early_stop:
+    patience: 2000
+    threshold: 1.0e-6
+
+  weight_schedule:
+    anchor:
+      enabled: false
+    interior:
+      enabled: true
+      steps: 50000
+      growth_enabled: true
+      warmup_steps: 0
+      growth_start: 2000
+      growth_rate: 1.000005
+      max_weight: 1.0
+
+  epochs: 50000
+
+curriculum:
+  parameter:
+    enabled: false
+  collocation:
+    enabled: false
+
+regularization:
+  anti_trivial:
+    enabled: false
+  dynamic_balance:
+    enabled: false
+  flat_variance:
+    enabled: false
+  head_reg:
+    enabled: true
+    weight_nl: 1.0e-6
+    weight_resp: 1.0e-8
+  param_curvature:
+    enabled: true
+    weight: 1.0e-4
+    delta_alpha: 0.05
+    delta_xi: 0.05
+    n_probe_points: 64
+
+restart:
+  enabled: false
+
+visualization:
+  viz_show_enabled: false
+  viz_enabled: false
+  viz_save_enabled: false
+
+runtime:
+  dtype: float64
+
+mathematica:
+  kernel_path: "/mnt/f/mma/WolframKernel.exe"
+  wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
+
+atlas_training:
+  steps: 30000
+  batch_size: 8
+  n_interior: 128
+  n_interior_outer_extra: 16
+  grad_clip: 1.0
+  normalize_residual: false
+
+  lbfgs_steps: 800
+
+  integral_consistency_weight: 1.0
+  integral_n_anchors: 32
+
+  val_fraction: 0.2
+  val_param_samples: 24
+  val_every: 50
+  val_n_points: 128
+
+  early_stopping:
+    enabled: true
+    patience: 100
+    min_rel_improve: 1.0e-5
+    min_steps: 5000
+
+  save_every: 200
+  ckpt_every: 200
+  viz_every: 200
+  viz_num_points: 400
+  viz_r_min: 2.0
+  viz_r_max: 1000.0
+  anchor_backend: pybhpt
+  viz_benchmark_backend: spectral
+  viz_pybhpt_timeout: 10.0
+  anchor_pybhpt_timeout: 10.0
+  viz_spectral_N: 64
+  viz_spectral_z_m: 0.3
+  viz_mma_enabled: false
+
+  anchor_target_ratio: 1.0e-2
+  train_seed: 1234
+  output_root: outputs/atlas_patch_train_phase4_pirate
+  anchor_fail_log_name: anchor_failures.jsonl
+
+multipatch_training:
+  enabled: true
+  patch_order: center_out
+  warmstart_from_neighbor: true
+  skip_existing: false
+  resume_partial_runs: false
+  reuse_existing_registry: false
+  patch_steps: null
+  output_root: outputs/atlas_multipatch_phase4_pirate
+  registry_name: atlas_registry_phase4_pirate.json
+  export_flat_models: true
+  export_model_dirname: models
+  max_patches: null

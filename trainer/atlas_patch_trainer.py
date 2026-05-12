@@ -20,11 +20,13 @@ from tqdm.auto import trange
 
 from config.config_loader import load_pinn_full_config
 from model.pinn_mlp import PINN_MLP
+from model.cheb_coeff_net import ChebCoeffNet
+from model.cheb_deeponet import ChebDeepONet
 from utils.mode import KerrMode
 from utils.amplitude import TeukRadAmplitudeInWithInterpolant
 from dataset.sampling import sample_points_chebyshev_grid, sample_points_uniform_grid
 from physical_ansatz.residual import AuxCache, get_lambda_from_cfg
-from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss
+from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss, compute_integral_consistency_loss
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
 from physical_ansatz.mapping import r_plus, r_from_x
 from physical_ansatz.transform_y import (
@@ -70,6 +72,8 @@ class AtlasPatchTrainer:
         init_load_optimizer: bool = False,
         resume_checkpoint: str | None = None,
         resume_run_dir: str | None = None,
+        model_type: str = "pinn_mlp",
+        cheb_N: int = 64,
     ):
         self.device = torch.device(device)
 
@@ -92,6 +96,7 @@ class AtlasPatchTrainer:
 
         # atlas-specific training config
         atlas_train_cfg = self.cfg.get("atlas_training", {})
+        self.atlas_train_cfg = atlas_train_cfg
         cfg_output_root = atlas_train_cfg.get("output_root", "outputs/atlas_patch_train")
         sampling_cfg = self.cfg.get("sampling", {})
 
@@ -154,6 +159,8 @@ class AtlasPatchTrainer:
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
         self.lr = float(self.cfg.get("training", {}).get("optimizer", {}).get("lr", 1.0e-3))
         self.verbose = bool(verbose)
+        self.model_type = str(model_type)
+        self.cheb_N = int(cheb_N)
         if "viz_mma_enabled" in atlas_train_cfg and self.verbose:
             self._vprint(
                 "[viz] atlas_training.viz_mma_enabled is deprecated; "
@@ -218,33 +225,84 @@ class AtlasPatchTrainer:
         M = float(problem_cfg.get("M", 1.0))
         m_mode = int(problem_cfg.get("m", 2))
 
-        self.model = PINN_MLP(
-            hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
-            activation=model_cfg.get("activation", "silu"),
-            fourier_num_freqs=model_cfg.get("fourier_num_freqs", 2),
-            fourier_scale=model_cfg.get("fourier_scale", 1.0),
-            param_embed_dim=model_cfg.get("param_embed_dim", 64),
-            use_film=model_cfg.get("use_film", True),
-            use_residual=model_cfg.get("use_residual", True),
-            local_coord_mode="chart_uv",
+        if self.model_type == "cheb":
+            self.model = ChebCoeffNet(
+                N=self.cheb_N,
+                hidden_dims=model_cfg.get("hidden_dims", [128, 256, 256, 128]),
+                activation=model_cfg.get("activation", "silu"),
+                param_embed_dim=model_cfg.get("param_embed_dim", 64),
+                local_coord_mode="chart_uv",
+                u_center_local=self.patch.u_center,
+                v_center_local=self.patch.v_center,
+                u_half_range_local=self.patch.h_u,
+                v_half_range_local=self.patch.h_v,
+                M=M,
+                m_mode=m_mode,
+            ).to(device=self.device, dtype=self.dtype)
+        elif self.model_type == "cheb_deeponet":
+            self.model = ChebDeepONet(
+                N=self.cheb_N,
+                hidden_dims=model_cfg.get("hidden_dims", [128, 256, 256, 128]),
+                activation=model_cfg.get("activation", "silu"),
+                param_embed_dim=model_cfg.get("param_embed_dim", 128),
+                local_coord_mode="chart_uv",
+                use_taylor=model_cfg.get("use_taylor", True),
+                u_center_local=self.patch.u_center,
+                v_center_local=self.patch.v_center,
+                u_half_range_local=self.patch.h_u,
+                v_half_range_local=self.patch.h_v,
+                M=M,
+                m_mode=m_mode,
+            ).to(device=self.device, dtype=self.dtype)
+        else:
+            self.model = PINN_MLP(
+                hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
+                activation=model_cfg.get("activation", "silu"),
+                fourier_num_freqs=model_cfg.get("fourier_num_freqs", 2),
+                fourier_base_scale=model_cfg.get("fourier_base_scale", 1.0),
+                fourier_scales=model_cfg.get("fourier_scales", None),
+                fourier_scale=model_cfg.get("fourier_scale", None),
+                param_embed_dim=model_cfg.get("param_embed_dim", 64),
+                use_film=model_cfg.get("use_film", True),
+                use_residual=model_cfg.get("use_residual", True),
+                local_coord_mode="chart_uv",
 
-            # backward compatibility fields
-            a_center_local=model_cfg.get("a_center_local", 0.125),
-            a_half_range_local=model_cfg.get("a_half_range_local", 0.075),
-            omega_min_local=model_cfg.get("omega_min_local", 1.0e-4),
-            omega_max_local=model_cfg.get("omega_max_local", 10.0),
+                # backward compatibility fields
+                a_center_local=model_cfg.get("a_center_local", 0.125),
+                a_half_range_local=model_cfg.get("a_half_range_local", 0.075),
+                omega_min_local=model_cfg.get("omega_min_local", 1.0e-4),
+                omega_max_local=model_cfg.get("omega_max_local", 10.0),
 
-            # actual patch-local chart coords
-            u_center_local=self.patch.u_center,
-            v_center_local=self.patch.v_center,
-            u_half_range_local=self.patch.h_u,
-            v_half_range_local=self.patch.h_v,
+                # actual patch-local chart coords
+                u_center_local=self.patch.u_center,
+                v_center_local=self.patch.v_center,
+                u_half_range_local=self.patch.h_u,
+                v_half_range_local=self.patch.h_v,
 
-            M=M,
-            m_mode=m_mode,
-        ).to(device=self.device, dtype=self.dtype)
+                M=M,
+                m_mode=m_mode,
+            ).to(device=self.device, dtype=self.dtype)
 
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+
+        # ---- SGDR learning rate scheduler ----
+        sched_cfg = self.cfg.get("training", {}).get("scheduler", {})
+        self.use_sgdr = sched_cfg.get("type", "") == "sgdr"
+        if self.use_sgdr:
+            self.sgdr_T0 = int(sched_cfg.get("sgdr_T0", 3000))
+            self.sgdr_T_mult = int(sched_cfg.get("sgdr_T_mult", 2))
+            self.sgdr_eta_min = float(sched_cfg.get("sgdr_eta_min", 0.1))
+            self.sgdr_T_cur = self.sgdr_T0
+            self.sgdr_cycle_start = 0
+
+        # ---- Integral consistency weight annealing ----
+        int_anneal_cfg = self.atlas_train_cfg.get("integral_annealing", {})
+        self.int_anneal_enabled = bool(int_anneal_cfg.get("enabled", False))
+        if self.int_anneal_enabled:
+            self.int_weight_init = float(int_anneal_cfg.get("weight_init", 2.0))
+            self.int_weight_final = float(int_anneal_cfg.get("weight_final", 0.1))
+            self.int_weight_decay_start = int(int_anneal_cfg.get("decay_start", 5000))
+            self.int_weight_decay_end = int(int_anneal_cfg.get("decay_end", 15000))
         self.cache = AuxCache()
         self._preload_lambda_cache_from_probe(probe_json)
         self.init_checkpoint = init_checkpoint
@@ -732,30 +790,167 @@ class AtlasPatchTrainer:
         y_interior = self.sample_y_interior()
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
 
-        loss_pde, info_pde = pinn_residual_loss(
-            model=self.model,
-            cfg=self.physics_cfg,
-            a_batch=a_batch,
-            omega_batch=omega_batch,
-            lambda_batch=lambda_batch,
-            y_interior=y_interior,
-            y_boundary=y_boundary,
-            weight_interior=1.0,
-            weight_boundary=0.0,
-            normalize_residual=self.normalize_residual,
-            residual_scale_eps=1.0e-12,
-            return_pointwise=False,
-            u_batch=u_batch,
-            v_batch=v_batch,
+        # Compute model output and ODE coefficients once (shared by PDE + integral losses)
+        from physical_ansatz.residual_pinn import compute_f_derivatives_autograd
+        from physical_ansatz.teukolsky_coeffs import coeffs_x
+        from physical_ansatz.transform_y import (
+            transform_coeffs_x_to_y, transform_coeffs_x_to_y_S,
+            horizon_regularity_slope as _horizon_slope,
         )
 
+        M_phys = float(self.physics_cfg["problem"].get("M", 1.0))
+        s_phys = int(self.physics_cfg["problem"].get("s", -2))
+        m_phys = int(self.physics_cfg["problem"].get("m", 2))
+
+        output_type = getattr(self.model, "output_type", "f")
+
+        if output_type == "S":
+            # S(y) output: smooth shape function, S-PDE residual
+            S_int, S_y_int, S_yy_int = compute_f_derivatives_autograd(
+                self.model, a_batch, omega_batch, y_interior,
+                u_batch=u_batch, v_batch=v_batch,
+            )
+
+            x_int = (y_interior + 1.0) / 2.0
+            # r = r+/x: each batch element has different r+
+            rp_vals = torch.stack([r_plus(a_batch[i], M_phys) for i in range(a_batch.shape[0])])
+            r_int = rp_vals.unsqueeze(-1) / x_int.unsqueeze(0)  # (B, Ny)
+
+            A2_l, A1_l, A0_l = [], [], []
+            for i in range(a_batch.shape[0]):
+                A2i, A1i, A0i = coeffs_x(
+                    x=x_int, a=a_batch[i], omega=omega_batch[i],
+                    m=m_phys, lambda_=lambda_batch[i], s=s_phys, M=M_phys,
+                )
+                A2_l.append(A2i); A1_l.append(A1i); A0_l.append(A0i)
+            A2_int = torch.stack(A2_l, dim=0)
+            A1_int = torch.stack(A1_l, dim=0)
+            A0_int = torch.stack(A0_l, dim=0)
+
+            slope_int = _horizon_slope(
+                a=a_batch, omega=omega_batch, lambda_=lambda_batch,
+                m=m_phys, M=M_phys, s=s_phys,
+            )
+
+            # S-PDE: D2*S_yy + D1*S_y + D0*S = 0
+            D2_int, D1_int, D0_int = transform_coeffs_x_to_y_S(
+                A2_int, A1_int, A0_int, r_int, a_batch, omega_batch,
+                m=m_phys, M=M_phys, s=s_phys,
+            )
+            residual_int = D2_int * S_yy_int + D1_int * S_y_int + D0_int * S_int
+            pointwise_interior = torch.abs(residual_int) ** 2
+            if self.normalize_residual:
+                scale = (1.0 + torch.abs(D2_int.detach() * S_yy_int) ** 2
+                         + torch.abs(D1_int.detach() * S_y_int) ** 2
+                         + torch.abs(D0_int.detach() * S_int) ** 2)
+                pointwise_interior = pointwise_interior / scale.clamp_min(1e-12)
+            loss_pde = torch.mean(pointwise_interior)
+
+            # For integral consistency: pass S directly
+            _f_arg, _f_y_arg = None, None
+            _S_arg, _S_y_arg = S_int, S_y_int
+        else:
+            # Original f(y) path
+            f_int, f_y_int, f_yy_int = compute_f_derivatives_autograd(
+                self.model, a_batch, omega_batch, y_interior,
+                u_batch=u_batch, v_batch=v_batch,
+            )
+
+            x_int = (y_interior + 1.0) / 2.0
+            A2_l, A1_l, A0_l = [], [], []
+            for i in range(a_batch.shape[0]):
+                A2i, A1i, A0i = coeffs_x(
+                    x=x_int, a=a_batch[i], omega=omega_batch[i],
+                    m=m_phys, lambda_=lambda_batch[i], s=s_phys, M=M_phys,
+                )
+                A2_l.append(A2i); A1_l.append(A1i); A0_l.append(A0i)
+            A2_int = torch.stack(A2_l, dim=0)
+            A1_int = torch.stack(A1_l, dim=0)
+            A0_int = torch.stack(A0_l, dim=0)
+
+            slope_int = _horizon_slope(
+                a=a_batch, omega=omega_batch, lambda_=lambda_batch,
+                m=m_phys, M=M_phys, s=s_phys,
+            )
+
+            # PDE residual loss
+            B2_int, B1_int, B0_int, rhs = transform_coeffs_x_to_y(
+                A2_int, A1_int, A0_int, y_interior, slope=slope_int,
+            )
+            residual_int = B2_int * f_yy_int + B1_int * f_y_int + B0_int * f_int - rhs
+            pointwise_interior = torch.abs(residual_int) ** 2
+            if self.normalize_residual:
+                scale = (1.0 + torch.abs(B2_int.detach() * f_yy_int) ** 2
+                         + torch.abs(B1_int.detach() * f_y_int) ** 2
+                         + torch.abs(B0_int.detach() * f_int) ** 2
+                         + torch.abs(rhs.detach()) ** 2)
+                pointwise_interior = pointwise_interior / scale.clamp_min(1e-12)
+            loss_pde = torch.mean(pointwise_interior)
+
+            _f_arg, _f_y_arg = f_int, f_y_int
+            _S_arg, _S_y_arg = None, None
+
         total_loss = loss_pde
-        info = dict(info_pde)
+        info = {
+            "loss_interior": float(loss_pde.detach().cpu().item()),
+            "loss_boundary": 0.0,
+            "total_loss": float(loss_pde.detach().cpu().item()),
+        }
         info["loss_pde"] = float(loss_pde.detach().cpu().item())
         info["loss_anchor"] = 0.0
+        info["loss_coeff_reg"] = 0.0
+        info["loss_integral"] = 0.0
         info["anchor_weight_eff"] = 0.0
         info["anchor_success_count"] = 0
         info["anchor_failed_count"] = 0
+
+        # Integral consistency loss (uses pre-computed outputs + ODE coefficients)
+        integral_weight = float(self.atlas_train_cfg.get("integral_consistency_weight", 0.0))
+        if integral_weight > 0 and self.int_anneal_enabled:
+            step = self.global_step
+            if step < self.int_weight_decay_start:
+                integral_weight = self.int_weight_init
+            elif step > self.int_weight_decay_end:
+                integral_weight = self.int_weight_final
+            else:
+                frac = (step - self.int_weight_decay_start) / (self.int_weight_decay_end - self.int_weight_decay_start)
+                integral_weight = self.int_weight_init + frac * (self.int_weight_final - self.int_weight_init)
+        if integral_weight > 0:
+            loss_integral = compute_integral_consistency_loss(
+                model=self.model,
+                cfg=self.physics_cfg,
+                a_batch=a_batch,
+                omega_batch=omega_batch,
+                lambda_batch=lambda_batch,
+                y_interior=y_interior,
+                u_batch=u_batch,
+                v_batch=v_batch,
+                n_anchors=int(self.atlas_train_cfg.get("integral_n_anchors", 32)),
+                _f=_f_arg,
+                _f_y=_f_y_arg,
+                _S=_S_arg,
+                _S_y=_S_y_arg,
+                _A2=A2_int,
+                _A1=A1_int,
+                _A0=A0_int,
+                _slope=slope_int,
+            )
+            if torch.isfinite(loss_integral):
+                total_loss = total_loss + integral_weight * loss_integral
+                info["loss_integral"] = float(loss_integral.detach().cpu().item())
+
+        # Chebyshev coefficient regularization (spectral decay prior)
+        if self.model_type in ("cheb", "cheb_deeponet"):
+            coeff_reg_weight = float(self.atlas_train_cfg.get("cheb_coeff_reg_weight", 0.0))
+            if coeff_reg_weight > 0:
+                coeff = self.model.compute_coefficients(a_batch, omega_batch, u=u_batch, v=v_batch)
+                n_weights = torch.arange(self.cheb_N, device=coeff.device, dtype=coeff.real.dtype)
+                # Penalize |c_n|^2 * n (higher modes penalized more)
+                coeff_reg = coeff_reg_weight * torch.mean(
+                    (1.0 + n_weights) * (coeff.real ** 2 + coeff.imag ** 2)
+                )
+                total_loss = total_loss + coeff_reg
+                info["loss_coeff_reg"] = float(coeff_reg.detach().cpu().item())
 
         if self.anchor_enabled:
             y_anchor = self.sample_y_anchor()
@@ -782,20 +977,116 @@ class AtlasPatchTrainer:
                     v_batch=v_batch[ok_mask],
                 )
 
-                anchor_weight_eff = self._compute_anchor_weight_eff(loss_pde, loss_anchor)
-                total_loss = loss_pde + anchor_weight_eff * loss_anchor
+                if torch.isfinite(loss_anchor):
+                    anchor_weight_eff = self._compute_anchor_weight_eff(loss_pde, loss_anchor)
+                    total_loss = loss_pde + anchor_weight_eff * loss_anchor
 
-                info["loss_anchor"] = float(loss_anchor.detach().cpu().item())
-                info["anchor_weight_eff"] = float(anchor_weight_eff)
-                info["anchor_success_count"] = int(ok_mask.numel())
+                    info["loss_anchor"] = float(loss_anchor.detach().cpu().item())
+                    info["anchor_weight_eff"] = float(anchor_weight_eff)
+                    info["anchor_success_count"] = int(ok_mask.numel())
+                else:
+                    info["anchor_failed_count"] += ok_mask.numel()
 
         total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
 
+        # ---- SGDR LR update ----
+        if self.use_sgdr:
+            steps_in_cycle = self.global_step - self.sgdr_cycle_start
+            if steps_in_cycle >= self.sgdr_T_cur:
+                self.sgdr_cycle_start = self.global_step
+                self.sgdr_T_cur = self.sgdr_T_cur * self.sgdr_T_mult
+                steps_in_cycle = 0
+            t_frac = steps_in_cycle / max(self.sgdr_T_cur, 1)
+            lr = self.lr * (self.sgdr_eta_min + 0.5 * (1.0 - self.sgdr_eta_min) * (1.0 + math.cos(math.pi * t_frac)))
+            for pg in self.optimizer.param_groups:
+                pg['lr'] = lr
+
         info["total_loss"] = float(total_loss.detach().cpu().item())
         info["grad_norm"] = float(grad_norm.detach().cpu().item())
         return info
+
+    # =========================================================
+    # L-BFGS refinement (for Chebyshev spectral methods)
+    # =========================================================
+    def _train_lbfgs(self, steps: int, val_every: int = 10):
+        """
+        L-BFGS refinement after Adam warmup. Uses fixed parameter/collocation
+        batches for deterministic optimization.
+        """
+        self._vprint(f"[lbfgs] starting {steps} L-BFGS steps ...")
+        optimizer = torch.optim.LBFGS(
+            self.model.parameters(),
+            lr=0.5,
+            max_iter=20,
+            max_eval=25,
+            tolerance_grad=1e-12,
+            tolerance_change=1e-14,
+            history_size=100,
+            line_search_fn="strong_wolfe",
+        )
+
+        # Fixed batches for deterministic L-BFGS
+        n_fixed = 4
+        fixed_batches = []
+        for _ in range(n_fixed):
+            fixed_batches.append((
+                *self.sample_param_batch(),
+                self.sample_y_interior(),
+            ))
+
+        final_val = None
+        step_count = [0]
+        pbar = trange(steps, desc=f"lbfgs patch {self.patch.patch_id}", dynamic_ncols=True)
+
+        for _ in pbar:
+            batch_idx = step_count[0] % n_fixed
+            a_b, omega_b, u_b, v_b = fixed_batches[batch_idx][:4]
+            y_int = fixed_batches[batch_idx][4]
+
+            def closure():
+                optimizer.zero_grad()
+                lambda_b = self.resolve_aux_batch(a_b, omega_b)
+                y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
+
+                loss_pde, _ = pinn_residual_loss(
+                    model=self.model,
+                    cfg=self.physics_cfg,
+                    a_batch=a_b,
+                    omega_batch=omega_b,
+                    lambda_batch=lambda_b,
+                    y_interior=y_int,
+                    y_boundary=y_boundary,
+                    weight_interior=1.0,
+                    weight_boundary=0.0,
+                    normalize_residual=self.normalize_residual,
+                    residual_scale_eps=1.0e-12,
+                    return_pointwise=False,
+                    u_batch=u_b,
+                    v_batch=v_b,
+                )
+                loss_pde.backward()
+                return loss_pde
+
+            loss_val = optimizer.step(closure)
+            step_count[0] += 1
+
+            if step_count[0] % val_every == 0 or step_count[0] == 1:
+                final_val = self.validate()
+                improved = self._update_best_val_cases(final_val)
+                final_val["case_improved_count"] = int(improved)
+                if improved:
+                    self._save_checkpoint(self.ckpt_dir / "best_model.pt", val_metrics=final_val)
+
+            pbar.set_postfix({
+                "loss": f"{loss_val.item():.2e}",
+                "val": f"{final_val['val_mean']:.2e}" if final_val is not None else "-",
+                "best": f"{self.best_val_mean:.2e}" if np.isfinite(self.best_val_mean) else "-",
+            })
+
+        self._vprint(f"[lbfgs] done. best_val_mean={self.best_val_mean:.6e}")
+        return final_val
 
     # =========================================================
     # validation
@@ -1104,6 +1395,8 @@ class AtlasPatchTrainer:
             "best_val_case_steps": self.best_val_case_steps.tolist() if self.best_val_case_steps is not None else None,
             "best_val_cases": self._serialize_best_val_cases(),
             "latest_val_metrics": val_metrics,
+            "model_type": self.model_type,
+            "cheb_N": self.cheb_N if self.model_type in ("cheb", "cheb_deeponet") else None,
         }
         torch.save(payload, path)
 
@@ -1206,6 +1499,7 @@ class AtlasPatchTrainer:
                 pbar.set_postfix({
                     "tot": f"{info['total_loss']:.2e}",
                     "pde": f"{info['loss_pde']:.2e}",
+                    "int": f"{info.get('loss_integral', 0.0):.2e}",
                     "anc": f"{info.get('loss_anchor', 0.0):.2e}",
                     "aw": f"{info.get('anchor_weight_eff', 0.0):.2e}",
                     "ok": f"{info.get('anchor_success_count', 0)}",
@@ -1214,6 +1508,11 @@ class AtlasPatchTrainer:
                     "val": f"{final_val['val_mean']:.2e}" if final_val is not None else "-",
                     "best": f"{self.best_val_mean:.2e}" if np.isfinite(self.best_val_mean) else "-",
                 })
+
+            # L-BFGS refinement
+            lbfgs_steps = self.atlas_train_cfg.get("lbfgs_steps", 0)
+            if lbfgs_steps > 0:
+                final_val = self._train_lbfgs(lbfgs_steps)
 
         finally:
             self._save_checkpoint(self.ckpt_dir / "latest_model.pt", val_metrics=final_val)

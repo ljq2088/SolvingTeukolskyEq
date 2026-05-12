@@ -6,6 +6,9 @@ but not all callers were updated. Re-export the function here so the rest of
 the codebase continues to use a stable import path.
 """
 
-from .compute_lambda_usage import compute_lambda
+try:
+    from .compute_lambda_usage import compute_lambda
+except ImportError:
+    from compute_lambda_usage import compute_lambda
 
 __all__ = ["compute_lambda"]

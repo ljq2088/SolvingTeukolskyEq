@@ -270,6 +270,53 @@ def Leaver_prefactors(
 def U_prefactor(P,P_r,P_rr,Q,Q_r,Q_rr):
     return P*Q, P_r*Q+P*Q_r, P_rr*Q+2.0*P_r*Q_r+P*Q_rr
 
+
+def prefactor_log_derivatives_x(r, a, omega, m=2, M=1.0, s=-2, rp=None, rm=None):
+    """Compute P_x/P and P_xx/P for the Leaver prefactor at given r points.
+
+    P(r) = (r-r+)^pp * (r-r-)^pm * exp(i*omega*r)
+
+    x = r+/r, conversion from r-derivatives:
+      P_x/P = -(r²/r+) * (P_r/P)
+      P_xx/P = (P_rr/P)*(r⁴/r+²) + (P_r/P)*(2r³/r+²)
+
+    Args:
+        r: (N,) or (B,N) radial coordinate
+        a: (B,) spin
+        omega: (B,) frequency
+    Returns:
+        log_Px: P_x/P  (B,N) or (N,) complex
+        log_Pxx: P_xx/P  (B,N) or (N,) complex
+    """
+    if rp is None:
+        from physical_ansatz.mapping import r_plus
+        rp = r_plus(a, M)
+    if rm is None:
+        from physical_ansatz.mapping import r_minus
+        rm = r_minus(a, M)
+
+    sigma_p = (2.0 * omega * rp - m * a) / (rp - rm)
+    pp = -s - 1j * sigma_p
+    pm = -1.0 - s + 2.0j * omega + 1j * sigma_p
+
+    drp = r - rp.unsqueeze(-1) if rp.ndim > 0 else r - rp
+    drm = r - rm.unsqueeze(-1) if rm.ndim > 0 else r - rm
+
+    # g = P_r/P (log-derivative in r)
+    g = pp.unsqueeze(-1) / drp + pm.unsqueeze(-1) / drm + 1j * omega.unsqueeze(-1)
+    # gp = dg/dr
+    gp = -(pp.unsqueeze(-1) / drp**2) - (pm.unsqueeze(-1) / drm**2)
+
+    # Convert to x = r+/r derivatives
+    rp_b = rp.unsqueeze(-1) if rp.ndim > 0 else rp
+    r2_over_rp = r**2 / rp_b
+    r3_over_rp2 = r**3 / rp_b**2
+
+    log_Px = -r2_over_rp * g  # P_x/P
+    log_Pxx = (g**2 + gp) * (r2_over_rp**2) + g * (2.0 * r3_over_rp2)  # P_xx/P
+
+    return log_Px, log_Pxx
+
 # def prefactor_P(r: torch.Tensor, a: torch.Tensor, omega: torch.Tensor, m: int, M: float = 1.0, s: int = -2) -> torch.Tensor:
 #     """
 #     The x used here is different from the x in mapping.py, it's the one used in LRR-2003-6 Eq. 116:

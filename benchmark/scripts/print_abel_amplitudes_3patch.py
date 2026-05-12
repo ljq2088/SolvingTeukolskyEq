@@ -9,7 +9,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from utils.mode import KerrMode
-from utils.amplitude_three_patch import TeukRadAmplitudeIn3PatchWithAbelChecks
+from utils.amplitude_three_patch_modified import TeukRadAmplitudeIn3PatchWithAbelChecks
 
 
 def main() -> None:

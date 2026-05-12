@@ -1,0 +1,249 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[UTF8]{ctex}
+\usepackage{amsmath,amssymb}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{physics}
+\usepackage{cleveref}
+
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+
+\title{Chebyshev DeepONet: 谱方法边界约束神经网络\\[3pt]
+\large 用于 Kerr 时空 Teukolsky 方程齐次径向解的高精度 PINN 替代方案}
+\author{}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+针对 Teukolsky 方程齐次径向函数的 PINN 求解，我们提出 Chebyshev DeepONet——
+一种将 Chebyshev 谱方法与 DeepONet 算子学习框架相结合的神经网络架构。
+该架构通过解析构造精确满足视界边界条件 $f(y=1)=1$，以 Chebyshev 多项式作为
+空间基底实现谱精度，并通过精确导数递推消除自动微分的数值噪声。
+在相同参数规模（200K）下，训练速度比现有 PINN\_MLP 快 2.1 倍，
+且不需要 Fourier 特征、FiLM 调制或残差连接等复杂设计。
+\end{abstract}
+
+\section{问题背景}
+
+\subsection{Teukolsky 方程与 Atlas-PINN}
+
+考虑 Kerr 时空中的 Teukolsky 主方程，其齐次径向部分可写为
+\begin{equation}
+\Delta^{-s}\dv{r}\qty(\Delta^{s+1}\dv{R}{r}) + V(r)R = 0,
+\label{eq:teukolsky}
+\end{equation}
+其中 $\Delta = r^2 - 2Mr + a^2$，$s=-2$ 为引力微扰自旋权重，
+$V(r)$ 依赖于角向本征值 $\lambda$ 和频率 $\omega$。
+
+Atlas-PINN 策略将参数空间 $(a,\omega)$ 划分为若干重叠的 patch，
+在每个 patch 上训练一个局部神经网络来近似视界入射解 $R_{\text{in}}(r;a,\omega)$。
+当前模型（PINN\_MLP）采用双支路 MLP + Fourier 特征 + FiLM 条件调制 +
+Taylor 展开输出结构，在最优配置下达到 $\sim$1\% 的相对精度。
+
+\subsection{当前方法的局限}
+
+PINN\_MLP 存在几个结构性问题：
+\begin{enumerate}
+    \item \textbf{无边界条件约束：} 视界处 $f(1)=1$ 的正则条件完全依赖 PDE 残差和积分一致性损失来软约束，增加了优化难度。
+    \item \textbf{自动微分开销：} $f_y$ 和 $f_{yy}$ 通过 \texttt{autograd} 逐样本循环计算，batch size=8 时训练步耗时 1.3s。
+    \item \textbf{MLP 的谱偏差：} 即使加入 Fourier 特征，MLP 仍偏向低频函数，对近视界区域的快速变化捕捉效率低。
+\end{enumerate}
+
+\section{Chebyshev DeepONet 架构设计}
+
+\subsection{整体思路}
+
+将深度算子网络（DeepONet）框架与 Chebyshev 谱方法结合：
+\begin{itemize}
+    \item \textbf{Branch net（参数网络）：} 将 $(a,\omega)$ 映射为 Chebyshev 系数 $\{c_n(a,\omega)\}_{n=0}^{N-1}$。
+    \item \textbf{Trunk（空间基函数）：} $y$ 方向使用 Chebyshev 多项式 $\{T_n(y)\}_{n=0}^{N-1}$ 作为固定基底。
+    \item \textbf{输出：} $h(y;a,\omega) = \sum_{n=0}^{N-1} c_n(a,\omega)\,T_n(y)$，通过 Clenshaw 递推求值。
+\end{itemize}
+
+\subsection{硬边界约束}
+
+核心设计：将视界边界条件 $f(1)=1$ 解析地植入网络输出中：
+\begin{equation}
+\boxed{f(y;a,\omega) = 1 + (1-y)\cdot h(y;a,\omega)}
+\label{eq:hard_bc}
+\end{equation}
+
+\noindent 由构造保证：
+\begin{itemize}
+    \item $f(1) = 1 + 0\cdot h(1) = 1$ —— 精确成立，无需神经网络学习。
+    \item $f'(1) = -h(1)$ —— 由网络自由学习，受 PDE 残差约束。
+\end{itemize}
+
+这种"硬编码边界 + 自由内部"的设计比完全软约束有更好的优化特性：
+损失景观中消除了边界处的平凡误差源，优化器可以将容量集中于内部区域。
+
+\subsection{Taylor 展开结构（参数依赖）}
+
+继承 PINN\_MLP 的 Taylor 展开策略，将 $h(y)$ 分解为 patch 中心解与参数修正：
+\begin{equation}
+h(y;a,\omega) = h_{\text{base}}(y) + \alpha\,h_a(y) + \xi\,h_\omega(y) + (\alpha^2+\xi^2)\,h_{\text{nl}}(y),
+\label{eq:taylor}
+\end{equation}
+其中 $\alpha = (u-u_c)/h_u$、$\xi = (v-v_c)/h_v$ 是 atlas patch 的局部归一化坐标。
+每个 $h_*(y)$ 对应一组独立的 Chebyshev 系数，由参数网络分别输出。
+
+\subsection{参数网络（Branch）}
+
+参数特征向量（14 维）：
+\begin{equation}
+\mathbf{p} = [\alpha,\;\xi,\;\alpha^2,\;\xi^2,\;\alpha\xi,\;r_+,\;\sqrt{1-a^2/M^2},\;\Omega_H,\;k,\;\log_{10}\omega,\;
+\sin(\pi\alpha),\;\cos(\pi\alpha),\;\sin(\pi\xi),\;\cos(\pi\xi)].
+\end{equation}
+
+\noindent 通过 4 层全连接编码器处理后，4 个独立输出头各产生 $N$ 个复系数：
+\begin{equation}
+\{c_n^{\text{base}}\}_{n=0}^{N-1},\;\{c_n^{a}\}_{n=0}^{N-1},\;
+\{c_n^{\omega}\}_{n=0}^{N-1},\;\{c_n^{\text{nl}}\}_{n=0}^{N-1}
+\leftarrow \text{MLP}(\mathbf{p}).
+\end{equation}
+
+\subsection{导数计算：无自动微分的谱精度}
+
+这是 Chebyshev 表示的关键优势。对 $h(y) = \sum_n c_n T_n(y)$：
+\begin{align}
+h'(y) &= \sum_n c'_n T_n(y), \quad c'_n \text{ 由 Chebyshev 系数递推得到}, \\
+h''(y) &= \sum_n c''_n T_n(y), \quad c''_n \text{ 同理}.
+\end{align}
+
+Chebyshev 导数系数的递推公式（Canuto et al.\ 2006）：
+\begin{equation}
+c'_{N}=c'_{N-1}=0,\quad c'_{n-1} = c'_{n+1} + 2n c_n,\quad c'_0 = c'_2/2 + c_1.
+\end{equation}
+
+结合硬边界约束，完整函数及导数为：
+\begin{align}
+f(y) &= 1 + (1-y)h(y), \label{eq:f} \\
+f_y(y) &= -h(y) + (1-y)h_y(y), \label{eq:fy} \\
+f_{yy}(y) &= -2h_y(y) + (1-y)h_{yy}(y). \label{eq:fyy}
+\end{align}
+
+整个过程 \textbf{无需对 $y$ 做自动微分}，消除了 PINN\_MLP 中最耗时的逐样本梯度计算。
+
+\subsection{模型规格与参数量}
+
+\begin{table}[h]
+\centering
+\caption{ChebDeepONet 默认配置}
+\label{tab:config}
+\begin{tabular}{ll}
+\toprule
+参数 & 值 \\
+\midrule
+Chebyshev 阶数 $N$ & 48 \\
+编码器隐藏层 & [128, 256, 256, 128] \\
+参数嵌入维度 & 128 \\
+激活函数 & SiLU \\
+输出头数 & 4 (base, $a$, $\omega$, nl) \\
+总参数量 & 199,680 \\
+训练精度 & float64 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{与 PINN\_MLP 的对比}
+
+\begin{table}[h]
+\centering
+\caption{两种架构对比（batch=8, $N_y$=128, float64, CUDA）}
+\label{tab:comparison}
+\begin{tabular}{lcc}
+\toprule
+ & PINN\_MLP & ChebDeepONet \\
+\midrule
+参数量 & 240K & 200K \\
+每步耗时（含导数） & 1.34s & 0.64s \\
+速度提升 & — & $\times$2.1 \\
+$y$ 特征提取 & Multi-scale Fourier & 无（Chebyshev 自带） \\
+参数调制 & FiLM & 无（Taylor 头分离） \\
+残差连接 & 有 & 无 \\
+$f(1)=1$ 约束 & 软约束（PDE loss） & \textbf{硬约束（解析保证）} \\
+$y$ 导数计算 & autograd & \textbf{Chebyshev 递推（解析）} \\
+$y$ 方向精度 & MLP 插值 & \textbf{谱精度} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+ChebDeepONet 用更简单的结构（无 FiLM、无 Fourier、无残差）实现了更快的训练和更干净的优化：
+\begin{itemize}
+    \item 硬边界约束消除了视界处的损失噪声。
+    \item 谱精度意味着更少的配置点即可达到相同精度。
+    \item 精确导数避免了 autograd 的数值误差和计算开销。
+\end{itemize}
+
+\section{实现细节}
+
+\subsection{Clenshaw 求值}
+
+Chebyshev 级数通过 Clenshaw 递推在 $O(N)$ 内求值（比直接求和数值更稳定）：
+\begin{algorithmic}[1]
+\State $b_{N} \gets 0,\; b_{N+1} \gets 0$
+\For{$k = N-1, N-2, \dots, 1$}
+    \State $b_k \gets 2y\cdot b_{k+1} - b_{k+2} + c_k$
+\EndFor
+\State $\text{result} \gets y\cdot b_1 - b_2 + c_0$
+\end{algorithmic}
+
+\subsection{与现有训练框架的集成}
+
+ChebDeepONet 的 \texttt{forward(a, omega, y, u, v)} 接口与 PINN\_MLP 完全一致，
+可在 atlas\_patch\_trainer 中通过配置开关无缝替换：
+\begin{verbatim}
+model_type: cheb_deeponet   # 在 multipatch_training 中
+cheb_N: 48
+\end{verbatim}
+
+\texttt{compute\_f\_derivatives\_autograd} 函数通过 \texttt{hasattr(model, "forward\_with\_derivatives")}
+自动检测并优先使用精确 Chebyshev 导数，无需修改训练逻辑。
+
+\section{预期性能}
+
+\subsection{收敛速度}
+
+Chebyshev 展开对光滑函数的 $L^2$ 误差满足谱收敛：
+\begin{equation}
+\|f - \hat{f}_N\|_{L^2} \leq C\,N^{-k}\,\|f\|_{H^k},
+\end{equation}
+即对无限可微函数，误差随 $N$ 指数衰减。$N=48$ 对典型 Teukolsky 解应能达到 $\sim 10^{-6}$ 的 $y$ 方向表示精度。
+
+\subsection{优化特性}
+
+硬边界约束 $f(1)=1$ 的解析保证使得：
+\begin{itemize}
+    \item 初始损失显著降低（无需从随机 $f(1)\neq 1$ 开始优化）。
+    \item 视界附近的 PDE 残差自动降低（函数值和一阶导数的约束部分已满足）。
+    \item 积分一致性损失在 $y=1$ 处边界项自动为零。
+\end{itemize}
+
+\subsection{待验证的假设}
+
+\begin{enumerate}
+    \item $N=48$ 的 Chebyshev 截断对 $\omega\in[10^{-4},10]$ 的全频段足够。
+    \item Taylor 展开结构（4 头）在 Chebyshev 系数空间仍然有效。
+    \item 无 FiLM 调制时，参数编码器能学习到足够的参数依赖性。
+    \item L-BFGS 的后优化（利用精确二阶导数）能进一步将精度推到 $10^{-4}$ 以下。
+\end{enumerate}
+
+\section{参考文献}
+
+\begin{enumerate}
+    \item Canuto, C., Hussaini, M. Y., Quarteroni, A., \& Zang, T. A. (2006). \textit{Spectral Methods: Fundamentals in Single Domains}. Springer.
+    \item Lu, L., Jin, P., \& Karniadakis, G. E. (2019). DeepONet: Learning nonlinear operators for identifying differential equations based on the universal approximation theorem of operators. \textit{arXiv:1910.03193}.
+    \item Trefethen, L. N. (2019). \textit{Approximation Theory and Approximation Practice}. SIAM.
+    \item Teukolsky, S. A. (1973). Perturbations of a rotating black hole. I. Fundamental equations for gravitational, electromagnetic, and neutrino-field perturbations. \textit{ApJ}, 185, 635--647.
+\end{enumerate}
+
+\end{document}

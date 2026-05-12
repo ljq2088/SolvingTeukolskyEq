@@ -59,6 +59,8 @@ class MultiPatchAtlasTrainer:
         self.export_flat_models = bool(self.mcfg.get("export_flat_models", True))
         self.export_model_dirname = str(self.mcfg.get("export_model_dirname", "models"))
         self.max_patches = self.mcfg.get("max_patches", None)
+        self.model_type = str(self.mcfg.get("model_type", "pinn_mlp"))
+        self.cheb_N = int(self.mcfg.get("cheb_N", 48))
 
         self.output_root.mkdir(parents=True, exist_ok=True)
         self.registry_path = self.output_root / self.registry_name
@@ -265,6 +267,8 @@ class MultiPatchAtlasTrainer:
                 init_load_optimizer=False,
                 resume_checkpoint=resume_ckpt,
                 resume_run_dir=resume_run_dir,
+                model_type=self.model_type,
+                cheb_N=self.cheb_N,
             )
 
             try:

@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from utils.mode import KerrMode
-from utils.amplitude_three_patch import TeukRadAmplitudeIn3PatchWithAbelChecks
+from utils.amplitude_three_patch_modified import TeukRadAmplitudeIn3PatchWithAbelChecks
 
 
 DEFAULT_A_VALUES = [0.1, 0.3, 0.5, 0.7, 0.9, 0.99]

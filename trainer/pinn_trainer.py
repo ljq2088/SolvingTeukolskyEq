@@ -348,6 +348,8 @@ class PINNTrainer:
             hidden_dims=self.model_hidden_dims,
             activation=self.model_activation,
             fourier_num_freqs=self.model_fourier_num_freqs,
+            fourier_base_scale=self.model_fourier_base_scale,
+            fourier_scales=self.model_fourier_scales,
             fourier_scale=self.model_fourier_scale,
             param_embed_dim=self.model_param_embed_dim,
             use_film=self.model_use_film,
@@ -402,7 +404,9 @@ class PINNTrainer:
         self.model_hidden_dims = model_cfg.get("hidden_dims", [128, 128, 128, 128])
         self.model_activation = model_cfg.get("activation", "silu")
         self.model_fourier_num_freqs = model_cfg.get("fourier_num_freqs", 2)
-        self.model_fourier_scale = model_cfg.get("fourier_scale", 1.0)
+        self.model_fourier_base_scale = model_cfg.get("fourier_base_scale", 1.0)
+        self.model_fourier_scales = model_cfg.get("fourier_scales", None)
+        self.model_fourier_scale = model_cfg.get("fourier_scale", None)
         self.model_param_embed_dim = model_cfg.get("param_embed_dim", 64)
         self.model_use_film = model_cfg.get("use_film", True)
         self.model_use_residual = model_cfg.get("use_residual", True)

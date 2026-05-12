@@ -1,0 +1,267 @@
+include:
+  physics: config/teukolsky_radial.yaml
+
+parameter_space:
+  a:
+    center: 0.5
+    range: 0.499
+  omega:
+    center: 5.00005
+    range: 4.99995
+  domain:
+    k_horizon_margin: 1.0e-2
+    resample_factor: 4
+    max_attempts: 32
+
+# ============================================================
+# ENHANCED MODEL: Phase 1 优化
+# ============================================================
+model:
+  # 增大网络容量: 128 -> 256/512
+  hidden_dims: [256, 512, 512, 256]
+
+  activation: gelu  # GELU 比 SiLU 在某些任务上更好
+
+  # Multi-scale Fourier features
+  fourier_num_freqs: 8  # 从 2 增加到 8
+  fourier_scale: 2.0     # 基础 scale
+  fourier_scales: [0.5, 1.0, 2.0, 4.0]  # 多尺度（需要代码支持）
+
+  param_embed_dim: 128  # 从 64 增加到 128
+
+  use_film: true
+  use_residual: true
+
+  # 可选: Attention 机制（需要代码支持）
+  use_attention: false
+  attention_heads: 4
+
+  a_min_local: 0.001
+  a_max_local: 0.999
+  omega_min_local: 0.0001
+  omega_max_local: 10.0
+
+sampling:
+  parameter_batch:
+    mode: fixed_pool
+    sampler: sobol
+    batch_size: 16  # 从 4 增加到 16
+    n_param_samples: 64  # 从 32 增加到 64
+
+  collocation:
+    interior:
+      strategy: chebyshev
+      n_points: 128  # 从 64 增加到 128
+
+    boundary:
+      strategy: none
+      n_points: 0
+
+    adaptive:
+      enabled: true
+      candidate_method: sobol
+      n_candidates: 1024  # 从 512 增加
+      refresh_freq: 50
+      adaptive_frac: 0.7
+      normalize_residual: false
+
+  anchors:
+    mode: chebyshev_plus_adaptive
+    n_base: 32  # 从 20 增加
+    n_adaptive: 8  # 从 5 增加
+    n_random: 0
+
+training:
+  optimizer:
+    lr: 5.0e-4  # 从 1e-3 降低，更稳定
+
+  anchor:
+    freq: 1
+    start_step: 1
+    n_anchors: 32  # 从 20 增加
+
+  scheduler:
+    enabled: true
+    type: exp_after_warmup
+    warmup_steps: 5000  # 从 3000 增加
+    decay_start: 1000
+    decay_rate: 0.99995  # 更慢的衰减
+    min_lr: 5.0e-5
+
+  loss:
+    weight_interior: 1.0
+    weight_boundary: 0.0
+    weight_anchor: 5.0e+2  # 从 1e+2 增加到 5e+2
+
+  loss_balance:
+    mode: fixed
+    eps: 1.0e-12
+
+  validation:
+    mode: fixed_pool
+    val_freq: 50
+    val_n_points: 200
+    n_param_samples: 24  # 从 16 增加
+    param_sampler: sobol
+    monitor: mean
+    track_worst: true
+    sobol_seed: 4321
+    sobol_skip: 0
+    save_best_freq: 50
+
+  early_stop:
+    patience: 1000  # 从 500 增加
+    threshold: 1.0e-6
+
+  weight_schedule:
+    anchor:
+      enabled: true
+      steps: 50000
+      decay_enabled: true
+      warmup_steps: 0
+      decay_start: 1000
+      decay_rate: 0.999995  # 更慢
+      min_weight: 1.0e-2  # 从 1e-3 提高
+
+    interior:
+      enabled: true
+      steps: 50000
+      growth_enabled: true
+      warmup_steps: 0
+      growth_start: 1000
+      growth_rate: 1.000005
+      max_weight: 1.0
+
+  epochs: 50000
+
+# ============================================================
+# CURRICULUM LEARNING: Phase 3 优化
+# ============================================================
+curriculum:
+  parameter:
+    enabled: true  # 启用！
+    stages:
+      # Stage 1: 只在中心点训练
+      - epochs: 3000
+        a_range: 0.0
+        omega_range: 0.0
+        weight_anchor: 0.0
+
+      # Stage 2: 小范围扩展
+      - epochs: 5000
+        a_range: 0.01
+        omega_range: 0.01
+        weight_anchor: 1.0e+2
+
+      # Stage 3: 中等范围
+      - epochs: 7000
+        a_range: 0.05
+        omega_range: 0.05
+        weight_anchor: 3.0e+2
+
+      # Stage 4: 全范围
+      - epochs: 999999
+        a_range: 0.12
+        omega_range: 0.12
+        weight_anchor: 5.0e+2
+
+  collocation:
+    enabled: false
+
+regularization:
+  anti_trivial:
+    enabled: false
+
+  dynamic_balance:
+    enabled: false
+
+  flat_variance:
+    enabled: false
+
+  head_reg:
+    enabled: true
+    weight_nl: 1.0e-6
+    weight_resp: 1.0e-8
+
+  param_curvature:
+    enabled: true
+    weight: 5.0e-4  # 从 1e-4 增加
+    delta_alpha: 0.05
+    delta_xi: 0.05
+    n_probe_points: 64  # 从 32 增加
+
+restart:
+  enabled: false
+
+visualization:
+  viz_show_enabled: true
+  viz_enabled: true
+  viz_every_steps: 100
+  viz_auto_close_sec: 3.0
+  viz_num_points: 500
+  viz_r_min: 2.0
+  viz_r_max: 1000.0
+  viz_save_enabled: true
+  viz_subdir: "viz_compare_enhanced"
+
+runtime:
+  dtype: float64
+
+mathematica:
+  kernel_path: "/mnt/f/mma/WolframKernel.exe"
+  wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
+
+# ============================================================
+# ATLAS TRAINING: 增强版
+# ============================================================
+atlas_training:
+  steps: 20000  # 从 10000 增加到 20000
+  batch_size: 16  # 从 8 增加到 16
+  n_interior: 128  # 从 64 增加
+  n_interior_outer_extra: 16  # 从 8 增加
+  grad_clip: 1.0
+  normalize_residual: false
+
+  val_fraction: 0.2
+  val_param_samples: 24  # 从 12 增加
+  val_every: 50
+  val_n_points: 128  # 从 64 增加
+
+  early_stopping:
+    enabled: true
+    patience: 30  # 从 20 增加
+    min_rel_improve: 5.0e-5  # 从 1e-4 降低
+    min_steps: 3000  # 从 2000 增加
+
+  save_every: 200
+  ckpt_every: 200
+  viz_every: 200
+  viz_num_points: 400
+  viz_r_min: 2.0
+  viz_r_max: 1000.0
+  anchor_backend: pybhpt
+  viz_benchmark_backend: spectral
+  viz_pybhpt_timeout: 10.0
+  anchor_pybhpt_timeout: 10.0
+  viz_spectral_N: 64
+  viz_spectral_z_m: 0.3
+  viz_mma_enabled: false
+
+  anchor_target_ratio: 5.0e-3  # 从 1e-2 降低，更严格
+  train_seed: 1234
+  output_root: outputs/atlas_patch_train_enhanced
+  anchor_fail_log_name: anchor_failures.jsonl
+
+multipatch_training:
+  enabled: true
+  patch_order: center_out
+  warmstart_from_neighbor: true
+  skip_existing: false  # 改为 false，重新训练
+  resume_partial_runs: false
+  reuse_existing_registry: false
+  patch_steps: null
+  output_root: outputs/atlas_multipatch_enhanced
+  registry_name: atlas_registry_enhanced.json
+  export_flat_models: true
+  export_model_dirname: models
+  max_patches: null

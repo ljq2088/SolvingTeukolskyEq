@@ -13,6 +13,8 @@ import math
 import torch
 import torch.nn as nn
 
+from .enhanced_modules import MultiScaleFourierFeature1D
+
 
 def _make_activation(name: str) -> nn.Module:
     name = name.lower()
@@ -164,7 +166,9 @@ class PINN_MLP(nn.Module):
         activation="silu",
         output_activation=None,
         fourier_num_freqs: int = 2,
-        fourier_scale: float = 1.0,
+        fourier_base_scale: float = 1.0,
+        fourier_scales: list[float] = None,
+        fourier_scale: float = None,
         param_embed_dim: int = 64,
         use_film: bool = True,
         use_residual: bool = True,
@@ -203,6 +207,14 @@ class PINN_MLP(nn.Module):
         self.use_film = bool(use_film)
         self.use_residual = bool(use_residual)
 
+        if fourier_scales is None:
+            if fourier_scale is not None:
+                fourier_scales = [float(fourier_scale)]
+            else:
+                fourier_scales = [1.0]
+        self.fourier_scales = list(fourier_scales)
+        self.fourier_base_scale = float(fourier_base_scale)
+
         self.local_coord_mode = str(local_coord_mode)
         if self.local_coord_mode not in ("raw_aw", "chart_uv"):
             raise ValueError(
@@ -225,16 +237,18 @@ class PINN_MLP(nn.Module):
         self.M = float(M)
         self.m_mode = int(m_mode)
 
-        # ---- y 分支：Fourier feature ----
-        self.y_encoder = FourierFeature1D(
+        # ---- y 分支：Multi-scale Fourier feature ----
+        self.y_encoder = MultiScaleFourierFeature1D(
             num_frequencies=fourier_num_freqs,
-            scale=fourier_scale,
+            base_scale=self.fourier_base_scale,
+            scales=self.fourier_scales,
             include_input=True,
         )
 
         # 参数特征:
-        # [alpha, xi, alpha^2, xi^2, alpha*xi, r_plus, sqrt(1-a^2/M^2), Omega_H, k, log10_omega]
-        self.param_in_dim = 10
+        # [alpha, xi, alpha^2, xi^2, alpha*xi, r_plus, sqrt(1-a^2/M^2), Omega_H, k, log10_omega,
+        #  sin(pi*alpha), cos(pi*alpha), sin(pi*xi), cos(pi*xi)]
+        self.param_in_dim = 14
 
         # ---- 参数编码器 ----
         self.param_encoder = nn.Sequential(
@@ -388,7 +402,8 @@ class PINN_MLP(nn.Module):
         v: torch.Tensor | None = None,
     ):
         """
-        p(a,ω) = [α, ξ, α², ξ², α ξ, r_+, sqrt(1-a²/M²), Ω_H, k, log10(ω)]
+        p(a,ω) = [α, ξ, α², ξ², α ξ, r_+, sqrt(1-a²/M²), Ω_H, k, log10(ω),
+                   sin(π·α), cos(π·α), sin(π·ξ), cos(π·ξ)]
 
         说明:
         - local_coord_mode='chart_uv' 时，alpha/xi 来自 patch 的 (u, v)
@@ -419,6 +434,10 @@ class PINN_MLP(nn.Module):
                 Omega_H,
                 k,
                 log10_omega,
+                torch.sin(math.pi * alpha),
+                torch.cos(math.pi * alpha),
+                torch.sin(math.pi * xi),
+                torch.cos(math.pi * xi),
             ],
             dim=-1,
         )

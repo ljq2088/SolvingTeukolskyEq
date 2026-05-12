@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, Tuple
 
 import numpy as np
+import mpmath as mp
 
 from utils.mode import InAmplitudesResult, KerrMode
 from utils.amplitude import (
@@ -25,6 +26,9 @@ from utils.amplitude import (
     outer_abel_theory,
     inner_abel_theory,
     rel_complex_residual,
+    r_star,
+    drstar_dr,
+    d_dr_drstar,
 )
 from utils.hp_linear import (
     use_mp_backend,
@@ -34,6 +38,162 @@ from utils.hp_linear import (
     solve_scaled_2x2_mp,
     det_2x2_mp,
 )
+
+# ---------------------------------------------------------------------------
+# mpmath high-precision helpers
+# ---------------------------------------------------------------------------
+
+def _to_mpc(z) -> mp.mpc:
+    zc = complex(z)
+    return mp.mpc(zc.real, zc.imag)
+
+
+def _to_complex(z: mp.mpc) -> complex:
+    return complex(float(mp.re(z)), float(mp.im(z)))
+
+
+def cheb_D_mp(N: int, a: float, b: float, dps: int = 100):
+    """Chebyshev differentiation matrix and nodes, mpmath high-precision."""
+    mp.mp.dps = dps
+    xi = [mp.cos(mp.pi * i / N) for i in range(N + 1)]
+    c = [mp.mpf(2) if i == 0 or i == N else mp.mpf(1) for i in range(N + 1)]
+
+    D = mp.matrix(N + 1, N + 1)
+    for i in range(N + 1):
+        for j in range(N + 1):
+            if i != j:
+                D[i, j] = (c[i] / c[j]) * ((-1) ** (i + j)) / (xi[i] - xi[j])
+
+    for i in range(N + 1):
+        D[i, i] = -sum(D[i, j] for j in range(N + 1) if j != i)
+
+    a_mp = mp.mpf(a)
+    b_mp = mp.mpf(b)
+    z = [a_mp + (b_mp - a_mp) * (mp.mpf(1) - xi[i]) / mp.mpf(2) for i in range(N + 1)]
+    scale = mp.mpf(-2) / (b_mp - a_mp)
+    D = scale * D
+
+    return D, z
+
+
+def _coeffs_numeric_mp(z_val: mp.mpf, mode: KerrMode, basis: str):
+    """ODE coefficients B2, B1, B0 at a single z point, mpmath."""
+    r = mode.rp / float(z_val)
+    zr = -float(z_val)**2 / mode.rp
+    zrr = 2.0 * float(z_val)**3 / (mode.rp**2)
+
+    D = (r - mode.rp) * (r - mode.rm)
+    Dp = 2.0 * r - 2.0 * mode.M
+    K = (r * r + mode.a * mode.a) * mode.omega - mode.a * mode.m
+
+    V = (K * K + 4j * (r - mode.M) * K) / D - 8j * mode.omega * r - mode.lambda_value
+
+    q, qp = q_and_qp_two_patch(r, mode, basis)
+
+    B2_val = complex(D * zr * zr)
+    B1_val = complex(D * (zrr + 2.0 * q * zr) - Dp * zr)
+    B0_val = complex(D * (qp + q * q) - Dp * q + V)
+
+    B2_mp = mp.mpc(B2_val.real, B2_val.imag)
+    B1_mp = mp.mpc(B1_val.real, B1_val.imag)
+    B0_mp = mp.mpc(B0_val.real, B0_val.imag)
+
+    return B2_mp, B1_mp, B0_mp
+
+
+def solve_basis_domain_mp(
+    mode: KerrMode,
+    basis: str,
+    N: int,
+    z_a: float,
+    z_b: float,
+    bc_side: str,
+    dps: int = 100,
+):
+    """
+    Spectral solve of the transformed ODE on [z_a, z_b] using mpmath high precision.
+
+    Returns dict with 'z', 'u', 'uz' as numpy complex arrays.
+    """
+    mp.mp.dps = dps
+
+    D_mat, z_nodes = cheb_D_mp(N, z_a, z_b, dps)
+    D2 = D_mat @ D_mat
+
+    A = mp.matrix(N + 1, N + 1)
+    b = mp.matrix(N + 1, 1)
+
+    if bc_side == "left":
+        from utils.amplitude import boundary_du_exact
+        du0 = boundary_du_exact(mode, basis, "left")
+        du0_mp = mp.mpc(du0.real, du0.imag)
+
+        # BC 1: u(z_a) = 1
+        for j in range(N + 1):
+            A[0, j] = mp.mpc(0)
+        A[0, 0] = mp.mpc(1)
+        b[0] = mp.mpc(1)
+
+        # BC 2: u_z(z_a) = du0
+        for j in range(N + 1):
+            A[1, j] = D_mat[0, j]
+        b[1] = du0_mp
+
+        # PDE rows
+        for i in range(2, N + 1):
+            z_i = float(z_nodes[i])
+            B2, B1, B0 = _coeffs_numeric_mp(z_i, mode, basis)
+            for j in range(N + 1):
+                A[i, j] = B2 * D2[i, j] + B1 * D_mat[i, j]
+            A[i, i] += B0
+            b[i] = mp.mpc(0)
+
+    elif bc_side == "right":
+        from utils.amplitude import boundary_du_exact
+        du1 = boundary_du_exact(mode, basis, "right")
+        du1_mp = mp.mpc(du1.real, du1.imag)
+
+        # PDE rows: i = 0, ..., N-2
+        for i in range(N - 1):
+            z_i = float(z_nodes[i])
+            B2, B1, B0 = _coeffs_numeric_mp(z_i, mode, basis)
+            for j in range(N + 1):
+                A[i, j] = B2 * D2[i, j] + B1 * D_mat[i, j]
+            A[i, i] += B0
+            b[i] = mp.mpc(0)
+
+        # BC 1: u_z(z_b) = du1
+        for j in range(N + 1):
+            A[N - 1, j] = D_mat[N, j]
+        b[N - 1] = du1_mp
+
+        # BC 2: u(z_b) = 1
+        for j in range(N + 1):
+            A[N, j] = mp.mpc(0)
+        A[N, N] = mp.mpc(1)
+        b[N] = mp.mpc(1)
+
+    else:
+        raise ValueError("bc_side must be 'left' or 'right'")
+
+    # Solve linear system using LU decomposition
+    x = mp.lu_solve(A, b)
+
+    # Compute uz = D @ u
+    u_vals_mp = [x[i, 0] for i in range(N + 1)]
+    uz_vals_mp = []
+    for i in range(N + 1):
+        s = mp.mpc(0)
+        for j in range(N + 1):
+            s += D_mat[i, j] * x[j, 0]
+        uz_vals_mp.append(s)
+
+    # Convert to numpy
+    z_np = np.array([float(z_nodes[i]) for i in range(N + 1)])
+    u_np = np.array([_to_complex(u_vals_mp[i]) for i in range(N + 1)], dtype=complex)
+    uz_np = np.array([_to_complex(uz_vals_mp[i]) for i in range(N + 1)], dtype=complex)
+
+    return {"z": z_np, "u": u_np, "uz": uz_np}
 
 
 def q_and_qp_three_patch(r, mode: KerrMode, basis: str):
@@ -319,6 +479,133 @@ def _compute_mid_transport_chain(
     return result
 
 
+def extract_ref_ratio_from_logderivative(mode: KerrMode, R: complex, Rr: complex, z: float) -> complex:
+    """
+    Extract B_ref / B_inc from the logarithmic derivative Y = R_r / R.
+
+    The full solution is  R = B_inc * A_down * u_down + B_ref * A_up * u_up.
+    Where the bases are nearly pure asymptotically, u_down ≈ u_up ≈ 1, so
+        Y = R_r / R ≈ (B_inc*A'_down + B_ref*A'_up) / (B_inc*A_down + B_ref*A_up).
+
+    Solving for ratio = B_ref / B_inc gives:
+        ratio = (A_down / A_up) * (q_down - Y) / (Y - q_up)
+
+    where q_down = A'_down / A_down, q_up = A'_up / A_up are the logarithmic
+    derivatives of the asymptotic prefactors.
+    """
+    r = r_of_z(z, mode)
+    A_d = A_down(r, mode)
+    A_u = A_up(r, mode)
+    q_d, _ = q_and_qp_two_patch(r, mode, "down")
+    q_u, _ = q_and_qp_two_patch(r, mode, "up")
+
+    Y = Rr / R
+    ratio = (A_d / A_u) * (q_d - Y) / (Y - q_u)
+    return complex(ratio)
+
+
+def _reconstruct_inmode_on_left_patch(
+    mode: KerrMode,
+    B_inc: complex,
+    B_ref: complex,
+    sol_down: dict,
+    sol_up: dict,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Reconstruct the in-mode R(z) and R_r(z) on the left-patch Chebyshev nodes
+    using the S-matrix coefficients and the pre-computed basis solutions.
+    """
+    z_vals = sol_down["z"]
+    u_d = sol_down["u"]
+    uz_d = sol_down["uz"]
+    u_u = sol_up["u"]
+    uz_u = sol_up["uz"]
+
+    R_vals = np.zeros(len(z_vals), dtype=complex)
+    Rr_vals = np.zeros(len(z_vals), dtype=complex)
+
+    for j, zj in enumerate(z_vals):
+        rj = r_of_z(zj, mode)
+        dzdrj = dz_dr(zj, mode)
+        q_d_j, _ = q_and_qp_two_patch(rj, mode, "down")
+        q_u_j, _ = q_and_qp_two_patch(rj, mode, "up")
+        F_d = A_down(rj, mode)
+        F_u = A_up(rj, mode)
+
+        R_d = F_d * u_d[j]
+        Rr_d = F_d * (dzdrj * uz_d[j] + q_d_j * u_d[j])
+        R_u = F_u * u_u[j]
+        Rr_u = F_u * (dzdrj * uz_u[j] + q_u_j * u_u[j])
+
+        R_vals[j] = B_inc * R_d + B_ref * R_u
+        Rr_vals[j] = B_inc * Rr_d + B_ref * Rr_u
+
+    return z_vals, R_vals, Rr_vals
+
+
+def _compute_ratio_plateau(
+    mode: KerrMode,
+    z_vals: np.ndarray,
+    R_vals: np.ndarray,
+    Rr_vals: np.ndarray,
+    *,
+    z_cut: float | None = None,
+    min_points: int = 4,
+) -> dict:
+    """
+    Compute B_ref/B_inc from log-derivative at each z, return plateau statistics.
+
+    Optionally restrict to z <= z_cut to avoid the match-point region where
+    the asymptotic approximation u_down≈u_up breaks down.
+    """
+    ratios = []
+    zs = []
+    for j, zj in enumerate(z_vals):
+        if z_cut is not None and zj > z_cut:
+            continue
+        if abs(R_vals[j]) < 1e-300:
+            continue
+        try:
+            r = extract_ref_ratio_from_logderivative(mode, complex(R_vals[j]), complex(Rr_vals[j]), float(zj))
+            ratios.append(r)
+            zs.append(float(zj))
+        except (ZeroDivisionError, ValueError):
+            continue
+
+    if len(ratios) < min_points:
+        return {
+            "n_points": len(ratios),
+            "median_abs": float("nan"),
+            "median_phase": float("nan"),
+            "logabs_std": float("nan"),
+            "phase_std": float("nan"),
+            "ratio_median": complex(float("nan"), float("nan")),
+        }
+
+    ratios_arr = np.array(ratios)
+    logabs = np.log10(np.abs(ratios_arr))
+    phases = np.angle(ratios_arr)
+
+    median_abs = float(10.0 ** np.median(logabs))
+    median_phase = float(np.median(phases))
+    logabs_std = float(np.std(logabs))
+    phase_std = float(np.std(phases))
+
+    # median in complex plane: take the point closest to the median of abs and phase
+    ratio_median = complex(median_abs * np.cos(median_phase), median_abs * np.sin(median_phase))
+
+    return {
+        "n_points": len(ratios),
+        "z_min": float(min(zs)),
+        "z_max": float(max(zs)),
+        "median_abs": median_abs,
+        "median_phase": median_phase,
+        "logabs_std": logabs_std,
+        "phase_std": phase_std,
+        "ratio_median": ratio_median,
+    }
+
+
 def compute_smatrix_three_patch_with_abel(
     mode: KerrMode,
     N_left: int = 64,
@@ -331,6 +618,9 @@ def compute_smatrix_three_patch_with_abel(
     return_details: bool = False,
     omega_mp_cut: float = 1.0e-2,
     mp_dps_loww: int = 200,
+    use_logderivative_reflection: bool | None = None,
+    use_mp_spectral: bool | None = None,
+    mp_dps_highw: int = 200,
 ):
     """
     Multi-patch Teukolsky radial solver with adaptive ω support.
@@ -372,11 +662,19 @@ def compute_smatrix_three_patch_with_abel(
     if not (0.0 < z1 < z2 < 1.0):
         raise ValueError(f"Require 0 < z1 < z2 < 1, got z1={z1}, z2={z2}")
 
+    # mpmath spectral solves for high ω to reduce ODE residual below B_ref signal
+    if use_mp_spectral is None:
+        use_mp_spectral = abs(mode.omega) >= 3.0
+
     # ---------------------------------------------------------
     # left patch: outer asymptotic basis on [0, z1]
     # ---------------------------------------------------------
-    sol_down = solve_basis_domain(mode, "down", N_left, 0.0, z1, "left")
-    sol_up = solve_basis_domain(mode, "up", N_left, 0.0, z1, "left")
+    if use_mp_spectral:
+        sol_down = solve_basis_domain_mp(mode, "down", N_left, 0.0, z1, "left", dps=mp_dps_highw)
+        sol_up = solve_basis_domain_mp(mode, "up", N_left, 0.0, z1, "left", dps=mp_dps_highw)
+    else:
+        sol_down = solve_basis_domain(mode, "down", N_left, 0.0, z1, "left")
+        sol_up = solve_basis_domain(mode, "up", N_left, 0.0, z1, "left")
 
     R_down_z1, Rr_down_z1 = basis_values_at_match(mode, "down", sol_down, "right")
     R_up_z1, Rr_up_z1 = basis_values_at_match(mode, "up", sol_up, "right")
@@ -385,6 +683,15 @@ def compute_smatrix_three_patch_with_abel(
         [[R_down_z1, R_up_z1], [Rr_down_z1, Rr_up_z1]],
         dtype=complex,
     )
+
+    # Balanced variable: scale up-basis column by r(z1)^3 so both columns
+    # of M_left are O(1).  This turns the unknown from B_ref (~1e-8 at high ω)
+    # into C_ref = B_ref * r^3 (~O(1)), which is well-resolved relative to
+    # B_inc (~O(10)).  At the end we divide by the exact r(z1)^3 to recover B_ref.
+    r1 = r_of_z(z1, mode)
+    r1_cubed = r1**3
+    M_left_balanced = M_left.copy()
+    M_left_balanced[:, 1] /= r1_cubed
 
     # ---------------------------------------------------------
     # middle patch(s): raw full-R transport on [z1, z2]
@@ -400,8 +707,12 @@ def compute_smatrix_three_patch_with_abel(
     # ---------------------------------------------------------
     # right patch: horizon asymptotic basis on [z2, 1]
     # ---------------------------------------------------------
-    sol_in = solve_basis_domain(mode, "in", N_right, z2, 1.0, "right")
-    sol_out = solve_basis_domain(mode, "out", N_right, z2, 1.0, "right")
+    if use_mp_spectral:
+        sol_in = solve_basis_domain_mp(mode, "in", N_right, z2, 1.0, "right", dps=mp_dps_highw)
+        sol_out = solve_basis_domain_mp(mode, "out", N_right, z2, 1.0, "right", dps=mp_dps_highw)
+    else:
+        sol_in = solve_basis_domain(mode, "in", N_right, z2, 1.0, "right")
+        sol_out = solve_basis_domain(mode, "out", N_right, z2, 1.0, "right")
 
     R_in_z2, Rr_in_z2 = basis_values_at_match(mode, "in", sol_in, "left")
     R_out_z2, Rr_out_z2 = basis_values_at_match(mode, "out", sol_out, "left")
@@ -416,30 +727,34 @@ def compute_smatrix_three_patch_with_abel(
     # then decompose on the original left outer basis M_left.
     # ---------------------------------------------------------
     use_mp = use_mp_backend(mode.omega, omega_mp_cut) or is_high_omega
+    mp_dps = mp_dps_highw if use_mp_spectral else mp_dps_loww
 
     if use_mp:
         state_in_z1_back, diag_back_in = solve_2x2_mp(
-            T_mid, y_in_z2, dps=mp_dps_loww
+            T_mid, y_in_z2, dps=mp_dps
         )
         state_out_z1_back, diag_back_out = solve_2x2_mp(
-            T_mid, y_out_z2, dps=mp_dps_loww
+            T_mid, y_out_z2, dps=mp_dps
         )
 
         coef_in, diag_in = solve_scaled_2x2_mp(
-            M_left, state_in_z1_back, dps=mp_dps_loww
+            M_left_balanced, state_in_z1_back, dps=mp_dps
         )
         coef_out, diag_out = solve_scaled_2x2_mp(
-            M_left, state_out_z1_back, dps=mp_dps_loww
+            M_left_balanced, state_out_z1_back, dps=mp_dps
         )
     else:
         state_in_z1_back, diag_back_in = solve_2x2_np(T_mid, y_in_z2)
         state_out_z1_back, diag_back_out = solve_2x2_np(T_mid, y_out_z2)
 
-        coef_in, diag_in = solve_scaled_2x2_np(M_left, state_in_z1_back)
-        coef_out, diag_out = solve_scaled_2x2_np(M_left, state_out_z1_back)
+        coef_in, diag_in = solve_scaled_2x2_np(M_left_balanced, state_in_z1_back)
+        coef_out, diag_out = solve_scaled_2x2_np(M_left_balanced, state_out_z1_back)
 
     Cin_down, Cin_up = coef_in
     Cout_down, Cout_up = coef_out
+    # Recover physical B_ref from the balanced variable C_ref = B_ref * r(z1)^3
+    Cin_up = Cin_up / r1_cubed
+    Cout_up = Cout_up / r1_cubed
     # reconstructed states at z1 for debugging
     state_in_z1_recon = M_left @ np.array([Cin_down, Cin_up], dtype=complex)
     state_out_z1_recon = M_left @ np.array([Cout_down, Cout_up], dtype=complex)
@@ -461,6 +776,65 @@ def compute_smatrix_three_patch_with_abel(
 
     ratio_ref_over_inc = _safe_complex_ratio(b_ref, b_inc)
     ratio_inc_over_ref = _safe_complex_ratio(b_inc, b_ref)
+
+    # ---------------------------------------------------------
+    # Log-derivative reflection ratio (plateau diagnostic + high-ω fallback)
+    # ---------------------------------------------------------
+    if use_logderivative_reflection is None:
+        use_logderivative_reflection = abs(mode.omega) >= 3.0
+
+    plateau_diag = None
+    b_ref_logderiv: complex | None = None
+
+    if use_logderivative_reflection:
+        # Solve raw ODE backward from z1 toward z=0 to get R(z), R_r(z)
+        # without using the S-matrix decomposition
+        z_plat_min = max(0.001, z1 * 0.02)
+        N_plat = max(48, N_left)
+
+        # BC at z=z1 from state_in_z1_back
+        R_z1 = complex(state_in_z1_back[0])
+        Rr_z1 = complex(state_in_z1_back[1])
+        dzdr1 = dz_dr(z1, mode)
+        uz_z1 = Rr_z1 / dzdr1
+
+        try:
+            sol_plat = solve_basis_domain_custom(
+                mode=mode,
+                basis="raw",
+                N=N_plat,
+                z_a=z_plat_min,
+                z_b=z1,
+                bc_side="right",
+                u_bc=R_z1,
+                uz_bc=uz_z1,
+            )
+
+            # R = u for raw basis, R_r = dz/dr * uz
+            z_plat = sol_plat["z"]
+            R_plat = sol_plat["u"].astype(complex)
+            uz_plat = sol_plat["uz"].astype(complex)
+            dzdr_plat = dz_dr(z_plat, mode)
+            Rr_plat = dzdr_plat * uz_plat
+
+            # Compute ratio(z) and plateau stats
+            plateau_diag = _compute_ratio_plateau(
+                mode, z_plat, R_plat, Rr_plat, z_cut=z1 * 0.5,
+            )
+
+            # High-ω fallback: if plateau is stable, use log-derivative B_ref
+            if (abs(mode.omega) >= 3.0
+                    and plateau_diag["n_points"] >= 4
+                    and plateau_diag["logabs_std"] < 0.5
+                    and plateau_diag["phase_std"] < 0.3):
+                ratio_plat = plateau_diag["ratio_median"]
+                b_ref_logderiv = b_inc * ratio_plat
+                # Overwrite B_ref and related quantities
+                b_ref = b_ref_logderiv
+                ratio_ref_over_inc = _safe_complex_ratio(b_ref, b_inc)
+                ratio_inc_over_ref = _safe_complex_ratio(b_inc, b_ref)
+        except Exception:
+            plateau_diag = {"error": "plateau solve failed", "n_points": 0}
 
     # ---------------------------------------------------------
     # Abel diagnostics
@@ -493,11 +867,16 @@ def compute_smatrix_three_patch_with_abel(
         "S": S,
         "B_inc": b_inc,
         "B_ref": b_ref,
+        "B_ref_matrix": complex(Cin_up),  # original matrix decomposition B_ref (diagnostic)
+        "B_ref_logderiv": b_ref_logderiv,
         "B_trans": b_trans,
         "ratio_ref_over_inc": ratio_ref_over_inc,
         "ratio_inc_over_ref": ratio_inc_over_ref,
         "B_trans_over_B_inc": _safe_complex_ratio(b_trans, b_inc),
         "B_ref_over_B_inc": ratio_ref_over_inc,
+
+        "use_logderivative_reflection": bool(use_logderivative_reflection),
+        "plateau_diag": plateau_diag,
 
         "Cin_down": complex(Cin_down),
         "Cin_up": complex(Cin_up),
@@ -527,6 +906,7 @@ def compute_smatrix_three_patch_with_abel(
         "N_right": int(N_right),
 
         "cond_M_left": float(np.linalg.cond(M_left)),
+        "cond_M_left_balanced": float(np.linalg.cond(M_left_balanced)),
         "cond_T_mid": float(np.linalg.cond(T_mid)),
         "cond_M_outer_at_z2": float(np.linalg.cond(M_outer_at_z2)),
 
@@ -550,8 +930,10 @@ def compute_smatrix_three_patch_with_abel(
 
         "use_mp_backend": bool(use_mp),
         "is_high_omega": bool(is_high_omega),
+        "use_mp_spectral": bool(use_mp_spectral),
         "omega_mp_cut": float(omega_mp_cut),
         "mp_dps_loww": int(mp_dps_loww if use_mp else 0),
+        "mp_dps_highw": int(mp_dps_highw if use_mp_spectral else 0),
 
         "back_in_relres": float(diag_back_in["relres"]),
         "back_out_relres": float(diag_back_out["relres"]),
