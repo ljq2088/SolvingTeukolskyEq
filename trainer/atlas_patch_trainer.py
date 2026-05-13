@@ -43,6 +43,48 @@ def _get_dtype(dtype_name: str):
     if dtype_name == "float32":
         return torch.float32
     return torch.float64
+
+
+def _get_autoencoder_encoder_config(model):
+    """Extract encoder local-coord config from an AutoencoderTeukolskyPINN model."""
+    enc = model.encoder
+    return {
+        "local_coord_mode": enc.local_coord_mode,
+        "a_center_local": enc.a_center_local,
+        "a_half_range_local": enc.a_half_range_local,
+        "omega_min_local": enc.omega_min_local,
+        "omega_max_local": enc.omega_max_local,
+        "u_center_local": enc.u_center_local,
+        "v_center_local": enc.v_center_local,
+        "u_half_range_local": enc.u_half_range_local,
+        "v_half_range_local": enc.v_half_range_local,
+    }
+
+
+def _compare_encoder_config(current, saved):
+    """
+    Compare current encoder config with saved checkpoint config.
+    Returns list of warning strings (empty if match).
+    """
+    warnings = []
+    for key in ["local_coord_mode", "a_center_local", "a_half_range_local",
+                 "omega_min_local", "omega_max_local",
+                 "u_center_local", "v_center_local",
+                 "u_half_range_local", "v_half_range_local"]:
+        cv = current.get(key)
+        sv = saved.get(key)
+        if cv is None or sv is None:
+            if cv != sv:
+                warnings.append(f"{key}: current={cv}, saved={sv}")
+            continue
+        if isinstance(cv, (int, float)) and isinstance(sv, (int, float)):
+            if abs(cv - sv) > 1e-8:
+                warnings.append(f"{key}: current={cv:.6f}, saved={sv:.6f}")
+        elif str(cv) != str(sv):
+            warnings.append(f"{key}: current={cv}, saved={sv}")
+    return warnings
+
+
 class AtlasPatchTrainer:
     """
     真正训练版的 atlas patch trainer。
@@ -621,6 +663,17 @@ class AtlasPatchTrainer:
     def _load_resume_checkpoint(self):
         ckpt = torch.load(self.resume_checkpoint, map_location=self.device)
         state_dict = ckpt.get("model_state_dict", ckpt)
+
+        # ---- autoencoder: verify encoder_config match ----
+        if self.model_type == "autoencoder" and "encoder_config" in ckpt:
+            current_ec = _get_autoencoder_encoder_config(self.model)
+            saved_ec = ckpt["encoder_config"]
+            warnings = _compare_encoder_config(current_ec, saved_ec)
+            if warnings:
+                self._vprint("[resume] WARNING: encoder_config mismatch vs checkpoint:")
+                for w in warnings:
+                    self._vprint(f"  {w}")
+
         self.model.load_state_dict(state_dict, strict=True)
 
         if "optimizer_state_dict" in ckpt:
