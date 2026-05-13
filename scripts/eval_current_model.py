@@ -58,7 +58,8 @@ def evaluate_pinn(model, a_val, omega_val, atlas, M=1.0, s=-2, l=2, m=2, n_y=400
 
     # Compute u,v from a,omega for chart_uv mode
     comp = atlas.components[0]
-    u_val, v_val = map_to_chart(comp, a_val, omega_val)
+    omega_scale = atlas.meta.get("omega_scale", "linear")
+    u_val, v_val = map_to_chart(comp, a_val, omega_val, omega_scale=omega_scale)
     u_t = torch.tensor([u_val], device=device, dtype=torch.float64)
     v_t = torch.tensor([v_val], device=device, dtype=torch.float64)
 

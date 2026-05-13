@@ -33,6 +33,7 @@ from physical_ansatz.residual_pinn import (
 )
 from physical_ansatz.asymptotic_loss import compute_infinity_asymptotic_loss
 from utils.spectral_coeff_cache import SpectralCoeffCache
+from utils.asymptotic_amplitude_monitor import monitor_network_amplitudes_vs_pybhpt
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
 from physical_ansatz.mapping import r_plus, r_from_x
 from physical_ansatz.transform_y import (
@@ -180,6 +181,25 @@ class AtlasPatchTrainer:
         self.inf_spectral_z_m = float(inf_cfg.get("spectral_z_m", self.viz_spectral_z_m))
         self.inf_cache_file = str(inf_cfg.get("cache_file", "outputs/domain/spectral_coeff_cache_l2_m2.json"))
 
+        self.inf_stage = str(inf_cfg.get("stage", "joint")).lower()
+        self.inf_amplitude_mode = str(inf_cfg.get("amplitude_mode", "spectral_correction")).lower()
+        self.inf_hybrid_eta_init = float(inf_cfg.get("hybrid_eta_init", 0.0))
+        self.inf_hybrid_eta_final = float(inf_cfg.get("hybrid_eta_final", 1.0))
+        self.inf_hybrid_eta_start = int(inf_cfg.get("hybrid_eta_start", 5000))
+        self.inf_hybrid_eta_end = int(inf_cfg.get("hybrid_eta_end", 20000))
+
+        self.inf_weight_amp_init = float(inf_cfg.get("weight_amp_init", 1.0))
+        self.inf_weight_amp_final = float(inf_cfg.get("weight_amp_final", 0.1))
+        self.inf_weight_amp_decay_start = int(inf_cfg.get("weight_amp_decay_start", 3000))
+        self.inf_weight_amp_decay_end = int(inf_cfg.get("weight_amp_decay_end", 15000))
+
+        # Monitor config
+        mon_cfg = inf_cfg.get("monitor", {})
+        self.inf_monitor_enabled = bool(mon_cfg.get("enabled", False))
+        self.inf_monitor_every = int(mon_cfg.get("every", self.viz_every))
+        self.inf_monitor_r_points = list(mon_cfg.get("r_points", [200.0, 300.0, 500.0, 800.0, 1000.0]))
+        self.inf_monitor_pybhpt_timeout = float(mon_cfg.get("pybhpt_timeout", self.viz_pybhpt_timeout))
+
         self.anchor_enabled = bool(anchor_enabled)
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
         self.lr = float(self.cfg.get("training", {}).get("optimizer", {}).get("lr", 1.0e-3))
@@ -308,7 +328,12 @@ class AtlasPatchTrainer:
                 m_mode=m_mode,
             ).to(device=self.device, dtype=self.dtype)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        # ---- Freeze policy ----
+        self._apply_freeze_policy()
+        self._print_trainable_parameters(tag="after freeze policy")
+
+        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+        self.optimizer = torch.optim.Adam(trainable_params, lr=self.lr)
 
         # ---- SGDR learning rate scheduler ----
         sched_cfg = self.cfg.get("training", {}).get("scheduler", {})
@@ -388,6 +413,73 @@ class AtlasPatchTrainer:
         t = float(step - start) / float(end - start)
         return float((1.0 - t) * w0 + t * w1)
 
+    def _apply_freeze_policy(self):
+        """Apply freeze policy based on infinity_asymptotic config."""
+        inf_cfg = self.atlas_train_cfg.get("infinity_asymptotic", {})
+        freeze_pinn = bool(inf_cfg.get("freeze_pinn", False))
+        train_amplitude_net = bool(inf_cfg.get("train_amplitude_net", True))
+        train_old_amp_head = bool(inf_cfg.get("train_old_amp_head", False))
+
+        if not freeze_pinn:
+            for _, p in self.model.named_parameters():
+                p.requires_grad = True
+            self._vprint("[freeze] freeze_pinn=false, all parameters trainable")
+            return
+
+        # Freeze everything first
+        for _, p in self.model.named_parameters():
+            p.requires_grad = False
+
+        # Unfreeze amplitude_net
+        if train_amplitude_net:
+            if not hasattr(self.model, "amplitude_net"):
+                raise RuntimeError(
+                    "freeze_pinn=True and train_amplitude_net=True, "
+                    "but model has no amplitude_net."
+                )
+            for name, p in self.model.named_parameters():
+                if name.startswith("amplitude_net."):
+                    p.requires_grad = True
+
+        # Optionally unfreeze old amp_head
+        if train_old_amp_head:
+            for name, p in self.model.named_parameters():
+                if name.startswith("amp_head."):
+                    p.requires_grad = True
+
+        # Safety: amplitude_net must have sufficient trainable params
+        amp_trainable = sum(
+            p.numel()
+            for name, p in self.model.named_parameters()
+            if name.startswith("amplitude_net.") and p.requires_grad
+        )
+        if amp_trainable > 0 and amp_trainable < 10000:
+            raise RuntimeError(
+                f"amplitude_net trainable params = {amp_trainable}, too small. "
+                "Expected at least O(1e4). Check ModuleList registration and freeze policy."
+            )
+        self._vprint(
+            f"[freeze] freeze_pinn=true, train_amplitude_net={train_amplitude_net}, "
+            f"train_old_amp_head={train_old_amp_head}, "
+            f"amplitude_net_trainable_params={amp_trainable}"
+        )
+
+    def _print_trainable_parameters(self, tag: str = ""):
+        total = 0
+        rows = []
+        for name, p in self.model.named_parameters():
+            if p.requires_grad:
+                n = p.numel()
+                total += n
+                rows.append((name, tuple(p.shape), n))
+
+        self._vprint("=" * 100)
+        self._vprint(f"[trainable-params] {tag} total = {total}")
+        for name, shape, n in rows:
+            self._vprint(f"[trainable-params] {name:90s} {str(shape):30s} {n}")
+        self._vprint("=" * 100)
+        return total
+
     def _infinity_loss_weights(self) -> tuple[float, float]:
         w_inf = self._linear_schedule(
             self.global_step, self.inf_weight_ramp_start, self.inf_weight_ramp_end,
@@ -398,6 +490,24 @@ class AtlasPatchTrainer:
             self.inf_weight_B_init, self.inf_weight_B_final,
         )
         return w_inf, w_B
+
+    def _infinity_hybrid_eta(self) -> float:
+        return self._linear_schedule(
+            self.global_step,
+            self.inf_hybrid_eta_start,
+            self.inf_hybrid_eta_end,
+            self.inf_hybrid_eta_init,
+            self.inf_hybrid_eta_final,
+        )
+
+    def _infinity_amp_weight(self) -> float:
+        return self._linear_schedule(
+            self.global_step,
+            self.inf_weight_amp_decay_start,
+            self.inf_weight_amp_decay_end,
+            self.inf_weight_amp_init,
+            self.inf_weight_amp_final,
+        )
 
     def _tensor_scalar_for_json(self, x: torch.Tensor, name: str = "value", tol: float = 1.0e-10):
         """
@@ -630,10 +740,28 @@ class AtlasPatchTrainer:
         self.history_jsonl = self.log_dir / "history.jsonl"
         self.summary_json = self.log_dir / "summary.json"
 
+    def _load_state_dict_strict_amp_head(self, state_dict, tag: str = ""):
+        """Load state_dict allowing only amp_head.* and amplitude_net.* keys to be missing."""
+        incompat = self.model.load_state_dict(state_dict, strict=False)
+        allowed_missing_prefixes = ("amp_head", "amplitude_net")
+        amp_missing = [k for k in incompat.missing_keys if any(k.startswith(p) for p in allowed_missing_prefixes)]
+        other_missing = [k for k in incompat.missing_keys if not any(k.startswith(p) for p in allowed_missing_prefixes)]
+        if other_missing:
+            raise RuntimeError(
+                f"[{tag}] Unexpected missing keys (model has parameters not in checkpoint): {other_missing}"
+            )
+        if incompat.unexpected_keys:
+            raise RuntimeError(
+                f"[{tag}] Unexpected keys in checkpoint (checkpoint has parameters not in model): {incompat.unexpected_keys}"
+            )
+        if amp_missing:
+            self._vprint(f"[{tag}] amplitude keys missing (will be init-trained): {len(amp_missing)} keys")
+        return incompat
+
     def _load_init_checkpoint(self):
         ckpt = torch.load(self.init_checkpoint, map_location=self.device)
         state_dict = ckpt.get("model_state_dict", ckpt)
-        self.model.load_state_dict(state_dict, strict=False)
+        self._load_state_dict_strict_amp_head(state_dict, tag="init")
 
         if self.init_load_optimizer and "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -643,7 +771,7 @@ class AtlasPatchTrainer:
     def _load_resume_checkpoint(self):
         ckpt = torch.load(self.resume_checkpoint, map_location=self.device)
         state_dict = ckpt.get("model_state_dict", ckpt)
-        self.model.load_state_dict(state_dict, strict=False)
+        self._load_state_dict_strict_amp_head(state_dict, tag="resume")
 
         if "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
@@ -846,6 +974,59 @@ class AtlasPatchTrainer:
         a_batch, omega_batch, u_batch, v_batch = self.sample_param_batch()
         lambda_batch = self.resolve_aux_batch(a_batch, omega_batch)
 
+        # ---- amplitude_pretrain stage: only amplitude teacher loss ----
+        if self.inf_enabled and self.inf_stage == "amplitude_pretrain":
+            if self.inf_coeff_cache is None:
+                raise RuntimeError("amplitude_pretrain requires inf_coeff_cache")
+
+            Binc_spec, Bref_spec = self.inf_coeff_cache.get_batch(
+                a_batch=a_batch, omega_batch=omega_batch, lambda_batch=lambda_batch,
+            )
+            loss_inf, loss_B, loss_amp, inf_info = compute_infinity_asymptotic_loss(
+                model=self.model, cfg=self.physics_cfg,
+                a_batch=a_batch, omega_batch=omega_batch, lambda_batch=lambda_batch,
+                u_batch=u_batch, v_batch=v_batch,
+                Binc_spec=Binc_spec, Bref_spec=Bref_spec,
+                r_points=self.inf_r_points,
+                beta=self.inf_beta, relative=self.inf_relative, eps=self.inf_eps,
+                amplitude_mode=self.inf_amplitude_mode,
+                hybrid_eta=0.0,
+            )
+            w_amp = self._infinity_amp_weight()
+            total_loss = w_amp * loss_amp
+
+            total_loss.backward()
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+            self.optimizer.step()
+
+            info = {
+                "step": int(self.global_step),
+                "stage": self.inf_stage,
+                "amplitude_mode": self.inf_amplitude_mode,
+                "total_loss": float(total_loss.detach().cpu().item()),
+                "loss_amp": float(loss_amp.detach().cpu().item()),
+                "loss_inf": float(loss_inf.detach().cpu().item()),
+                "loss_B": float(loss_B.detach().cpu().item()),
+                "weight_amp": float(w_amp),
+                "weight_inf": 0.0,
+                "weight_B": 0.0,
+                "hybrid_eta": 0.0,
+                "grad_norm": float(grad_norm.detach().cpu().item()),
+                "loss_interior": 0.0,
+                "loss_boundary": 0.0,
+                "loss_pde": 0.0,
+                "loss_anchor": 0.0,
+                "loss_coeff_reg": 0.0,
+                "loss_integral": 0.0,
+                "anchor_weight_eff": 0.0,
+                "anchor_success_count": 0,
+                "anchor_failed_count": 0,
+            }
+            for k, v in inf_info.items():
+                info[f"inf_{k}"] = v
+            return info
+
+        # ---- joint / hybrid stages: full training ----
         y_interior = self.sample_y_interior()
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
 
@@ -1049,24 +1230,31 @@ class AtlasPatchTrainer:
         # Near-infinity asymptotic loss
         loss_inf = torch.zeros((), device=self.device, dtype=self.dtype)
         loss_B = torch.zeros((), device=self.device, dtype=self.dtype)
+        loss_amp = torch.zeros((), device=self.device, dtype=self.dtype)
         w_inf = 0.0
         w_B = 0.0
+        w_amp = 0.0
+        hybrid_eta = 0.0
         inf_info = {}
 
         if self.inf_enabled and self.inf_coeff_cache is not None:
             Binc_spec, Bref_spec = self.inf_coeff_cache.get_batch(
                 a_batch=a_batch, omega_batch=omega_batch, lambda_batch=lambda_batch,
             )
-            loss_inf, loss_B, inf_info = compute_infinity_asymptotic_loss(
+            hybrid_eta = self._infinity_hybrid_eta()
+            loss_inf, loss_B, loss_amp, inf_info = compute_infinity_asymptotic_loss(
                 model=self.model, cfg=self.physics_cfg,
                 a_batch=a_batch, omega_batch=omega_batch, lambda_batch=lambda_batch,
                 u_batch=u_batch, v_batch=v_batch,
                 Binc_spec=Binc_spec, Bref_spec=Bref_spec,
                 r_points=self.inf_r_points,
                 beta=self.inf_beta, relative=self.inf_relative, eps=self.inf_eps,
+                amplitude_mode=self.inf_amplitude_mode,
+                hybrid_eta=hybrid_eta,
             )
             w_inf, w_B = self._infinity_loss_weights()
-            total_loss = total_loss + w_inf * loss_inf + w_B * loss_B
+            w_amp = self._infinity_amp_weight()
+            total_loss = total_loss + w_inf * loss_inf + w_B * loss_B + w_amp * loss_amp
 
         total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
@@ -1088,12 +1276,14 @@ class AtlasPatchTrainer:
         info["grad_norm"] = float(grad_norm.detach().cpu().item())
         info["loss_inf"] = float(loss_inf.detach().cpu().item())
         info["loss_B"] = float(loss_B.detach().cpu().item())
+        info["loss_amp"] = float(loss_amp.detach().cpu().item())
         info["weight_inf"] = float(w_inf)
         info["weight_B"] = float(w_B)
-        info["mean_abs_Sinf"] = float(inf_info.get("mean_abs_Sinf", 0.0))
-        info["mean_abs_Spred_inf"] = float(inf_info.get("mean_abs_Spred_inf", 0.0))
-        info["mean_abs_dBinc"] = float(inf_info.get("mean_abs_dBinc", 0.0))
-        info["mean_abs_dBref"] = float(inf_info.get("mean_abs_dBref", 0.0))
+        info["weight_amp"] = float(w_amp)
+        info["hybrid_eta"] = float(hybrid_eta)
+        info["amplitude_mode"] = self.inf_amplitude_mode
+        for k, v in inf_info.items():
+            info[f"inf_{k}"] = v
         return info
 
     # =========================================================
@@ -1466,6 +1656,60 @@ class AtlasPatchTrainer:
         plt.close(fig)
         self.model.train()
 
+    def _run_asymptotic_amplitude_monitor(self):
+        if not self.inf_monitor_enabled:
+            return None
+        if not hasattr(self.model, "predict_asymptotic_amplitudes"):
+            return None
+
+        sample = self.ref_sample
+        a = float(sample["a"].detach().cpu().item())
+        omega = float(sample["omega"].detach().cpu().item())
+        u = float(sample["u"].detach().cpu().item())
+        v = float(sample["v"].detach().cpu().item())
+
+        lam_t = get_lambda_from_cfg(
+            self.physics_cfg,
+            self.cache,
+            sample["a"],
+            sample["omega"],
+        )
+        lam = complex(lam_t.detach().cpu().item())
+
+        out_path = self.fig_dir / f"asymptotic_amp_vs_pybhpt_step_{self.global_step:07d}.png"
+
+        try:
+            metrics = monitor_network_amplitudes_vs_pybhpt(
+                model=self.model,
+                physics_cfg=self.physics_cfg,
+                a=a,
+                omega=omega,
+                u=u,
+                v=v,
+                lam=lam,
+                out_path=out_path,
+                r_points=self.inf_monitor_r_points,
+                device=self.device,
+                dtype=self.dtype,
+                pybhpt_timeout=self.inf_monitor_pybhpt_timeout,
+            )
+
+            log_path = self.log_dir / "asymptotic_amp_monitor.jsonl"
+            with open(log_path, "a", encoding="utf-8") as f:
+                row = {"step": int(self.global_step), **metrics}
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+            self._vprint(
+                f"[amp-monitor] step={self.global_step} "
+                f"raw_rel_mean={metrics['raw_rel_mean']:.3e}, "
+                f"scaled_rel_mean={metrics['scaled_rel_mean']:.3e}, "
+                f"plot={out_path}"
+            )
+            return metrics
+        except Exception as e:
+            self._vprint(f"[amp-monitor] failed at step={self.global_step}: {e}")
+            return None
+
     # =========================================================
     # save / log
     # =========================================================
@@ -1577,6 +1821,14 @@ class AtlasPatchTrainer:
                 # periodic visualization
                 if step % self.viz_every == 0 or step == 1:
                     self.visualize_reference(step)
+
+                # amplitude monitor (no gradient)
+                if (
+                    self.inf_monitor_enabled
+                    and self.global_step > 0
+                    and self.global_step % self.inf_monitor_every == 0
+                ):
+                    self._run_asymptotic_amplitude_monitor()
 
                 # periodic latest / step ckpt
                 if step % self.save_every == 0 or step == steps:

@@ -138,6 +138,122 @@ class FiLMBlock(nn.Module):
 
 
 
+class ModulatedResidualBlock(nn.Module):
+    """
+    Gated FiLM residual block for parameter-conditioned amplitude tokens.
+
+    h:    (B, hidden_dim)
+    cond: (B, cond_dim)
+    """
+    def __init__(self, hidden_dim: int, cond_dim: int, activation: str = "silu"):
+        super().__init__()
+        self.norm = nn.LayerNorm(hidden_dim)
+        self.linear1 = nn.Linear(hidden_dim, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, hidden_dim)
+
+        self.gamma = nn.Linear(cond_dim, hidden_dim)
+        self.beta = nn.Linear(cond_dim, hidden_dim)
+        self.gate = nn.Linear(cond_dim, hidden_dim)
+
+        self.act = _make_activation(activation)
+
+    def forward(self, h: torch.Tensor, cond: torch.Tensor) -> torch.Tensor:
+        z = self.norm(h)
+
+        gamma = 1.0 + 0.1 * torch.tanh(self.gamma(cond))
+        beta = 0.1 * self.beta(cond)
+        gate = torch.sigmoid(self.gate(cond))
+
+        z = gamma * z + beta
+        z = self.linear2(self.act(self.linear1(z)))
+
+        return h + gate * z
+
+
+class AmplitudeNet(nn.Module):
+    """
+    Absolute amplitude surrogate:
+        p(a, omega, u, v) -> B_inc, B_ref
+
+    Output representation:
+        B = exp(rho) * exp(i phi)
+    """
+    def __init__(
+        self,
+        param_in_dim: int,
+        hidden_dim: int = 128,
+        n_blocks: int = 3,
+        activation: str = "silu",
+    ):
+        super().__init__()
+
+        self.param_encoder = nn.Sequential(
+            nn.Linear(param_in_dim, hidden_dim),
+            _make_activation(activation),
+            nn.Linear(hidden_dim, hidden_dim),
+            _make_activation(activation),
+        )
+
+        self.inc_token = nn.Parameter(torch.zeros(1, hidden_dim))
+        self.ref_token = nn.Parameter(torch.zeros(1, hidden_dim))
+
+        self.inc_blocks = nn.ModuleList([
+            ModulatedResidualBlock(hidden_dim, hidden_dim, activation=activation)
+            for _ in range(n_blocks)
+        ])
+        self.ref_blocks = nn.ModuleList([
+            ModulatedResidualBlock(hidden_dim, hidden_dim, activation=activation)
+            for _ in range(n_blocks)
+        ])
+
+        self.out_inc = nn.Linear(hidden_dim, 2)
+        self.out_ref = nn.Linear(hidden_dim, 2)
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_normal_(module.weight, gain=0.5)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
+        nn.init.normal_(self.inc_token, mean=0.0, std=1.0e-3)
+        nn.init.normal_(self.ref_token, mean=0.0, std=1.0e-3)
+
+    def forward(self, param_feats: torch.Tensor):
+        B = param_feats.shape[0]
+        cond = self.param_encoder(param_feats)
+
+        h_inc = self.inc_token.expand(B, -1)
+        h_ref = self.ref_token.expand(B, -1)
+
+        for block in self.inc_blocks:
+            h_inc = block(h_inc, cond)
+        for block in self.ref_blocks:
+            h_ref = block(h_ref, cond)
+
+        out_inc = self.out_inc(h_inc)
+        out_ref = self.out_ref(h_ref)
+
+        rho_inc = out_inc[:, 0]
+        phi_inc = out_inc[:, 1]
+        rho_ref = out_ref[:, 0]
+        phi_ref = out_ref[:, 1]
+
+        cdtype = torch.complex128 if param_feats.dtype == torch.float64 else torch.complex64
+
+        Binc = (torch.exp(rho_inc) * torch.exp(1j * phi_inc)).to(cdtype)
+        Bref = (torch.exp(rho_ref) * torch.exp(1j * phi_ref)).to(cdtype)
+
+        raw = {
+            "rho_inc": rho_inc,
+            "phi_inc": phi_inc,
+            "rho_ref": rho_ref,
+            "phi_ref": phi_ref,
+        }
+        return Binc, Bref, raw
+
+
 class PINN_MLP(nn.Module):
     """
     小范围变参数版 PINN:
@@ -343,6 +459,14 @@ class PINN_MLP(nn.Module):
             nn.Linear(32, 4),
         )
 
+        # Absolute amplitude surrogate
+        self.amplitude_net = AmplitudeNet(
+            param_in_dim=self.param_in_dim,
+            hidden_dim=128,
+            n_blocks=3,
+            activation=activation,
+        )
+
         if self.output_activation == "tanh":
             self.out_act = nn.Tanh()
         else:
@@ -530,6 +654,31 @@ class PINN_MLP(nn.Module):
         dB_inc = torch.exp(log_mag_inc + 1j * phase_inc).to(dtype=cdtype)
         dB_ref = torch.exp(log_mag_ref + 1j * phase_ref).to(dtype=cdtype)
         return dB_inc, dB_ref
+
+    def predict_asymptotic_amplitudes(self, a, omega, u=None, v=None):
+        """Directly predict absolute asymptotic amplitudes B_inc, B_ref without spectral."""
+        model_param = next(self.parameters())
+        target_device = model_param.device
+        target_dtype = model_param.dtype
+
+        a = a.to(device=target_device, dtype=target_dtype)
+        omega = omega.to(device=target_device, dtype=target_dtype)
+        if u is not None:
+            u = u.to(device=target_device, dtype=target_dtype)
+        if v is not None:
+            v = v.to(device=target_device, dtype=target_dtype)
+
+        if a.ndim == 1:
+            a = a.unsqueeze(-1)
+        if omega.ndim == 1:
+            omega = omega.unsqueeze(-1)
+        if u is not None and u.ndim == 1:
+            u = u.unsqueeze(-1)
+        if v is not None and v.ndim == 1:
+            v = v.unsqueeze(-1)
+
+        feats, _, _ = self._build_param_features(a=a, omega=omega, u=u, v=v)
+        return self.amplitude_net(feats)
 
     # ---------------------------------------------------------
     # forward

@@ -46,6 +46,7 @@ class AtlasPredictor:
 
         self.patch_cover = load_patch_cover(self.registry["patch_json"])
         self.atlas = load_atlas(self.registry["atlas_json"])
+        self.omega_scale = self.atlas.meta.get("omega_scale", "linear")
         self.component = self.atlas.components[self.patch_cover.component_id]
 
         self.model_cfg = self.train_cfg.get("model", {})
@@ -127,7 +128,7 @@ class AtlasPredictor:
         """
         返回 blended complex f(y; a, omega), shape=(N,)
         """
-        u, v = map_to_chart(self.component, float(a), float(omega))
+        u, v = map_to_chart(self.component, float(a), float(omega), omega_scale=self.omega_scale)
         patches = self._candidate_patches(u, v)
         if len(patches) == 0:
             raise RuntimeError(f"No patch covers point (a,omega)=({a},{omega}), mapped (u,v)=({u},{v})")

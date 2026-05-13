@@ -75,6 +75,10 @@ class PatchCoverSpec:
         }
 
 
+def _omega_scale_from_meta(meta: dict) -> str:
+    return str(meta.get("omega_scale", "linear"))
+
+
 def load_valid_chart_points(
     probe_json: str | Path,
     atlas_json: str | Path,
@@ -89,6 +93,7 @@ def load_valid_chart_points(
     probe = load_probe_grid(probe_json)
     atlas = load_atlas(atlas_json)
     comp = atlas.components[component_id]
+    omega_scale = _omega_scale_from_meta(atlas.meta)
 
     uv_list = []
     aw_list = []
@@ -98,7 +103,7 @@ def load_valid_chart_points(
             if not probe.valid_mask[i, j]:
                 continue
             try:
-                u, v = map_to_chart(comp, float(a), float(omega))
+                u, v = map_to_chart(comp, float(a), float(omega), omega_scale=omega_scale)
             except Exception:
                 continue
             uv_list.append([u, v])
@@ -140,6 +145,7 @@ def build_patch_cover(
 
     atlas = load_atlas(atlas_json)
     comp = atlas.components[component_id]
+    omega_scale = _omega_scale_from_meta(atlas.meta)
 
     n = len(uv_points)
     covered = np.zeros(n, dtype=bool)
@@ -178,7 +184,7 @@ def build_patch_cover(
 
     patches = []
     for pid, ((uc, vc), n_cov) in enumerate(zip(centers_uv, cover_sizes)):
-        a_center, omega_center = map_from_chart(comp, uc, vc)
+        a_center, omega_center = map_from_chart(comp, uc, vc, omega_scale=omega_scale)
         patches.append(
             PatchSpec(
                 patch_id=pid,

@@ -295,7 +295,7 @@ def interp_lower_upper(comp: AtlasComponent, a: float) -> tuple[float, float]:
     return low, up
 
 
-def map_to_chart(comp: AtlasComponent, a: float, omega: float) -> tuple[float, float]:
+def map_to_chart(comp: AtlasComponent, a: float, omega: float, omega_scale: str = "linear") -> tuple[float, float]:
     a0 = comp.a_support[0]
     a1 = comp.a_support[-1]
     if not (a0 <= a <= a1):
@@ -310,15 +310,23 @@ def map_to_chart(comp: AtlasComponent, a: float, omega: float) -> tuple[float, f
     else:
         u = (a - a0) / (a1 - a0)
 
-    denom = up - low
-    if denom <= 0.0:
-        raise ValueError(f"degenerate omega interval at a={a}: low={low}, up={up}")
+    if omega_scale == "log":
+        log_low = math.log(low)
+        log_up = math.log(up)
+        denom = log_up - log_low
+        if denom <= 0.0:
+            raise ValueError(f"degenerate log-omega interval at a={a}: low={low}, up={up}")
+        v = (math.log(omega) - log_low) / denom
+    else:
+        denom = up - low
+        if denom <= 0.0:
+            raise ValueError(f"degenerate omega interval at a={a}: low={low}, up={up}")
+        v = (omega - low) / denom
 
-    v = (omega - low) / denom
     return float(u), float(v)
 
 
-def map_from_chart(comp: AtlasComponent, u: float, v: float) -> tuple[float, float]:
+def map_from_chart(comp: AtlasComponent, u: float, v: float, omega_scale: str = "linear") -> tuple[float, float]:
     if not (0.0 <= u <= 1.0):
         raise ValueError(f"u={u} outside [0,1]")
     if not (0.0 <= v <= 1.0):
@@ -329,5 +337,11 @@ def map_from_chart(comp: AtlasComponent, u: float, v: float) -> tuple[float, flo
     a = a0 + u * (a1 - a0)
 
     low, up = interp_lower_upper(comp, a)
-    omega = low + v * (up - low)
+    if omega_scale == "log":
+        log_low = math.log(low)
+        log_up = math.log(up)
+        omega = math.exp(log_low + v * (log_up - log_low))
+    else:
+        omega = low + v * (up - low)
+
     return float(a), float(omega)

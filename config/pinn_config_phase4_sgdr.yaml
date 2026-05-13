@@ -9,10 +9,10 @@ include:
 # ============================================================
 
 initialization:
-  enabled: false
-  checkpoint: outputs/atlas_patch_train_phase2/20260509_035739_patch_005_comp_0_u_0.500_v_1.000/checkpoints/best_model.pt
+  enabled: true
+  checkpoint: outputs/atlas_multipatch_phase4_joint_hybrid/20260512_232501_patch_000_comp_0_u_0.500_v_0.487/checkpoints/best_model.pt
   load_optimizer: false
-  strict: true
+  strict: false
 
 parameter_space:
   a:
@@ -115,14 +115,14 @@ training:
       enabled: false
     interior:
       enabled: true
-      steps: 50000
+      steps: 20000
       growth_enabled: true
       warmup_steps: 0
       growth_start: 2000
       growth_rate: 1.000005
       max_weight: 1.0
 
-  epochs: 50000
+  epochs: 20000
 
 curriculum:
   parameter:
@@ -170,7 +170,7 @@ mathematica:
   wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
 
 atlas_training:
-  steps: 30000
+  steps: 20000
   batch_size: 8
   n_interior: 128
   n_interior_outer_extra: 16
@@ -186,26 +186,66 @@ atlas_training:
     enabled: true
     weight_init: 2.0
     weight_final: 0.1
-    decay_start: 5000
-    decay_end: 15000
+    decay_start: 8000
+    decay_end: 18000
 
   infinity_asymptotic:
     enabled: true
+
+    # Training stage:
+    #   amplitude_pretrain       : only amp teacher loss, PINN frozen
+    #   joint_hybrid             : hybrid warmstart, all params trainable
+    #   joint_learned_absolute   : pure learned B, all params trainable
+    stage: joint_learned_absolute
+
+    # amplitude_mode:
+    #   spectral_correction : B_used = B_spec * dB
+    #   learned_absolute    : B_used = B_pred  (no spectral at inference)
+    #   hybrid_warmstart    : B_used = (1-eta)*B_spec + eta*B_pred
+    amplitude_mode: learned_absolute
+
     r_points: [300.0, 500.0, 800.0, 1000.0]
     beta: 1.0
     relative: true
     eps: 1.0e-12
+
     spectral_N: 64
     spectral_z_m: 0.3
     cache_file: outputs/domain/spectral_coeff_cache_l2_m2.json
-    weight_inf_init: 0.05
-    weight_inf_final: 0.2
+
+    # Freeze policy
+    freeze_pinn: false
+    train_amplitude_net: true
+    train_old_amp_head: false
+
+    weight_inf_init: 0.2
+    weight_inf_final: 0.3
     weight_inf_ramp_start: 1000
-    weight_inf_ramp_end: 8000
-    weight_B_init: 1.0
-    weight_B_final: 0.1
+    weight_inf_ramp_end: 6000
+
+    # Only used in spectral_correction mode
+    weight_B_init: 0.0
+    weight_B_final: 0.0
     weight_B_decay_start: 3000
     weight_B_decay_end: 12000
+
+    # Used in learned_absolute and hybrid_warmstart modes
+    weight_amp_init: 0.5
+    weight_amp_final: 0.05
+    weight_amp_decay_start: 2000
+    weight_amp_decay_end: 10000
+
+    # Hybrid teacher forcing schedule (only for hybrid_warmstart)
+    hybrid_eta_init: 0.0
+    hybrid_eta_final: 1.0
+    hybrid_eta_start: 5000
+    hybrid_eta_end: 20000
+
+    monitor:
+      enabled: true
+      every: 200
+      r_points: [200.0, 300.0, 500.0, 800.0, 1000.0]
+      pybhpt_timeout: 20.0
 
   val_fraction: 0.2
   val_param_samples: 24
@@ -216,7 +256,7 @@ atlas_training:
     enabled: true
     patience: 100
     min_rel_improve: 1.0e-5
-    min_steps: 5000
+    min_steps: 10000
 
   save_every: 200
   ckpt_every: 200
@@ -234,7 +274,7 @@ atlas_training:
 
   anchor_target_ratio: 1.0e-2
   train_seed: 1234
-  output_root: outputs/atlas_patch_train_phase4_sgdr
+  output_root: outputs/atlas_patch_train_phase4_learned_abs
   anchor_fail_log_name: anchor_failures.jsonl
 
 multipatch_training:
@@ -245,8 +285,8 @@ multipatch_training:
   resume_partial_runs: false
   reuse_existing_registry: false
   patch_steps: null
-  output_root: outputs/atlas_multipatch_phase4_sgdr
-  registry_name: atlas_registry_phase4_sgdr.json
+  output_root: outputs/atlas_multipatch_phase4_learned_abs
+  registry_name: atlas_registry_phase4_learned_abs.json
   export_flat_models: true
   export_model_dirname: models
   max_patches: null

@@ -32,6 +32,7 @@ def main():
 
     parser.add_argument("--n-a", type=int, default=25)
     parser.add_argument("--n-w", type=int, default=40)
+    parser.add_argument("--omega-scale", type=str, default="linear", choices=["linear", "log"])
 
     parser.add_argument("--k-margin", type=float, default=1.0e-2)
     parser.add_argument("--r-match", type=float, default=8.0)
@@ -43,7 +44,10 @@ def main():
     args = parser.parse_args()
 
     a_grid = np.linspace(args.a_min, args.a_max, args.n_a)
-    w_grid = np.linspace(args.omega_min, args.omega_max, args.n_w)
+    if args.omega_scale == "log":
+        w_grid = np.logspace(np.log10(args.omega_min), np.log10(args.omega_max), args.n_w)
+    else:
+        w_grid = np.linspace(args.omega_min, args.omega_max, args.n_w)
 
     records = []
     counter = Counter()
@@ -115,6 +119,7 @@ def main():
                     "a_max": args.a_max,
                     "omega_min": args.omega_min,
                     "omega_max": args.omega_max,
+                    "omega_scale": args.omega_scale,
                     "n_a": args.n_a,
                     "n_w": args.n_w,
                     "k_margin": args.k_margin,

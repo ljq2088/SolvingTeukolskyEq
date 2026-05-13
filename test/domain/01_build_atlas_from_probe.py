@@ -74,6 +74,7 @@ def main():
     # -------- forward / inverse consistency check --------
     if len(atlas.components) > 0:
         comp = atlas.components[0]
+        omega_scale = atlas.meta.get("omega_scale", "linear")
         errs_a = []
         errs_w = []
 
@@ -86,8 +87,8 @@ def main():
             up = float(np.interp(a, comp.a_support, comp.omega_upper))
             omega = rng.uniform(low, up)
 
-            u, v = map_to_chart(comp, a, omega)
-            a2, w2 = map_from_chart(comp, u, v)
+            u, v = map_to_chart(comp, a, omega, omega_scale=omega_scale)
+            a2, w2 = map_from_chart(comp, u, v, omega_scale=omega_scale)
 
             errs_a.append(abs(a2 - a))
             errs_w.append(abs(w2 - omega))
