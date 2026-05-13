@@ -498,24 +498,36 @@ class AutoencoderTeukolskyPINN(nn.Module):
             out.append(t.to(device=dev, dtype=dt) if t is not None else None)
         return tuple(out)
 
-    # ---- public predict methods ----
-    def predict_Rin(self, a, omega, y, u=None, v=None):
-        """Return f_R(y) complex (same as old PINN_MLP.forward output)."""
+    def _predict_decoder(self, decoder, a, omega, y, u=None, v=None):
+        """Run encoder + one decoder, return (B, N) complex."""
         a, omega, y, u, v = self._to_model_dtype(a, omega, y, u, v)
+        if a.ndim == 1:
+            a = a.unsqueeze(-1)
+        if omega.ndim == 1:
+            omega = omega.unsqueeze(-1)
+        if y.ndim == 1:
+            y = y.unsqueeze(0).expand(a.shape[0], -1)
+        if u is not None and u.ndim == 1:
+            u = u.unsqueeze(-1)
+        if v is not None and v.ndim == 1:
+            v = v.unsqueeze(-1)
+        B, N = y.shape
         h, alpha, xi, rho2, _ = self.encoder.forward_features(a, omega, y, u, v)
-        return self.rin_decoder(h, alpha, xi, rho2)
+        f_flat = decoder(h, alpha, xi, rho2)
+        return f_flat.reshape(B, N)
+
+    # ---- public predict methods (all return (B,N) complex) ----
+    def predict_Rin(self, a, omega, y, u=None, v=None):
+        """Return f_R(y) complex, shape (B,N). Same as old PINN_MLP.forward."""
+        return self._predict_decoder(self.rin_decoder, a, omega, y, u, v)
 
     def predict_u_up(self, a, omega, y, u=None, v=None):
-        """Return f_up(y) complex, the free function inside u_up ansatz."""
-        a, omega, y, u, v = self._to_model_dtype(a, omega, y, u, v)
-        h, alpha, xi, rho2, _ = self.encoder.forward_features(a, omega, y, u, v)
-        return self.up_decoder(h, alpha, xi, rho2)
+        """Return f_up(y) complex, shape (B,N). Free function inside u_up ansatz."""
+        return self._predict_decoder(self.up_decoder, a, omega, y, u, v)
 
     def predict_u_down(self, a, omega, y, u=None, v=None):
-        """Return f_down(y) complex, the free function inside u_down ansatz."""
-        a, omega, y, u, v = self._to_model_dtype(a, omega, y, u, v)
-        h, alpha, xi, rho2, _ = self.encoder.forward_features(a, omega, y, u, v)
-        return self.down_decoder(h, alpha, xi, rho2)
+        """Return f_down(y) complex, shape (B,N). Free function inside u_down ansatz."""
+        return self._predict_decoder(self.down_decoder, a, omega, y, u, v)
 
     def predict_amplitudes(self, a, omega, u=None, v=None):
         """Return (Binc, Bref, raw) — pure network, no spectral dependency."""
@@ -539,21 +551,50 @@ class AutoencoderTeukolskyPINN(nn.Module):
     def forward(self, a, omega, y, u=None, v=None):
         """
         Stage-1 compatible forward: returns complex f_R(y).
-        Shape: (B, N) complex.
+        Shape: (B, N) complex.  Equivalent to old PINN_MLP.forward.
         """
-        a, omega, y, u, v = self._to_model_dtype(a, omega, y, u, v)
-        if a.ndim == 1:
-            a = a.unsqueeze(-1)
-        if omega.ndim == 1:
-            omega = omega.unsqueeze(-1)
-        if y.ndim == 1:
-            y = y.unsqueeze(0).expand(a.shape[0], -1)
-        if u is not None and u.ndim == 1:
-            u = u.unsqueeze(-1)
-        if v is not None and v.ndim == 1:
-            v = v.unsqueeze(-1)
-        B, N = y.shape
+        return self._predict_decoder(self.rin_decoder, a, omega, y, u, v)
 
-        h, alpha, xi, rho2, _ = self.encoder.forward_features(a, omega, y, u, v)
-        f_complex = self.rin_decoder(h, alpha, xi, rho2)
-        return f_complex.reshape(B, N)
+
+# ============================================================
+# Weight migration helper — copy old PINN_MLP weights -> AutoencoderTeukolskyPINN
+# ============================================================
+def copy_pinn_mlp_to_autoencoder(old_model, ae_model):
+    """
+    Copy weights from a trained PINN_MLP into AutoencoderTeukolskyPINN.
+
+    Maps:
+        old y_encoder  -> ae.encoder.y_encoder
+        old param_encoder -> ae.encoder.param_encoder
+        old base_input_proj / base_input_act / base_blocks -> ae.encoder.*
+        old resp_input_proj / resp_input_act / resp_input_gamma / resp_input_beta
+            / resp_blocks -> ae.encoder.*
+        old fusion -> ae.encoder.fusion
+        old base_head -> ae.rin_decoder.base_head
+        old a_head    -> ae.rin_decoder.a_head
+        old omega_head -> ae.rin_decoder.omega_head
+        old nl_head   -> ae.rin_decoder.nl_head
+    """
+    _copy_state(old_model.y_encoder, ae_model.encoder.y_encoder)
+    _copy_state(old_model.param_encoder, ae_model.encoder.param_encoder)
+    _copy_state(old_model.base_input_proj, ae_model.encoder.base_input_proj)
+    _copy_state(old_model.base_input_act, ae_model.encoder.base_input_act)
+    for old_block, new_block in zip(old_model.base_blocks, ae_model.encoder.base_blocks):
+        _copy_state(old_block, new_block)
+    _copy_state(old_model.resp_input_proj, ae_model.encoder.resp_input_proj)
+    _copy_state(old_model.resp_input_act, ae_model.encoder.resp_input_act)
+    if old_model.resp_input_gamma is not None and ae_model.encoder.resp_input_gamma is not None:
+        _copy_state(old_model.resp_input_gamma, ae_model.encoder.resp_input_gamma)
+        _copy_state(old_model.resp_input_beta, ae_model.encoder.resp_input_beta)
+    for old_block, new_block in zip(old_model.resp_blocks, ae_model.encoder.resp_blocks):
+        _copy_state(old_block, new_block)
+    _copy_state(old_model.fusion, ae_model.encoder.fusion)
+    _copy_state(old_model.base_head, ae_model.rin_decoder.base_head)
+    _copy_state(old_model.a_head, ae_model.rin_decoder.a_head)
+    _copy_state(old_model.omega_head, ae_model.rin_decoder.omega_head)
+    _copy_state(old_model.nl_head, ae_model.rin_decoder.nl_head)
+
+
+def _copy_state(src, dst):
+    """Copy state dict from src module to dst module (strict)."""
+    dst.load_state_dict(src.state_dict())

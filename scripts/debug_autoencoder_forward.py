@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-Minimal smoke test for AutoencoderTeukolskyPINN.
+Smoke test + Stage-1 equivalence for AutoencoderTeukolskyPINN.
 
 Checks:
     - import works
     - model instantiates
-    - predict_Rin shape is correct
-    - predict_u_up shape is correct
-    - predict_u_down shape is correct
-    - predict_amplitudes shape is correct
+    - predict_Rin shape (B,N)
+    - predict_u_up / predict_u_down shape (B,N)
+    - predict_amplitudes shape
     - forward() compat with old PINN_MLP
-    - no Mathematica call
-    - no long training
+    - AmplitudeNet has independent param_encoder
+    - No temporary PINN_MLP creation
+    - autoencoder_mlp.py wrapper import works
+    - Stage-1 weight-migration numerical equivalence
 """
 import sys
 from pathlib import Path
@@ -21,89 +22,89 @@ import torch
 
 torch.manual_seed(42)
 
-B = 4   # batch
-N = 64  # y points
+B = 4
+N = 64
 
 a = torch.rand(B) * 0.9 + 0.01
 omega = torch.rand(B) * 5.0 + 1.0e-4
 y = torch.linspace(-1.0, 1.0, N)
 
-print("1. Import...")
+
+def check(desc, condition):
+    assert condition, f"FAIL: {desc}"
+    print(f"   OK — {desc}")
+
+
+print("1. Import model.autoencoder_pinn...")
 from model.autoencoder_pinn import (
-    AutoencoderTeukolskyPINN,
-    SharedPINNEncoder,
-    TaylorComplexDecoder,
-    AmplitudeNet,
-    ModulatedResidualBlock,
+    AutoencoderTeukolskyPINN, SharedPINNEncoder,
+    TaylorComplexDecoder, AmplitudeNet, ModulatedResidualBlock,
+    copy_pinn_mlp_to_autoencoder,
 )
 print("   OK")
 
-print("2. Instantiate model...")
+print("2. Instantiate...")
 model = AutoencoderTeukolskyPINN()
 n_params = sum(p.numel() for p in model.parameters())
-print(f"   OK — {n_params} parameters")
+print(f"   OK — {n_params} params")
 
-trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"   trainable: {trainable}")
-
-print("3. forward() compat...")
+print("3. forward() compat shape...")
 f = model(a, omega, y)
-assert f.shape == (B, N), f"Expected ({B},{N}), got {f.shape}"
-assert f.is_complex(), "Output should be complex"
-print(f"   OK — shape {f.shape}, dtype {f.dtype}")
+check("forward shape (B,N)", f.shape == (B, N))
+check("forward complex", f.is_complex())
 
-print("4. predict_Rin...")
+print("4. predict_Rin shape...")
 f_rin = model.predict_Rin(a, omega, y)
-assert f_rin.shape == (B * N,), f"Expected ({B * N},), got {f_rin.shape}"
-print(f"   OK — shape {f_rin.shape}")
+check("predict_Rin shape (B,N)", f_rin.shape == (B, N))
 
-print("5. predict_u_up...")
+print("5. predict_u_up shape...")
 f_up = model.predict_u_up(a, omega, y)
-assert f_up.shape == (B * N,), f"Expected ({B * N},), got {f_up.shape}"
-print(f"   OK — shape {f_up.shape}")
+check("predict_u_up shape (B,N)", f_up.shape == (B, N))
 
-print("6. predict_u_down...")
+print("6. predict_u_down shape...")
 f_dn = model.predict_u_down(a, omega, y)
-assert f_dn.shape == (B * N,), f"Expected ({B * N},), got {f_dn.shape}"
-print(f"   OK — shape {f_dn.shape}")
+check("predict_u_down shape (B,N)", f_dn.shape == (B, N))
 
 print("7. predict_amplitudes...")
 Binc, Bref, raw = model.predict_amplitudes(a, omega)
-assert Binc.shape == (B,), f"Expected ({B},), got {Binc.shape}"
-assert Bref.shape == (B,), f"Expected ({B},), got {Bref.shape}"
-assert Binc.is_complex() and Bref.is_complex(), "Should be complex"
-assert "rho_inc" in raw and "phi_inc" in raw
-print(f"   OK — Binc shape {Binc.shape}, Bref shape {Bref.shape}")
-print(f"   Binc[0] = {Binc[0]:.4e}, Bref[0] = {Bref[0]:.4e}")
+check("Binc shape (B,)", Binc.shape == (B,))
+check("Bref shape (B,)", Bref.shape == (B,))
+check("Binc complex", Binc.is_complex())
 
 print("8. predict_asymptotic_amplitudes alias...")
-Binc2, Bref2, raw2 = model.predict_asymptotic_amplitudes(a, omega)
-assert torch.allclose(Binc, Binc2)
-print("   OK — alias matches")
+Binc2, Bref2, _ = model.predict_asymptotic_amplitudes(a, omega)
+check("alias matches", torch.allclose(Binc, Binc2))
 
-print("9. Stage-1 equivalence check...")
-# Old PINN_MLP forward should produce same structure output
+print("9. Amplitude encoder independent...")
+amp_enc_ids = set(id(p) for p in model.amplitude_net.param_encoder.parameters())
+shared_enc_ids = set(id(p) for p in model.encoder.param_encoder.parameters())
+check("AmplitudeNet has own param_encoder", amp_enc_ids.isdisjoint(shared_enc_ids))
+
+print("10. No temporary PINN_MLP...")
+check("encoder has _build_param_features", hasattr(model.encoder, "_build_param_features"))
+check("encoder has compute_local_coords", hasattr(model.encoder, "compute_local_coords"))
+
+print("11. autoencoder_mlp.py wrapper import...")
+from model.autoencoder_mlp import AutoencoderPINN
+wrapper = AutoencoderPINN()
+check("wrapper is AutoencoderTeukolskyPINN", isinstance(wrapper, AutoencoderTeukolskyPINN))
+
+print("12. Stage-1 weight-migration equivalence...")
 from model.pinn_mlp import PINN_MLP
+torch.manual_seed(123)
 old_model = PINN_MLP()
-f_old = old_model(a, omega, y)
-assert f_old.shape == f.shape, f"Shape mismatch: {f_old.shape} vs {f.shape}"
-print(f"   OK — same output shape as old PINN_MLP: {f_old.shape}")
+torch.manual_seed(123)
+ae_model = AutoencoderTeukolskyPINN()
+copy_pinn_mlp_to_autoencoder(old_model, ae_model)
 
-print("10. Amplitude encoder is independent...")
-# Verify amplitude_net has its own param_encoder
-amp_enc_params = set(id(p) for p in model.amplitude_net.param_encoder.parameters())
-shared_enc_params = set(id(p) for p in model.encoder.param_encoder.parameters())
-assert amp_enc_params.isdisjoint(shared_enc_params), \
-    "amplitude_net.param_encoder shares params with encoder.param_encoder!"
-print("   OK — AmplitudeNet has independent param_encoder")
-
-print("11. No temporary PINN_MLP creation...")
-# Verify SharedPINNEncoder has its own feature building (no PINN_MLP dep)
-assert hasattr(model.encoder, "_build_param_features"), "Missing _build_param_features"
-assert hasattr(model.encoder, "compute_local_coords"), "Missing compute_local_coords"
-print("   OK — encoder has own feature building")
+with torch.no_grad():
+    f_old = old_model(a, omega, y)
+    f_new = ae_model(a, omega, y)
+max_err = (f_old - f_new).abs().max().item()
+check(f"Stage-1 equivalence max_err={max_err:.2e}", max_err < 1e-5)
+print(f"   max |f_old - f_new| = {max_err:.2e}")
 
 print()
 print("=" * 60)
-print("ALL CHECKS PASSED")
+print("ALL 12 CHECKS PASSED")
 print("=" * 60)

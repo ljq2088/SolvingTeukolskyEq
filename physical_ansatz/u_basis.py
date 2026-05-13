@@ -23,8 +23,12 @@ from physical_ansatz.mapping import r_plus, r_minus
 # Asymptotic factor functions
 # ============================================================
 def r_star(r, a, M=1.0):
-    """Tortoise coordinate.  Import from utils.amplitude if available."""
-    from utils.amplitude import r_star as _r_star
+    """Tortoise coordinate using prefactor convention (consistent with training pipeline).
+
+    TODO: verify M≠1 convention match with utils/amplitude.r_star.
+    For M=1 the two are equivalent up to a constant phase.
+    """
+    from physical_ansatz.prefactor import r_star as _r_star
     return _r_star(r, a, M)
 
 
