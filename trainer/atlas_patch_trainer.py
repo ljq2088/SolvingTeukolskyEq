@@ -254,6 +254,37 @@ class AtlasPatchTrainer:
                 M=M,
                 m_mode=m_mode,
             ).to(device=self.device, dtype=self.dtype)
+        elif self.model_type == "autoencoder":
+            from model.autoencoder_pinn import (
+                AutoencoderTeukolskyPINN,
+                copy_pinn_mlp_to_autoencoder,
+            )
+            self.model = AutoencoderTeukolskyPINN(
+                hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
+                activation=model_cfg.get("activation", "silu"),
+                fourier_num_freqs=model_cfg.get("fourier_num_freqs", 2),
+                fourier_base_scale=model_cfg.get("fourier_base_scale", 1.0),
+                fourier_scales=model_cfg.get("fourier_scales", None),
+                param_embed_dim=model_cfg.get("param_embed_dim", 64),
+                use_film=model_cfg.get("use_film", True),
+                use_residual=model_cfg.get("use_residual", True),
+                local_coord_mode="chart_uv",
+                a_center_local=model_cfg.get("a_center_local", 0.125),
+                a_half_range_local=model_cfg.get("a_half_range_local", 0.075),
+                omega_min_local=model_cfg.get("omega_min_local", 1.0e-4),
+                omega_max_local=model_cfg.get("omega_max_local", 10.0),
+                u_center_local=self.patch.u_center,
+                v_center_local=self.patch.v_center,
+                u_half_range_local=self.patch.h_u,
+                v_half_range_local=self.patch.h_v,
+                M=M,
+                m_mode=m_mode,
+            ).to(device=self.device, dtype=self.dtype)
+
+            self._apply_autoencoder_freeze()
+
+            # Optional: migrate weights from old PINN_MLP checkpoint
+            self._init_from_pinn_checkpoint()
         else:
             self.model = PINN_MLP(
                 hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
@@ -283,7 +314,13 @@ class AtlasPatchTrainer:
                 m_mode=m_mode,
             ).to(device=self.device, dtype=self.dtype)
 
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        if self.model_type == "autoencoder":
+            self.optimizer = torch.optim.Adam(
+                [p for p in self.model.parameters() if p.requires_grad],
+                lr=self.lr,
+            )
+        else:
+            self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
         # ---- SGDR learning rate scheduler ----
         sched_cfg = self.cfg.get("training", {}).get("scheduler", {})
@@ -599,6 +636,69 @@ class AtlasPatchTrainer:
         self._vprint(
             f"[resume] loaded checkpoint: {self.resume_checkpoint} "
             f"(step={self.global_step}, best_val_mean={self.best_val_mean:.6e})"
+        )
+
+    # =========================================================
+    # autoencoder-specific helpers
+    # =========================================================
+    def _apply_autoencoder_freeze(self):
+        """Stage-1 freeze: only encoder + rin_decoder trainable."""
+        autoencoder_cfg = self.cfg.get("autoencoder", {})
+        stage = autoencoder_cfg.get("stage", "stage1")
+        if stage != "stage1":
+            return  # only Stage-1 freeze is defined
+
+        # Freeze all
+        for _, p in self.model.named_parameters():
+            p.requires_grad = False
+
+        # Unfreeze encoder
+        for name, p in self.model.encoder.named_parameters():
+            p.requires_grad = True
+
+        # Unfreeze rin_decoder
+        for name, p in self.model.rin_decoder.named_parameters():
+            p.requires_grad = True
+
+        n_trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+        n_total = sum(p.numel() for p in self.model.parameters())
+        self._vprint(
+            f"[autoencoder] Stage-1 freeze: {n_trainable}/{n_total} params trainable "
+            f"(encoder + rin_decoder only; amplitude_net/up_decoder/down_decoder frozen)"
+        )
+
+    def _init_from_pinn_checkpoint(self):
+        """Migrate weights from old PINN_MLP checkpoint if configured."""
+        ckpt_path = self.cfg.get("model", {}).get("init_from_pinn_checkpoint", None)
+        if not ckpt_path:
+            return
+
+        from model.pinn_mlp import PINN_MLP
+        from model.autoencoder_pinn import copy_pinn_mlp_to_autoencoder
+
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        state_dict = ckpt.get("model_state_dict", ckpt)
+        full_cfg = ckpt.get("full_cfg", {})
+
+        # Build old PINN_MLP matching the checkpoint's config
+        old_model_cfg = full_cfg.get("train", {}).get("model", {})
+        old_model = PINN_MLP(
+            hidden_dims=old_model_cfg.get("hidden_dims", [128, 128, 128, 128]),
+            activation=old_model_cfg.get("activation", "silu"),
+            param_embed_dim=old_model_cfg.get("param_embed_dim", 64),
+            local_coord_mode=old_model_cfg.get("local_coord_mode", "chart_uv"),
+            fourier_num_freqs=old_model_cfg.get("fourier_num_freqs", 2),
+            fourier_base_scale=old_model_cfg.get("fourier_base_scale", 1.0),
+            fourier_scales=old_model_cfg.get("fourier_scales", None),
+            use_film=old_model_cfg.get("use_film", True),
+            use_residual=old_model_cfg.get("use_residual", True),
+        )
+        old_model.load_state_dict(state_dict, strict=True)
+
+        # Migrate to autoencoder
+        copy_pinn_mlp_to_autoencoder(old_model, self.model)
+        self._vprint(
+            f"[autoencoder] migrated weights from PINN_MLP checkpoint: {ckpt_path}"
         )
 
     def _save_config_snapshot(self):
@@ -1398,6 +1498,19 @@ class AtlasPatchTrainer:
             "model_type": self.model_type,
             "cheb_N": self.cheb_N if self.model_type in ("cheb", "cheb_deeponet") else None,
         }
+        if self.model_type == "autoencoder" and hasattr(self.model, 'encoder'):
+            enc = self.model.encoder
+            payload["encoder_config"] = {
+                "local_coord_mode": enc.local_coord_mode,
+                "a_center_local": enc.a_center_local,
+                "a_half_range_local": enc.a_half_range_local,
+                "omega_min_local": enc.omega_min_local,
+                "omega_max_local": enc.omega_max_local,
+                "u_center_local": enc.u_center_local,
+                "v_center_local": enc.v_center_local,
+                "u_half_range_local": enc.u_half_range_local,
+                "v_half_range_local": enc.v_half_range_local,
+            }
         torch.save(payload, path)
 
     def _append_history(self, info: dict):
