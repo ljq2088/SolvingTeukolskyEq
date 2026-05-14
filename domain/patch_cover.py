@@ -7,7 +7,7 @@ import json
 
 import numpy as np
 
-from domain.atlas_builder import load_atlas, load_probe_grid, map_to_chart, map_from_chart
+from domain.atlas_builder import load_atlas, load_probe_grid, map_to_chart, map_from_chart, omega_to_chart_coord, omega_from_chart_coord
 
 
 def _convert_numpy(obj):
@@ -79,6 +79,7 @@ def load_valid_chart_points(
     probe_json: str | Path,
     atlas_json: str | Path,
     component_id: int = 0,
+    omega_chart_mode: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     返回：
@@ -90,6 +91,9 @@ def load_valid_chart_points(
     atlas = load_atlas(atlas_json)
     comp = atlas.components[component_id]
 
+    if omega_chart_mode is None:
+        omega_chart_mode = atlas.meta.get("omega_chart_mode", "linear")
+
     uv_list = []
     aw_list = []
 
@@ -98,7 +102,7 @@ def load_valid_chart_points(
             if not probe.valid_mask[i, j]:
                 continue
             try:
-                u, v = map_to_chart(comp, float(a), float(omega))
+                u, v = map_to_chart(comp, float(a), float(omega), omega_chart_mode=omega_chart_mode)
             except Exception:
                 continue
             uv_list.append([u, v])
@@ -129,10 +133,11 @@ def build_patch_cover(
     component_id: int = 0,
     h_u: float = 0.12,
     h_v: float = 0.12,
+    omega_chart_mode: str = "linear",
 ) -> PatchCoverSpec:
     """
     在 chart 平面上做贪心矩形覆盖：
-    每次从未覆盖点中选一个“离已有中心最远”的点作为新中心，
+    每次从未覆盖点中选一个"离已有中心最远"的点作为新中心，
     然后用固定矩形半宽 (h_u, h_v) 覆盖。
     """
     if len(uv_points) == 0:
@@ -178,7 +183,7 @@ def build_patch_cover(
 
     patches = []
     for pid, ((uc, vc), n_cov) in enumerate(zip(centers_uv, cover_sizes)):
-        a_center, omega_center = map_from_chart(comp, uc, vc)
+        a_center, omega_center = map_from_chart(comp, uc, vc, omega_chart_mode=omega_chart_mode)
         patches.append(
             PatchSpec(
                 patch_id=pid,
@@ -193,8 +198,11 @@ def build_patch_cover(
             )
         )
 
+    meta = dict(atlas.meta)
+    meta["omega_chart_mode"] = omega_chart_mode
+
     spec = PatchCoverSpec(
-        meta=atlas.meta,
+        meta=meta,
         atlas_json=str(atlas_json),
         probe_json=str(probe_json),
         component_id=component_id,

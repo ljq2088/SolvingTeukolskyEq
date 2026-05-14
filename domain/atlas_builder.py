@@ -295,7 +295,26 @@ def interp_lower_upper(comp: AtlasComponent, a: float) -> tuple[float, float]:
     return low, up
 
 
-def map_to_chart(comp: AtlasComponent, a: float, omega: float) -> tuple[float, float]:
+def omega_to_chart_coord(omega: float, mode: str) -> float:
+    if mode in ("linear",):
+        return omega
+    if mode in ("log", "log10", "logomega"):
+        return math.log10(max(omega, 1e-300))
+    raise ValueError(f"Unknown omega_chart_mode: {mode}")
+
+
+def omega_from_chart_coord(w: float, mode: str) -> float:
+    if mode in ("linear",):
+        return w
+    if mode in ("log", "log10", "logomega"):
+        return 10.0 ** w
+    raise ValueError(f"Unknown omega_chart_mode: {mode}")
+
+
+def map_to_chart(
+    comp: AtlasComponent, a: float, omega: float,
+    omega_chart_mode: str = "linear",
+) -> tuple[float, float]:
     a0 = comp.a_support[0]
     a1 = comp.a_support[-1]
     if not (a0 <= a <= a1):
@@ -310,15 +329,21 @@ def map_to_chart(comp: AtlasComponent, a: float, omega: float) -> tuple[float, f
     else:
         u = (a - a0) / (a1 - a0)
 
-    denom = up - low
+    low_c = omega_to_chart_coord(low, omega_chart_mode)
+    up_c = omega_to_chart_coord(up, omega_chart_mode)
+    denom = up_c - low_c
     if denom <= 0.0:
         raise ValueError(f"degenerate omega interval at a={a}: low={low}, up={up}")
 
-    v = (omega - low) / denom
+    omega_c = omega_to_chart_coord(omega, omega_chart_mode)
+    v = (omega_c - low_c) / denom
     return float(u), float(v)
 
 
-def map_from_chart(comp: AtlasComponent, u: float, v: float) -> tuple[float, float]:
+def map_from_chart(
+    comp: AtlasComponent, u: float, v: float,
+    omega_chart_mode: str = "linear",
+) -> tuple[float, float]:
     if not (0.0 <= u <= 1.0):
         raise ValueError(f"u={u} outside [0,1]")
     if not (0.0 <= v <= 1.0):
@@ -329,5 +354,8 @@ def map_from_chart(comp: AtlasComponent, u: float, v: float) -> tuple[float, flo
     a = a0 + u * (a1 - a0)
 
     low, up = interp_lower_upper(comp, a)
-    omega = low + v * (up - low)
+    low_c = omega_to_chart_coord(low, omega_chart_mode)
+    up_c = omega_to_chart_coord(up, omega_chart_mode)
+    omega_c = low_c + v * (up_c - low_c)
+    omega = omega_from_chart_coord(omega_c, omega_chart_mode)
     return float(a), float(omega)

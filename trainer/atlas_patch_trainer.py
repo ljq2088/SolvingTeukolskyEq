@@ -242,6 +242,7 @@ class AtlasPatchTrainer:
             probe_json=probe_json,
             atlas_json=atlas_json,
             component_id=self.patch.component_id,
+            omega_chart_mode=self.patch_cover.meta.get("omega_chart_mode", "linear"),
         )
 
         mask = (
