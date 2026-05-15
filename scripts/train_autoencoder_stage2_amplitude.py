@@ -267,18 +267,41 @@ def main():
                 val_loss_ref = amplitude_loss(B_ref_pred_v, B_ref_val, **loss_cfg_dict)
                 val_loss = (val_loss_inc + val_loss_ref).item()
 
-                # Also compute relative errors on magnitudes
-                rel_err_inc = torch.abs(torch.abs(B_inc_pred_v) - torch.abs(B_inc_val)) / (
-                    torch.abs(B_inc_val) + 1e-8)
-                rel_err_ref = torch.abs(torch.abs(B_ref_pred_v) - torch.abs(B_ref_val)) / (
-                    torch.abs(B_ref_val) + 1e-8)
+                # Improved metrics
+                def _compute_metrics(pred, true, eps=1e-8):
+                    """Return dict of median metrics for complex tensors (B,)."""
+                    # Complex relative error: |pred - true| / |true|
+                    rel_complex = torch.abs(pred - true) / (torch.abs(true) + eps)
+                    # Log-magnitude error: |log|pred| - log|true||
+                    logmag_err = torch.abs(
+                        torch.log(torch.abs(pred) + eps) - torch.log(torch.abs(true) + eps)
+                    )
+                    # Phase unit error: |pred/|pred| - true/|true||
+                    phase_unit_err = torch.abs(
+                        pred / (torch.abs(pred) + eps) - true / (torch.abs(true) + eps)
+                    )
+                    return {
+                        "rel_complex": float(torch.median(rel_complex).item()),
+                        "rel_mag": float(torch.median(
+                            torch.abs(torch.abs(pred) - torch.abs(true)) / (torch.abs(true) + eps)
+                        ).item()),
+                        "logmag_err": float(torch.median(logmag_err).item()),
+                        "phase_unit_err": float(torch.median(phase_unit_err).item()),
+                    }
+
+                m_inc = _compute_metrics(B_inc_pred_v, B_inc_val)
+                m_ref = _compute_metrics(B_ref_pred_v, B_ref_val)
 
             history.append({
                 "epoch": epoch + 1,
                 "train_loss": avg_loss,
                 "val_loss": val_loss,
-                "val_median_rel_err_inc": float(torch.median(rel_err_inc).item()),
-                "val_median_rel_err_ref": float(torch.median(rel_err_ref).item()),
+                "val_inc_rel_complex": m_inc["rel_complex"],
+                "val_inc_logmag_err": m_inc["logmag_err"],
+                "val_inc_phase_unit_err": m_inc["phase_unit_err"],
+                "val_ref_rel_complex": m_ref["rel_complex"],
+                "val_ref_logmag_err": m_ref["logmag_err"],
+                "val_ref_phase_unit_err": m_ref["phase_unit_err"],
                 "lr": optimizer.param_groups[0]["lr"],
             })
 
@@ -294,9 +317,11 @@ def main():
 
             if args.verbose or (epoch + 1) % val_every == 0:
                 print(f"  epoch {epoch+1:5d}/{epochs_max} | train_loss={avg_loss:.6e} "
-                      f"val_loss={val_loss:.6e} | "
-                      f"rel_inc={torch.median(rel_err_inc).item():.4e} "
-                      f"rel_ref={torch.median(rel_err_ref).item():.4e}{status}")
+                      f"val_loss={val_loss:.6e}{status}")
+                print(f"         B_inc: rel={m_inc['rel_complex']:.4e} "
+                      f"logmag={m_inc['logmag_err']:.4e} phase={m_inc['phase_unit_err']:.4e}")
+                print(f"         B_ref: rel={m_ref['rel_complex']:.4e} "
+                      f"logmag={m_ref['logmag_err']:.4e} phase={m_ref['phase_unit_err']:.4e}")
 
             if scheduler is not None:
                 scheduler.step(val_loss)
@@ -333,8 +358,10 @@ def main():
     print(f"         final_val_loss: {final_val:.6e}")
     if history:
         last = history[-1]
-        print(f"         final rel_err_inc: {last['val_median_rel_err_inc']:.4e}")
-        print(f"         final rel_err_ref: {last['val_median_rel_err_ref']:.4e}")
+        print(f"         final B_inc rel_complex={last['val_inc_rel_complex']:.4e} "
+              f"logmag={last['val_inc_logmag_err']:.4e} phase={last['val_inc_phase_unit_err']:.4e}")
+        print(f"         final B_ref rel_complex={last['val_ref_rel_complex']:.4e} "
+              f"logmag={last['val_ref_logmag_err']:.4e} phase={last['val_ref_phase_unit_err']:.4e}")
 
     # Save summary
     summary = {
