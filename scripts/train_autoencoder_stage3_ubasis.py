@@ -1,0 +1,354 @@
+#!/usr/bin/env python3
+"""
+Stage-3 autoencoder training: u_up / u_down decoder training via PDE residual.
+
+Loads a Stage-2 best checkpoint, freezes encoder + rin_decoder + amplitude_net,
+and trains only up_decoder and down_decoder to satisfy the Teukolsky ODE.
+
+Loss:
+    L_up   = mean |TeukResidual[R_up]|^2
+    L_down = mean |TeukResidual[R_down]|^2
+    where R_up = A_up * u_up, R_down = A_down * u_down
+
+Usage:
+  python scripts/train_autoencoder_stage3_ubasis.py \\
+    --config config/autoencoder_stage3_ubasis.yaml \\
+    --checkpoint outputs/autoencoder_stage2_amplitude_train/.../best_model.pt \\
+    --device cuda \\
+    --epochs 500 \\
+    --verbose
+"""
+import argparse
+import json
+import sys
+from datetime import datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+import numpy as np
+import torch
+import yaml
+
+from config.config_loader import load_pinn_full_config
+from model.autoencoder_pinn import AutoencoderTeukolskyPINN
+from physical_ansatz.u_residual import compute_stage3_loss
+
+
+def _get_dtype(dtype_name):
+    return torch.float32 if dtype_name == "float32" else torch.float64
+
+
+def _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max, device, dtype,
+                  y_eps=1e-6):
+    """Chebyshev-Gauss-Lobatto grid + extra near-infinity points.
+
+    Clips endpoints slightly away from ±1 to avoid singularities:
+    - y=-1: r → ∞, r_star → ∞, exp(±iωr_star) → NaN
+    - y=+1: r=r_+, r_star → -∞, exp(±iωr_star) → NaN
+    """
+    k = torch.arange(n_interior, device=device, dtype=dtype)
+    y_cheb = -torch.cos(torch.pi * k / (n_interior - 1))
+    y_cheb = y_cheb.clamp(-1.0 + y_eps, 1.0 - y_eps)
+
+    if n_near_inf > 0:
+        y_extra = torch.linspace(y_inf_min, y_inf_max, n_near_inf,
+                                  device=device, dtype=dtype)
+        y_extra = y_extra.clamp(-1.0 + y_eps, 1.0 - y_eps)
+        y_all = torch.cat([y_cheb, y_extra])
+    else:
+        y_all = y_cheb
+
+    return y_all  # (N_total,)
+
+
+def _load_artifact(artifact_dir):
+    """Load parameter pool from rpred_cache."""
+    data = np.load(Path(artifact_dir) / "rpred_cache.npz")
+    valid = np.isfinite(data["a"]) & np.isfinite(data["omega"]) & np.isfinite(data["lambda_"])
+    return {
+        "a": data["a"][valid],
+        "omega": data["omega"][valid],
+        "u": data["u"][valid],
+        "v": data["v"][valid],
+        "lambda_": data["lambda_"][valid],
+    }
+
+
+def _sample_batch(pool, batch_size, device, dtype, cdtype):
+    """Sample random batch from parameter pool."""
+    n = len(pool["a"])
+    idx = np.random.choice(n, min(batch_size, n), replace=False)
+    a = torch.tensor(pool["a"][idx], device=device, dtype=dtype)
+    omega = torch.tensor(pool["omega"][idx], device=device, dtype=dtype)
+    u = torch.tensor(pool["u"][idx], device=device, dtype=dtype)
+    v = torch.tensor(pool["v"][idx], device=device, dtype=dtype)
+    lam = torch.tensor(pool["lambda_"][idx], device=device, dtype=cdtype)
+    return a, omega, u, v, lam
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Stage-3 u-basis decoder training")
+    parser.add_argument("--config", type=str, required=True)
+    parser.add_argument("--checkpoint", type=str, required=True,
+                        help="Stage-2 best checkpoint path")
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--epochs", type=int, default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--verbose", action="store_true", default=False)
+    args = parser.parse_args()
+
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
+
+    # ---- Load config ----
+    full_cfg = load_pinn_full_config(args.config)
+    runtime_cfg = full_cfg.get("runtime", {})
+    dtype_name = runtime_cfg.get("dtype", "float64")
+    dtype = _get_dtype(dtype_name)
+    cdtype = torch.complex128 if dtype == torch.float64 else torch.complex64
+
+    stage3_cfg = full_cfg.get("stage3", {})
+    loss_cfg = stage3_cfg.get("loss", {})
+    opt_cfg = stage3_cfg.get("optimizer", {})
+    sched_cfg = stage3_cfg.get("scheduler", {})
+    samp_cfg = stage3_cfg.get("sampling", {})
+    batch_size = int(stage3_cfg.get("batch_size", 8))
+    n_interior = int(stage3_cfg.get("n_interior", 128))
+    epochs_max = args.epochs if args.epochs is not None else int(stage3_cfg.get("epochs", 5000))
+    val_every = int(stage3_cfg.get("val_every_epochs", 50))
+    output_root = stage3_cfg.get("output_root", "outputs/autoencoder_stage3_ubasis_train")
+    save_every = int(stage3_cfg.get("save_every_epochs", 500))
+    artifact_dir = stage3_cfg.get("artifact_dir",
+                                    "outputs/stage1_artifacts/patch_000_logw_v2")
+
+    # Physics
+    physics = full_cfg.get("physics", full_cfg)
+    prob = physics.get("problem", {})
+    M = float(prob.get("M", 1.0))
+    s = int(prob.get("s", -2))
+    l = int(prob.get("l", 2))
+    m = int(prob.get("m", 2))
+
+    # ---- Load checkpoint ----
+    ckpt_path = Path(args.checkpoint)
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+
+    # ---- Build model ----
+    full_cfg_raw = ckpt.get("full_cfg", full_cfg)
+    model_cfg = full_cfg_raw.get("model", full_cfg.get("model", {}))
+    ckpt_epoch = ckpt.get("epoch", None)
+
+    model = AutoencoderTeukolskyPINN(
+        hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
+        activation=str(model_cfg.get("activation", "silu")),
+        param_embed_dim=int(model_cfg.get("param_embed_dim", 64)),
+        fourier_num_freqs=int(model_cfg.get("fourier_num_freqs", 2)),
+        fourier_base_scale=float(model_cfg.get("fourier_base_scale", 1.0)),
+        use_film=bool(model_cfg.get("use_film", True)),
+        use_residual=bool(model_cfg.get("use_residual", True)),
+        amp_hidden_dim=int(model_cfg.get("amp_hidden_dim", 128)),
+        amp_n_blocks=int(model_cfg.get("amp_n_blocks", 3)),
+        **model_cfg.get("encoder_kwargs", {}),
+    )
+    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    model.to(device=device, dtype=dtype)
+
+    # ---- Stage-3 freeze: only up_decoder + down_decoder trainable ----
+    for _, p in model.named_parameters():
+        p.requires_grad = False
+    for _, p in model.up_decoder.named_parameters():
+        p.requires_grad = True
+    for _, p in model.down_decoder.named_parameters():
+        p.requires_grad = True
+
+    n_total = sum(p.numel() for p in model.parameters())
+    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    n_up = sum(p.numel() for p in model.up_decoder.parameters())
+    n_down = sum(p.numel() for p in model.down_decoder.parameters())
+    print(f"[stage3] Model loaded from {ckpt_path}")
+    print(f"         Stage-2 epoch: {ckpt_epoch}")
+    print(f"         Params: {n_trainable}/{n_total} trainable")
+    print(f"         up_decoder: {n_up}, down_decoder: {n_down}")
+
+    # ---- Load parameter pool ----
+    pool = _load_artifact(artifact_dir)
+    n_pool = len(pool["a"])
+    print(f"[stage3] Parameter pool: {n_pool} samples")
+    print(f"         a: [{pool['a'].min():.4f}, {pool['a'].max():.4f}]")
+    print(f"         omega: [{pool['omega'].min():.6e}, {pool['omega'].max():.6e}]")
+
+    # ---- Build y grid ----
+    n_near_inf = int(samp_cfg.get("n_near_infinity", 0))
+    y_inf_min = float(samp_cfg.get("y_inf_min", -1.0))
+    y_inf_max = float(samp_cfg.get("y_inf_max", -0.95))
+    y_grid = _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max,
+                            device, dtype)  # (N,)
+    n_y = len(y_grid)
+    print(f"[stage3] y-grid: {n_y} points ({n_interior} Cheb + {n_near_inf} near-inf)")
+
+    # ---- Optimizer ----
+    lr = args.lr if args.lr is not None else float(opt_cfg.get("lr", 1e-4))
+    wd = float(opt_cfg.get("weight_decay", 0.0))
+    opt_params = list(model.up_decoder.parameters()) + list(model.down_decoder.parameters())
+    optimizer = torch.optim.Adam(opt_params, lr=lr, weight_decay=wd)
+
+    # ---- Scheduler ----
+    scheduler = None
+    if sched_cfg.get("enabled", False):
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=float(sched_cfg.get("factor", 0.5)),
+            patience=int(sched_cfg.get("patience", 300)),
+            min_lr=float(sched_cfg.get("min_lr", 1e-6)),
+        )
+
+    # ---- Output ----
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_dir = Path(output_root) / f"{timestamp}_stage3_ubasis"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_dir = run_dir / "checkpoints"
+    ckpt_dir.mkdir(exist_ok=True)
+
+    # ---- Training ----
+    weight_up = float(loss_cfg.get("weight_up", 1.0))
+    weight_down = float(loss_cfg.get("weight_down", 1.0))
+    normalize_res = bool(loss_cfg.get("normalize_residual", False))
+    eps = float(loss_cfg.get("eps", 1e-12))
+
+    best_val = float("inf")
+    best_epoch = 0
+    history = []
+
+    model.eval()  # encoder/rin_decoder frozen, up/down in eval for BN but we need train mode
+    model.up_decoder.train()
+    model.down_decoder.train()
+
+    print(f"\n[stage3] Training: {epochs_max} epochs, batch_size={batch_size}, lr={lr}")
+    print(f"         run_dir: {run_dir}")
+    print(f"{'='*60}")
+
+    for epoch in range(epochs_max):
+        # Sample batch and expand y grid
+        a_b, omega_b, u_b, v_b, lam_b = _sample_batch(
+            pool, batch_size, device, dtype, cdtype)
+        B_actual = a_b.shape[0]
+        y_b = y_grid.unsqueeze(0).expand(B_actual, -1)  # (B, N_y)
+
+        # Compute loss
+        total_loss, info = compute_stage3_loss(
+            model, a_b, omega_b, y_b, lam_b, u_b, v_b,
+            M=M, s=s, m=m,
+            weight_up=weight_up, weight_down=weight_down,
+            normalize_residual=normalize_res, eps=eps,
+        )
+
+        optimizer.zero_grad()
+        total_loss.backward()
+        optimizer.step()
+
+        train_loss = total_loss.detach().item()
+
+        # ---- Validation (on same grid, different param samples) ----
+        if epoch == 0 or (epoch + 1) % val_every == 0:
+            a_v, omega_v, u_v, v_v, lam_v = _sample_batch(
+                pool, batch_size, device, dtype, cdtype)
+            Bv = a_v.shape[0]
+            y_v = y_grid.unsqueeze(0).expand(Bv, -1)
+            val_loss, val_info = compute_stage3_loss(
+                model, a_v, omega_v, y_v, lam_v, u_v, v_v,
+                M=M, s=s, m=m,
+                weight_up=weight_up, weight_down=weight_down,
+                normalize_residual=normalize_res, eps=eps,
+            )
+
+            history.append({
+                "epoch": epoch + 1,
+                "train_loss": train_loss,
+                "val_loss": val_info["total_loss"],
+                "val_loss_up": val_info["loss_up"],
+                "val_loss_down": val_info["loss_down"],
+                "lr": optimizer.param_groups[0]["lr"],
+            })
+
+            val_float = history[-1]["val_loss"]
+            is_best = val_float < best_val
+            status = ""
+            if is_best:
+                best_val = val_float
+                best_epoch = epoch + 1
+                status = " [BEST]"
+
+            if args.verbose or (epoch + 1) % val_every == 0:
+                print(f"  epoch {epoch+1:5d}/{epochs_max} | "
+                      f"train={train_loss:.6e} val={val_float:.6e} | "
+                      f"up={val_info['loss_up']:.4e} down={val_info['loss_down']:.4e}{status}")
+
+            if scheduler is not None:
+                scheduler.step(val_float)
+
+        # ---- Save checkpoints ----
+        if (epoch + 1) % save_every == 0 or (epoch == epochs_max - 1):
+            ckpt_data = {
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "best_val_loss": best_val,
+                "best_epoch": best_epoch,
+                "history": history,
+                "config": str(Path(args.config).resolve()),
+                "stage2_checkpoint": str(ckpt_path.resolve()),
+            }
+            torch.save(ckpt_data, ckpt_dir / "latest_model.pt")
+
+        if is_best:
+            ckpt_data = {
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "best_val_loss": best_val,
+                "best_epoch": best_epoch,
+                "history": history,
+                "config": str(Path(args.config).resolve()),
+                "stage2_checkpoint": str(ckpt_path.resolve()),
+            }
+            torch.save(ckpt_data, ckpt_dir / "best_model.pt")
+
+        # Check NaN
+        if not np.isfinite(train_loss):
+            print(f"[stage3] NaN loss at epoch {epoch+1}, stopping")
+            break
+
+    # ---- Summary ----
+    final_val = history[-1]["val_loss"] if history else float("nan")
+    print(f"\n{'='*60}")
+    print(f"[stage3] Training complete.")
+    print(f"         run_dir: {run_dir}")
+    print(f"         best_epoch: {best_epoch}, best_val_loss: {best_val:.6e}")
+    print(f"         final_val_loss: {final_val:.6e}")
+    if history:
+        last = history[-1]
+        print(f"         final loss_up: {last['val_loss_up']:.4e}")
+        print(f"         final loss_down: {last['val_loss_down']:.4e}")
+
+    summary = {
+        "run_dir": str(run_dir),
+        "stage2_checkpoint": str(ckpt_path.resolve()),
+        "n_pool": int(n_pool),
+        "batch_size": int(batch_size),
+        "n_interior": int(n_interior),
+        "epochs_total": len(history),
+        "best_epoch": int(best_epoch),
+        "best_val_loss": float(best_val),
+        "final_val_loss": float(final_val),
+        "history": history,
+    }
+    with open(run_dir / "summary.json", "w") as f:
+        json.dump(summary, f, indent=2, default=str)
+
+
+if __name__ == "__main__":
+    main()
