@@ -1,0 +1,71 @@
+# ============================================================
+# Autoencoder Stage 3 Near-Infinity Only
+#
+# Based on refine config but restricts training to y ∈ [-1, 0]
+# with near-infinity extra points, to focus decoder learning
+# on the region that matters for consistency matching.
+# ============================================================
+
+include:
+  physics: config/teukolsky_radial.yaml
+
+autoencoder:
+  stage: stage3
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+  encoder_kwargs:
+    amp_hidden_dim: 128
+    amp_n_blocks: 3
+
+stage3:
+  checkpoint: null
+  artifact_dir: outputs/stage1_artifacts/patch_000_logw_v2
+
+  train_up: true
+  train_down: true
+  residual_mode: u_equation
+
+  optimizer:
+    lr: 5.0e-6
+    weight_decay: 0.0
+
+  scheduler:
+    enabled: true
+    factor: 0.5
+    patience: 100
+    min_lr: 1.0e-7
+
+  batch_size: 8
+  n_interior: 128
+  epochs: 2000
+  val_every_epochs: 50
+  save_every_epochs: 200
+
+  grad_clip: 1.0
+
+  loss:
+    weight_up: 1.0
+    weight_down: 1.0
+
+  sampling:
+    y_strategy: near_infinity_only
+    near_infinity_extra: true
+    n_near_infinity: 64
+    y_inf_min: -1.0
+    y_inf_max: -0.95
+    y_eps: 1.0e-3
+    y_min: -1.0
+    y_max: 0.0
+    n_interior: 128
+
+  output_root: outputs/autoencoder_stage3_ubasis_nearinf
+
+runtime:
+  dtype: float64

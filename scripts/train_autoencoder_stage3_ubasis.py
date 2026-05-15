@@ -44,24 +44,27 @@ def _get_dtype(dtype_name):
 
 
 def _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max, device, dtype,
-                  y_eps=1e-3):
-    """Chebyshev-Gauss-Lobatto grid + extra near-infinity points.
+                  y_eps=1e-3, y_min=-1.0, y_max=1.0, y_strategy="chebyshev"):
+    """Build y-grid for PDE collocation.
 
-    Clips endpoints slightly away from ±1 to avoid singularities:
-    - y=-1: r → ∞, r_star → ∞, exp(±iωr_star) → NaN
-    - y=+1: r=r_+, r_star → -∞, exp(±iωr_star) → NaN
+    y_strategy:
+        "chebyshev":       full-domain Chebyshev-Gauss-Lobatto grid, clipped to [y_min+y_eps, y_max-y_eps]
+        "near_infinity_only": train only in [y_min, y_max], typically [-1, 0]
     """
-    k = torch.arange(n_interior, device=device, dtype=dtype)
-    y_cheb = -torch.cos(torch.pi * k / (n_interior - 1))
-    y_cheb = y_cheb.clamp(-1.0 + y_eps, 1.0 - y_eps)
+    if y_strategy == "near_infinity_only":
+        y_all = torch.linspace(y_min + y_eps, y_max - y_eps, n_interior,
+                               device=device, dtype=dtype)
+    else:
+        k = torch.arange(n_interior, device=device, dtype=dtype)
+        y_cheb = -torch.cos(torch.pi * k / (n_interior - 1))
+        y_cheb = y_cheb.clamp(-1.0 + y_eps, 1.0 - y_eps)
+        y_all = y_cheb
 
     if n_near_inf > 0:
         y_extra = torch.linspace(y_inf_min, y_inf_max, n_near_inf,
                                   device=device, dtype=dtype)
         y_extra = y_extra.clamp(-1.0 + y_eps, 1.0 - y_eps)
-        y_all = torch.cat([y_cheb, y_extra])
-    else:
-        y_all = y_cheb
+        y_all = torch.cat([y_all, y_extra])
 
     return y_all  # (N_total,)
 
@@ -198,8 +201,13 @@ def main():
     y_inf_min = float(samp_cfg.get("y_inf_min", -1.0))
     y_inf_max = float(samp_cfg.get("y_inf_max", -0.95))
     y_eps = float(samp_cfg.get("y_eps", 1e-3))
+    y_grid_min = float(samp_cfg.get("y_min", -1.0))
+    y_grid_max = float(samp_cfg.get("y_max", 1.0))
+    y_strategy = str(samp_cfg.get("y_strategy", "chebyshev"))
     y_grid = _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max,
-                            device, dtype, y_eps=y_eps)  # (N,)
+                            device, dtype, y_eps=y_eps,
+                            y_min=y_grid_min, y_max=y_grid_max,
+                            y_strategy=y_strategy)  # (N,)
     n_y = len(y_grid)
     print(f"[stage3] y-grid: {n_y} points ({n_interior} Cheb + {n_near_inf} near-inf), y_eps={y_eps}")
 
