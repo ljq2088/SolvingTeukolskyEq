@@ -191,6 +191,26 @@ class AtlasPatchTrainer:
                 f"Unsupported atlas_training.viz_benchmark_backend={self.viz_benchmark_backend}; "
                 "must be one of {'none','pybhpt','mma','spectral'}."
             )
+
+        # --- val benchmark (split from viz_benchmark_backend) ---
+        self.val_benchmark_backend = str(atlas_train_cfg.get("val_benchmark_backend", "none")).lower()
+        if self.val_benchmark_backend not in ("none", "pybhpt", "mma"):
+            raise ValueError(
+                f"Unsupported atlas_training.val_benchmark_backend={self.val_benchmark_backend}; "
+                "must be one of {'none','pybhpt','mma'}."
+            )
+        # backward compat: if old config only has viz_benchmark_backend=pybhpt and no val_benchmark_backend
+        if self.val_benchmark_backend == "none" and self.viz_benchmark_backend == "pybhpt":
+            if "val_benchmark_backend" not in atlas_train_cfg:
+                self.val_benchmark_backend = "pybhpt"
+                self._vprint(
+                    "[benchmark] WARNING: falling back val_benchmark_backend=pybhpt from "
+                    "viz_benchmark_backend. Add explicit val_benchmark_backend to config."
+                )
+
+        self.val_benchmark_every = int(atlas_train_cfg.get("val_benchmark_every", 500))
+        self.val_benchmark_max_cases = int(atlas_train_cfg.get("val_benchmark_max_cases", 24))
+        self.val_benchmark_at_final = bool(atlas_train_cfg.get("val_benchmark_at_final", True))
         self.viz_pybhpt_timeout = float(atlas_train_cfg.get("viz_pybhpt_timeout", 10.0))
         self.anchor_pybhpt_timeout = float(atlas_train_cfg.get("anchor_pybhpt_timeout", self.viz_pybhpt_timeout))
         self.viz_spectral_N = int(atlas_train_cfg.get("viz_spectral_N", 64))
@@ -1363,10 +1383,18 @@ class AtlasPatchTrainer:
                 worst_idx = i
 
         # --- benchmark vs pybhpt ---
+        should_benchmark = False
+        if self.val_benchmark_backend == "pybhpt":
+            at_final = self.val_benchmark_at_final and self.global_step >= getattr(self, '_effective_steps', self.steps_default)
+            at_interval = (self.val_benchmark_every > 0 and self.global_step % self.val_benchmark_every == 0)
+            should_benchmark = at_final or at_interval
+
         metrics = {}
-        if self.viz_benchmark_backend == "pybhpt":
+        if should_benchmark and self.val_benchmark_backend == "pybhpt":
+            n_cases = self.val_meta["a"].shape[0]
+            n_bench = min(n_cases, self.val_benchmark_max_cases)
             bench_rel_errs = []
-            for i in range(self.val_meta["a"].shape[0]):
+            for i in range(n_bench):
                 try:
                     bm = self._benchmark_single_case(
                         a_val=self.val_meta["a"][i],
@@ -1390,6 +1418,9 @@ class AtlasPatchTrainer:
             else:
                 metrics["benchmark_median_rel_err_R"] = None
                 metrics["benchmark_max_rel_err_R"] = None
+        else:
+            metrics["benchmark_median_rel_err_R"] = None
+            metrics["benchmark_max_rel_err_R"] = None
 
         val_mean = float(np.mean(losses)) if losses else float("inf")
         metrics.update({
@@ -1719,6 +1750,7 @@ class AtlasPatchTrainer:
     # =========================================================
     def train(self, steps: int | None = None):
         steps = int(self.steps_default if steps is None else steps)
+        self._effective_steps = int(steps)
 
         final_val = None
         start_step = int(self.global_step) + 1

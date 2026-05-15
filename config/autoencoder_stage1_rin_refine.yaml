@@ -44,7 +44,7 @@ sampling:
 
 training:
   optimizer:
-    lr: 5.0e-4
+    lr: 1.0e-4
 
   anchor:
     freq: 0
@@ -147,7 +147,7 @@ atlas_training:
     enabled: true
     patience: 100
     min_rel_improve: 1.0e-5
-    min_steps: 5000
+    min_steps: 1000
 
   save_every: 500
   ckpt_every: 500
@@ -159,7 +159,7 @@ atlas_training:
   viz_benchmark_backend: pybhpt
 
   val_benchmark_backend: pybhpt
-  val_benchmark_every: 100
+  val_benchmark_every: 500
   val_benchmark_max_cases: 24
   val_benchmark_at_final: true
 
