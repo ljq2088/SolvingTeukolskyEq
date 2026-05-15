@@ -1243,6 +1243,65 @@ class AtlasPatchTrainer:
         return final_val
 
     # =========================================================
+    # benchmark helpers
+    # =========================================================
+    @staticmethod
+    def _safe_rel_err(x: np.ndarray, y: np.ndarray, floor: float = 1e-14) -> np.ndarray:
+        return np.abs(x - y) / np.maximum(np.abs(y), floor)
+
+    def _benchmark_single_case(self, a_val, omega_val, u_val, v_val, lambda_val):
+        """Compute median/max relative error vs pybhpt for a single val case."""
+        problem_cfg = self.physics_cfg["problem"]
+        M = float(problem_cfg.get("M", 1.0))
+        ell = int(problem_cfg.get("l", 2))
+        m_mode = int(problem_cfg.get("m", 2))
+        s = int(problem_cfg.get("s", -2))
+
+        a_scalar = float(a_val.detach().cpu().item())
+        omega_scalar = float(omega_val.detach().cpu().item())
+
+        rp = float(r_plus(a_val.unsqueeze(0), M).detach().cpu().item())
+        r_min = max(2.0, rp + 1.0e-4)
+        r_max = self.viz_r_max
+        r_grid = np.linspace(r_min, r_max, self.viz_num_points)
+
+        with torch.no_grad():
+            r_t = torch.from_numpy(r_grid).to(device=self.device, dtype=self.dtype)
+            x_t = rp / r_t
+            y_t = 2.0 * x_t - 1.0
+
+            shape_pred = self._predict_shape(a_val, omega_val, lambda_val, u_val, v_val, y_t)
+
+            rp_t, rm_t, _, _, _ = build_prefactor_primitives(
+                r_t, a_val.unsqueeze(0), M=M, need_rs=False,
+            )
+            P_t, _, _ = Leaver_prefactors(
+                r_t, a_val.unsqueeze(0), omega_val.unsqueeze(0),
+                m=m_mode, M=M, s=s, rp=rp_t, rm=rm_t,
+            )
+            h2 = h_factor(a_val.unsqueeze(0), omega_val.unsqueeze(0), m=m_mode, M=M, s=s)
+            R_pred = P_t * h2 * shape_pred
+
+        R_pred_np = R_pred.detach().cpu().numpy()
+
+        _, R_ref = compute_pybhpt_solution(
+            a=a_scalar,
+            omega=omega_scalar,
+            ell=ell,
+            m=m_mode,
+            r_grid=r_grid,
+            timeout=self.viz_pybhpt_timeout,
+        )
+        R_ref = np.asarray(R_ref, dtype=np.complex128)
+
+        rel_err = self._safe_rel_err(R_pred_np, R_ref)
+
+        return {
+            "median_rel_err_R": float(np.median(rel_err)),
+            "max_rel_err_R": float(np.max(rel_err)),
+        }
+
+    # =========================================================
     # validation
     # =========================================================
     def _validate_single_case(self, a_val, omega_val, u_val, v_val, lambda_val):
@@ -1303,14 +1362,43 @@ class AtlasPatchTrainer:
                 worst_loss = loss_i
                 worst_idx = i
 
+        # --- benchmark vs pybhpt ---
+        metrics = {}
+        if self.viz_benchmark_backend == "pybhpt":
+            bench_rel_errs = []
+            for i in range(self.val_meta["a"].shape[0]):
+                try:
+                    bm = self._benchmark_single_case(
+                        a_val=self.val_meta["a"][i],
+                        omega_val=self.val_meta["omega"][i],
+                        u_val=self.val_meta["u"][i],
+                        v_val=self.val_meta["v"][i],
+                        lambda_val=self.val_meta["lambda"][i],
+                    )
+                    bench_rel_errs.append(bm["median_rel_err_R"])
+                    case_metrics[i]["median_rel_err_R"] = bm["median_rel_err_R"]
+                    case_metrics[i]["max_rel_err_R"] = bm["max_rel_err_R"]
+                except Exception as e:
+                    bench_rel_errs.append(float("nan"))
+                    case_metrics[i]["median_rel_err_R"] = None
+                    case_metrics[i]["max_rel_err_R"] = None
+
+            valid_errs = [e for e in bench_rel_errs if not math.isnan(e)]
+            if valid_errs:
+                metrics["benchmark_median_rel_err_R"] = float(np.median(valid_errs))
+                metrics["benchmark_max_rel_err_R"] = float(np.max(valid_errs))
+            else:
+                metrics["benchmark_median_rel_err_R"] = None
+                metrics["benchmark_max_rel_err_R"] = None
+
         val_mean = float(np.mean(losses)) if losses else float("inf")
-        metrics = {
+        metrics.update({
             "val_mean": val_mean,
             "val_worst": float(worst_loss if losses else float("inf")),
             "n_val_samples": int(len(losses)),
             "case_losses": [float(x) for x in losses],
             "case_metrics": case_metrics,
-        }
+        })
         if worst_idx >= 0:
             metrics["worst_a"] = float(self.val_meta["a"][worst_idx].detach().cpu().item())
             metrics["worst_omega"] = float(self.val_meta["omega"][worst_idx].detach().cpu().item())
@@ -1468,6 +1556,38 @@ class AtlasPatchTrainer:
                     f.write(json.dumps({
                         "step": int(step),
                         "backend": "spectral",
+                        "a": a_scalar,
+                        "omega": omega_scalar,
+                        "err": str(e),
+                    }, ensure_ascii=False) + "\n")
+
+        elif self.viz_benchmark_backend == "pybhpt":
+            try:
+                R_ref_r_np = self._eval_pybhpt_preserve_order(
+                    a_scalar, omega_scalar, l, m,
+                    r_query=r_uniform_np,
+                    timeout=self.viz_pybhpt_timeout,
+                )
+                # also compute on y-grid for shape overlay
+                R_ref_y_np = self._eval_pybhpt_preserve_order(
+                    a_scalar, omega_scalar, l, m,
+                    r_query=r_grid_from_y.detach().cpu().numpy(),
+                    timeout=self.viz_pybhpt_timeout,
+                )
+                shape_ref_y_np = R_ref_y_np / (P_y.detach().cpu().numpy() * complex(h2.detach().cpu().item()))
+                benchmark_available = True
+                rel_err = self._safe_rel_err(R_pred_r_np, R_ref_r_np)
+                benchmark_status = (
+                    f"benchmark=pybhpt "
+                    f"medR={np.median(rel_err):.2e} "
+                    f"maxR={np.max(rel_err):.2e}"
+                )
+            except Exception as e:
+                benchmark_status = "benchmark=pybhpt-failed"
+                with open(self.log_dir / "viz_failures.jsonl", "a", encoding="utf-8") as f:
+                    f.write(json.dumps({
+                        "step": int(step),
+                        "backend": "pybhpt",
                         "a": a_scalar,
                         "omega": omega_scalar,
                         "err": str(e),

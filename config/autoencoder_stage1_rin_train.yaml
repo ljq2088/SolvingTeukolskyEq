@@ -156,7 +156,7 @@ atlas_training:
   viz_r_min: 2.0
   viz_r_max: 1000.0
   anchor_backend: pybhpt
-  viz_benchmark_backend: none
+  viz_benchmark_backend: pybhpt
 
   anchor_target_ratio: 1.0e-2
   train_seed: 1234
