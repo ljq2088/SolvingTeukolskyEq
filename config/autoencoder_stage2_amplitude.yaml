@@ -1,0 +1,69 @@
+# ============================================================
+# Autoencoder Stage 2: AmplitudeNet training config
+# ============================================================
+
+include:
+  physics: config/teukolsky_radial.yaml
+
+autoencoder:
+  stage: stage2
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+  encoder_kwargs:
+    amp_hidden_dim: 128
+    amp_n_blocks: 3
+
+# Stage-2: supervised regression of AmplitudeNet
+stage2:
+  # Amplitude teacher path (relative to project root)
+  teacher_dir: outputs/stage1_artifacts/patch_000_logw_v2
+
+  # Loss: 方案B — log-magnitude + normalised phase
+  #   loss = MSE(log|B_pred| - log|B_true|)
+  #        + MSE(Re(B_pred/|B_pred|) - Re(B_true/|B_true|))
+  #        + MSE(Im(B_pred/|B_pred|) - Im(B_true/|B_true|))
+  loss:
+    weight_logmag: 1.0
+    weight_phase: 1.0
+    eps: 1.0e-8
+
+  optimizer:
+    lr: 1.0e-4
+    weight_decay: 0.0
+
+  scheduler:
+    enabled: true
+    mode: plateau
+    factor: 0.5
+    patience: 200
+    min_lr: 1.0e-6
+    monitor: val_loss
+
+  # Data split
+  train_fraction: 0.8
+  batch_size: 32
+  epochs: 5000
+
+  # Validation
+  val_every_epochs: 50
+
+  # Early stopping
+  early_stopping:
+    patience: 500
+    min_delta: 1.0e-7
+
+  # Output
+  output_root: outputs/autoencoder_stage2_amplitude_train
+  save_every_epochs: 500
+
+  train_seed: 1234
+
+runtime:
+  dtype: float64

@@ -716,29 +716,35 @@ class AtlasPatchTrainer:
     # autoencoder-specific helpers
     # =========================================================
     def _apply_autoencoder_freeze(self):
-        """Stage-1 freeze: only encoder + rin_decoder trainable."""
+        """Apply freeze policy based on autoencoder.stage config."""
         autoencoder_cfg = self.cfg.get("autoencoder", {})
         stage = autoencoder_cfg.get("stage", "stage1")
-        if stage != "stage1":
-            return  # only Stage-1 freeze is defined
+
+        if stage not in ("stage1", "stage2"):
+            return
 
         # Freeze all
         for _, p in self.model.named_parameters():
             p.requires_grad = False
 
-        # Unfreeze encoder
-        for name, p in self.model.encoder.named_parameters():
-            p.requires_grad = True
-
-        # Unfreeze rin_decoder
-        for name, p in self.model.rin_decoder.named_parameters():
-            p.requires_grad = True
+        if stage == "stage1":
+            # Only encoder + rin_decoder trainable
+            for _, p in self.model.encoder.named_parameters():
+                p.requires_grad = True
+            for _, p in self.model.rin_decoder.named_parameters():
+                p.requires_grad = True
+            desc = "encoder + rin_decoder only; amplitude_net/up_decoder/down_decoder frozen"
+        elif stage == "stage2":
+            # Only amplitude_net trainable
+            for _, p in self.model.amplitude_net.named_parameters():
+                p.requires_grad = True
+            desc = "amplitude_net only; encoder/decoders frozen"
 
         n_trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         n_total = sum(p.numel() for p in self.model.parameters())
         self._vprint(
-            f"[autoencoder] Stage-1 freeze: {n_trainable}/{n_total} params trainable "
-            f"(encoder + rin_decoder only; amplitude_net/up_decoder/down_decoder frozen)"
+            f"[autoencoder] Stage-{stage[-1]} freeze: {n_trainable}/{n_total} params trainable "
+            f"({desc})"
         )
 
     def _init_from_pinn_checkpoint(self):
