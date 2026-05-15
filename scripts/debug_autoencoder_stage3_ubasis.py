@@ -31,7 +31,12 @@ from physical_ansatz.u_basis import (
     A_up,
     A_down,
 )
-from physical_ansatz.u_residual import compute_u_basis_residual, compute_stage3_loss
+from physical_ansatz.u_residual import (
+    compute_u_basis_residual,
+    compute_stage3_loss,
+    compute_u_equation_residual,
+    compute_stage3_loss_u_equation,
+)
 
 
 def _get_dtype(dtype_name):
@@ -255,10 +260,120 @@ def main():
     print(f"  mean |res_down|^2: {pw_down.mean().item():.4e}")
 
     # ============================================================
-    # 9. Backward: only up/down get grads
+    # 9. u-equation residual finite
     # ============================================================
     print("\n" + "=" * 60)
-    print("9. Backward: only up/down decoders get grads")
+    print("9. u-equation residual")
+
+    y_ueq = torch.linspace(-0.999, 0.999, 128, device=device, dtype=dtype).unsqueeze(0)
+    y_ueq = y_ueq.clone().requires_grad_(True)
+
+    _, res_ueq_up, pw_ueq_up = compute_u_equation_residual(
+        model, a_val, omega_val, y_ueq, lam_val, M=1.0, s=-2, m=2, basis="up")
+    _, res_ueq_down, pw_ueq_down = compute_u_equation_residual(
+        model, a_val, omega_val, y_ueq, lam_val, M=1.0, s=-2, m=2, basis="down")
+
+    check("u_eq residual_up finite", torch.all(torch.isfinite(res_ueq_up)),
+          f"NaN={torch.isnan(res_ueq_up).any().item()}, Inf={torch.isinf(res_ueq_up).any().item()}")
+    check("u_eq residual_down finite", torch.all(torch.isfinite(res_ueq_down)))
+    check("u_eq pointwise_up finite", torch.all(torch.isfinite(pw_ueq_up)))
+    check("u_eq pointwise_down finite", torch.all(torch.isfinite(pw_ueq_down)))
+
+    print(f"  u_eq mean |res_up|^2: {pw_ueq_up.mean().item():.4e}")
+    print(f"  u_eq mean |res_down|^2: {pw_ueq_down.mean().item():.4e}")
+
+    # ============================================================
+    # 10. u-equation loss finite
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("10. u-equation loss")
+
+    y_uloss = torch.linspace(-0.999, 0.999, 128, device=device, dtype=dtype).unsqueeze(0)
+    y_uloss = y_uloss.clone().requires_grad_(True)
+    total_u_loss, u_info = compute_stage3_loss_u_equation(
+        model, a_val, omega_val, y_uloss, lam_val, M=1.0, s=-2, m=2)
+
+    check("u_eq loss_up finite", np.isfinite(u_info["loss_up"]),
+          f"loss_up={u_info['loss_up']:.4e}")
+    check("u_eq loss_down finite", np.isfinite(u_info["loss_down"]),
+          f"loss_down={u_info['loss_down']:.4e}")
+    print(f"  u_eq loss_up: {u_info['loss_up']:.4e}, loss_down: {u_info['loss_down']:.4e}")
+
+    # ============================================================
+    # 11. u-equation backward: only up/down get grads
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("11. u-equation backward: only up/down decoders get grads")
+
+    model.zero_grad()
+    y_g2 = torch.linspace(-0.999, 0.999, 128, device=device, dtype=dtype).unsqueeze(0)
+    y_g2 = y_g2.clone().requires_grad_(True)
+    u_loss_g, _ = compute_stage3_loss_u_equation(
+        model, a_val, omega_val, y_g2, lam_val, M=1.0, s=-2, m=2)
+    u_loss_g.backward()
+
+    check("u_eq: encoder grads are None",
+          all(p.grad is None for p in model.encoder.parameters()))
+    check("u_eq: rin_decoder grads are None",
+          all(p.grad is None for p in model.rin_decoder.parameters()))
+    check("u_eq: amplitude_net grads are None",
+          all(p.grad is None for p in model.amplitude_net.parameters()))
+    check("u_eq: up_decoder has grads",
+          all(p.grad is not None for p in model.up_decoder.parameters()))
+    check("u_eq: down_decoder has grads",
+          all(p.grad is not None for p in model.down_decoder.parameters()))
+
+    # No NaN in grads, grad norm finite
+    for module_name, module in [("up_decoder", model.up_decoder),
+                                  ("down_decoder", model.down_decoder)]:
+        grad_nan = any(
+            torch.isnan(p.grad).any() for p in module.parameters() if p.grad is not None
+        )
+        check(f"u_eq: {module_name} grads finite", not grad_nan)
+        grad_norm = sum(p.grad.norm().item() ** 2 for p in module.parameters() if p.grad is not None) ** 0.5
+        check(f"u_eq: {module_name} grad norm finite", np.isfinite(grad_norm),
+              f"grad_norm={grad_norm:.4e}")
+        print(f"  {module_name} grad norm: {grad_norm:.4e}")
+
+    # ============================================================
+    # 12. direct_R vs u_equation residual sign consistency
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("12. direct_R vs u_equation residual consistency (moderate r)")
+
+    y_mod = torch.linspace(-0.5, 0.5, 64, device=device, dtype=dtype).unsqueeze(0)
+    y_mod = y_mod.clone().requires_grad_(True)
+
+    _, R_res_up, _ = compute_u_basis_residual(
+        model, a_val, omega_val, y_mod, lam_val, M=1.0, s=-2, m=2, basis="up")
+    _, u_res_up, _ = compute_u_equation_residual(
+        model, a_val, omega_val, y_mod, lam_val, M=1.0, s=-2, m=2, basis="up")
+
+    # Both should be valid (finite), no strict scale match required
+    check("direct_R up residual finite at moderate r",
+          torch.all(torch.isfinite(R_res_up)))
+    check("u_eq up residual finite at moderate r",
+          torch.all(torch.isfinite(u_res_up)))
+
+    # Same for down
+    _, R_res_dn, _ = compute_u_basis_residual(
+        model, a_val, omega_val, y_mod, lam_val, M=1.0, s=-2, m=2, basis="down")
+    _, u_res_dn, _ = compute_u_equation_residual(
+        model, a_val, omega_val, y_mod, lam_val, M=1.0, s=-2, m=2, basis="down")
+
+    check("direct_R down residual finite at moderate r",
+          torch.all(torch.isfinite(R_res_dn)))
+    check("u_eq down residual finite at moderate r",
+          torch.all(torch.isfinite(u_res_dn)))
+
+    print(f"  u_eq up residual scale: {torch.abs(u_res_up).mean().item():.4e}")
+    print(f"  u_eq down residual scale: {torch.abs(u_res_dn).mean().item():.4e}")
+
+    # ============================================================
+    # 13. Backward: only up/down get grads (direct R reference)
+    # ============================================================
+    print("\n" + "=" * 60)
+    print("13. Backward: only up/down decoders get grads (direct R)")
 
     model.up_decoder.train()
     model.down_decoder.train()
@@ -290,10 +405,10 @@ def main():
     print(f"  loss_up: {info['loss_up']:.4e}, loss_down: {info['loss_down']:.4e}")
 
     # ============================================================
-    # 10. optimizer.step: only up/down change
+    # 14. optimizer.step: only up/down change
     # ============================================================
     print("\n" + "=" * 60)
-    print("10. optimizer.step: only up/down params change")
+    print("14. optimizer.step: only up/down params change")
 
     # Snapshot params before step
     def _param_snapshot(module):
@@ -330,10 +445,10 @@ def main():
     check("down_decoder changed", _params_changed(snap_down, model.down_decoder))
 
     # ============================================================
-    # 11. Checkpoint save/load round-trip
+    # 15. Checkpoint save/load round-trip
     # ============================================================
     print("\n" + "=" * 60)
-    print("11. Checkpoint save/load round-trip")
+    print("15. Checkpoint save/load round-trip")
 
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:

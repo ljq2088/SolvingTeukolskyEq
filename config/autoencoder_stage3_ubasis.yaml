@@ -28,6 +28,10 @@ stage3:
   train_up: true
   train_down: true
 
+  # u_equation: analytic extraction of A, no large-r blow-up
+  # direct_R_debug: construct R=A*u (unstable for up at large r)
+  residual_mode: u_equation
+
   optimizer:
     lr: 1.0e-4
     weight_decay: 0.0
@@ -48,8 +52,6 @@ stage3:
   loss:
     weight_up: 1.0
     weight_down: 1.0
-    normalize_residual: true
-    eps: 1.0e-12
 
   sampling:
     y_strategy: chebyshev
@@ -57,6 +59,7 @@ stage3:
     n_near_infinity: 32
     y_inf_min: -1.0
     y_inf_max: -0.95
+    y_eps: 1.0e-3
 
   output_root: outputs/autoencoder_stage3_ubasis_train
 

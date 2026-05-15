@@ -33,7 +33,10 @@ import yaml
 
 from config.config_loader import load_pinn_full_config
 from model.autoencoder_pinn import AutoencoderTeukolskyPINN
-from physical_ansatz.u_residual import compute_stage3_loss
+from physical_ansatz.u_residual import (
+    compute_stage3_loss_u_equation,
+    compute_stage3_loss,
+)
 
 
 def _get_dtype(dtype_name):
@@ -41,7 +44,7 @@ def _get_dtype(dtype_name):
 
 
 def _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max, device, dtype,
-                  y_eps=1e-6):
+                  y_eps=1e-3):
     """Chebyshev-Gauss-Lobatto grid + extra near-infinity points.
 
     Clips endpoints slightly away from ±1 to avoid singularities:
@@ -184,10 +187,11 @@ def main():
     n_near_inf = int(samp_cfg.get("n_near_infinity", 0))
     y_inf_min = float(samp_cfg.get("y_inf_min", -1.0))
     y_inf_max = float(samp_cfg.get("y_inf_max", -0.95))
+    y_eps = float(samp_cfg.get("y_eps", 1e-3))
     y_grid = _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max,
-                            device, dtype)  # (N,)
+                            device, dtype, y_eps=y_eps)  # (N,)
     n_y = len(y_grid)
-    print(f"[stage3] y-grid: {n_y} points ({n_interior} Cheb + {n_near_inf} near-inf)")
+    print(f"[stage3] y-grid: {n_y} points ({n_interior} Cheb + {n_near_inf} near-inf), y_eps={y_eps}")
 
     # ---- Optimizer ----
     lr = args.lr if args.lr is not None else float(opt_cfg.get("lr", 1e-4))
@@ -214,10 +218,19 @@ def main():
     ckpt_dir.mkdir(exist_ok=True)
 
     # ---- Training ----
+    residual_mode = str(stage3_cfg.get("residual_mode", "u_equation"))
     weight_up = float(loss_cfg.get("weight_up", 1.0))
     weight_down = float(loss_cfg.get("weight_down", 1.0))
     normalize_res = bool(loss_cfg.get("normalize_residual", False))
     eps = float(loss_cfg.get("eps", 1e-12))
+
+    if residual_mode == "u_equation":
+        loss_fn = compute_stage3_loss_u_equation
+        loss_kwargs = dict(weight_up=weight_up, weight_down=weight_down)
+    else:
+        loss_fn = compute_stage3_loss
+        loss_kwargs = dict(weight_up=weight_up, weight_down=weight_down,
+                           normalize_residual=normalize_res, eps=eps)
 
     best_val = float("inf")
     best_epoch = 0
@@ -228,6 +241,7 @@ def main():
     model.down_decoder.train()
 
     print(f"\n[stage3] Training: {epochs_max} epochs, batch_size={batch_size}, lr={lr}")
+    print(f"         residual_mode: {residual_mode}, y_eps={y_eps}")
     print(f"         run_dir: {run_dir}")
     print(f"{'='*60}")
 
@@ -239,11 +253,9 @@ def main():
         y_b = y_grid.unsqueeze(0).expand(B_actual, -1)  # (B, N_y)
 
         # Compute loss
-        total_loss, info = compute_stage3_loss(
+        total_loss, info = loss_fn(
             model, a_b, omega_b, y_b, lam_b, u_b, v_b,
-            M=M, s=s, m=m,
-            weight_up=weight_up, weight_down=weight_down,
-            normalize_residual=normalize_res, eps=eps,
+            M=M, s=s, m=m, **loss_kwargs,
         )
 
         optimizer.zero_grad()
@@ -258,11 +270,9 @@ def main():
                 pool, batch_size, device, dtype, cdtype)
             Bv = a_v.shape[0]
             y_v = y_grid.unsqueeze(0).expand(Bv, -1)
-            val_loss, val_info = compute_stage3_loss(
+            val_loss, val_info = loss_fn(
                 model, a_v, omega_v, y_v, lam_v, u_v, v_v,
-                M=M, s=s, m=m,
-                weight_up=weight_up, weight_down=weight_down,
-                normalize_residual=normalize_res, eps=eps,
+                M=M, s=s, m=m, **loss_kwargs,
             )
 
             history.append({
