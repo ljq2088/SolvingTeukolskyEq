@@ -79,6 +79,15 @@ def _load_artifact(artifact_dir):
     }
 
 
+def _grad_norm(module):
+    """Total L2 gradient norm over all parameters of a module."""
+    sq = 0.0
+    for p in module.parameters():
+        if p.grad is not None:
+            sq += p.grad.detach().norm().item() ** 2
+    return sq ** 0.5
+
+
 def _sample_batch(pool, batch_size, device, dtype, cdtype):
     """Sample random batch from parameter pool."""
     n = len(pool["a"])
@@ -111,7 +120,7 @@ def main():
     dtype = _get_dtype(dtype_name)
     cdtype = torch.complex128 if dtype == torch.float64 else torch.complex64
 
-    stage3_cfg = full_cfg.get("stage3", {})
+    stage3_cfg = full_cfg.get("train", {}).get("stage3", full_cfg.get("stage3", {}))
     loss_cfg = stage3_cfg.get("loss", {})
     opt_cfg = stage3_cfg.get("optimizer", {})
     sched_cfg = stage3_cfg.get("scheduler", {})
@@ -122,6 +131,7 @@ def main():
     val_every = int(stage3_cfg.get("val_every_epochs", 50))
     output_root = stage3_cfg.get("output_root", "outputs/autoencoder_stage3_ubasis_train")
     save_every = int(stage3_cfg.get("save_every_epochs", 500))
+    grad_clip = float(stage3_cfg.get("grad_clip", 1.0))
     artifact_dir = stage3_cfg.get("artifact_dir",
                                     "outputs/stage1_artifacts/patch_000_logw_v2")
 
@@ -172,7 +182,7 @@ def main():
     n_up = sum(p.numel() for p in model.up_decoder.parameters())
     n_down = sum(p.numel() for p in model.down_decoder.parameters())
     print(f"[stage3] Model loaded from {ckpt_path}")
-    print(f"         Stage-2 epoch: {ckpt_epoch}")
+    print(f"         Source: {'Stage-3 continuation' if ckpt.get('history') else 'Stage-2 init'}, epoch: {ckpt_epoch}")
     print(f"         Params: {n_trainable}/{n_total} trainable")
     print(f"         up_decoder: {n_up}, down_decoder: {n_down}")
 
@@ -241,7 +251,7 @@ def main():
     model.down_decoder.train()
 
     print(f"\n[stage3] Training: {epochs_max} epochs, batch_size={batch_size}, lr={lr}")
-    print(f"         residual_mode: {residual_mode}, y_eps={y_eps}")
+    print(f"         residual_mode: {residual_mode}, y_eps={y_eps}, grad_clip={grad_clip}")
     print(f"         run_dir: {run_dir}")
     print(f"{'='*60}")
 
@@ -260,9 +270,33 @@ def main():
 
         optimizer.zero_grad()
         total_loss.backward()
+
+        # ---- Gradient norms before clipping ----
+        gn_up = _grad_norm(model.up_decoder)
+        gn_down = _grad_norm(model.down_decoder)
+        gn_total = (gn_up ** 2 + gn_down ** 2) ** 0.5
+
+        # ---- Gradient clipping ----
+        torch.nn.utils.clip_grad_norm_(opt_params, grad_clip)
+
         optimizer.step()
 
         train_loss = total_loss.detach().item()
+
+        # ---- NaN/Inf detection on loss components ----
+        if not (np.isfinite(train_loss) and np.isfinite(info.get("loss_up", 0))
+                and np.isfinite(info.get("loss_down", 0))):
+            print(f"[stage3] NaN/Inf at epoch {epoch+1}: "
+                  f"train={train_loss}, up={info.get('loss_up')}, down={info.get('loss_down')}")
+            # Save debug checkpoint
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "error": "NaN/Inf detected",
+                "info": info,
+            }, ckpt_dir / "nan_debug.pt")
+            break
 
         # ---- Validation (on same grid, different param samples) ----
         if epoch == 0 or (epoch + 1) % val_every == 0:
@@ -282,6 +316,11 @@ def main():
                 "val_loss_up": val_info["loss_up"],
                 "val_loss_down": val_info["loss_down"],
                 "lr": optimizer.param_groups[0]["lr"],
+                "grad_norm_up": float(gn_up),
+                "grad_norm_down": float(gn_down),
+                "grad_norm_total": float(gn_total),
+                "y_eps": y_eps,
+                "residual_mode": residual_mode,
             })
 
             val_float = history[-1]["val_loss"]
@@ -295,7 +334,8 @@ def main():
             if args.verbose or (epoch + 1) % val_every == 0:
                 print(f"  epoch {epoch+1:5d}/{epochs_max} | "
                       f"train={train_loss:.6e} val={val_float:.6e} | "
-                      f"up={val_info['loss_up']:.4e} down={val_info['loss_down']:.4e}{status}")
+                      f"up={val_info['loss_up']:.4e} down={val_info['loss_down']:.4e} | "
+                      f"gn_up={gn_up:.1f} gn_down={gn_down:.1f}{status}")
 
             if scheduler is not None:
                 scheduler.step(val_float)
@@ -327,11 +367,6 @@ def main():
             }
             torch.save(ckpt_data, ckpt_dir / "best_model.pt")
 
-        # Check NaN
-        if not np.isfinite(train_loss):
-            print(f"[stage3] NaN loss at epoch {epoch+1}, stopping")
-            break
-
     # ---- Summary ----
     final_val = history[-1]["val_loss"] if history else float("nan")
     print(f"\n{'='*60}")
@@ -354,6 +389,9 @@ def main():
         "best_epoch": int(best_epoch),
         "best_val_loss": float(best_val),
         "final_val_loss": float(final_val),
+        "y_eps": y_eps,
+        "residual_mode": residual_mode,
+        "grad_clip": grad_clip,
         "history": history,
     }
     with open(run_dir / "summary.json", "w") as f:
