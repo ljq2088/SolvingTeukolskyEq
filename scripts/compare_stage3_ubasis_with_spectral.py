@@ -62,9 +62,22 @@ def main():
     parser.add_argument("--stage3-checkpoint", type=str, required=True)
     parser.add_argument("--config", type=str, default="config/autoencoder_stage3_ubasis_refine.yaml")
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--a", type=float, default=0.1)
-    parser.add_argument("--omega", type=float, default=10.0)
-    parser.add_argument("--lam", type=float, default=-2.45630962430791)
+
+    # Point specification: either via JSON or direct parameters
+    parser.add_argument("--point-json", type=str, default=None,
+                        help="Path to calibration points JSON (e.g. patch0_calibration_points.json)")
+    parser.add_argument("--point-label", type=str, default=None,
+                        help="Label of point to use from point-json (e.g. center, low_omega)")
+    parser.add_argument("--a", type=float, default=None)
+    parser.add_argument("--omega", type=float, default=None)
+    parser.add_argument("--u", type=float, default=None)
+    parser.add_argument("--v", type=float, default=None)
+    parser.add_argument("--lam", type=float, default=None)
+
+    # Spectral profile (pre-computed basis, skips spectral solve)
+    parser.add_argument("--spectral-profile", type=str, default=None,
+                        help="Path to pre-computed basis profile .npz")
+
     parser.add_argument("--M", type=float, default=1.0)
     parser.add_argument("--s", type=int, default=-2)
     parser.add_argument("--ell", type=int, default=2)
@@ -78,6 +91,35 @@ def main():
     parser.add_argument("--output-dir", type=str, default="outputs/stage3_spectral_compare/patch_000_logw_v2")
     parser.add_argument("--no-plots", action="store_true", default=False)
     args = parser.parse_args()
+
+    # ---- Resolve point parameters ----
+    if args.point_json is not None:
+        with open(args.point_json) as f:
+            calib_points = json.load(f)
+        if args.point_label is None:
+            raise ValueError("--point-label required when --point-json given")
+        pt = next((p for p in calib_points if p["label"] == args.point_label), None)
+        if pt is None:
+            raise ValueError(f"Label '{args.point_label}' not found in {args.point_json}. "
+                             f"Available: {[p['label'] for p in calib_points]}")
+        args.a = pt["a"]
+        args.omega = pt["omega"]
+        args.u = pt.get("u", None)
+        args.v = pt.get("v", None)
+        args.lam = pt.get("lambda_real", pt.get("lam", None))
+        print(f"[compare] Loaded point '{args.point_label}' from {args.point_json}")
+    else:
+        if args.a is None or args.omega is None:
+            parser.error("Either --point-json/--point-label or --a/--omega required")
+        if args.lam is None:
+            parser.error("--lam required when using --a/--omega directly")
+
+    if args.u is None or args.v is None:
+        print("[compare] WARNING: u/v not provided — decoder will run without local chart features")
+
+    print(f"[compare] Point: a={args.a:.6f}, omega={args.omega:.6e}, lam={args.lam}")
+    if args.u is not None:
+        print(f"         u={args.u:.6f}, v={args.v:.6f}")
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
@@ -109,18 +151,30 @@ def main():
     model.eval()
     print(f"[compare] Stage-3 checkpoint: epoch={ckpt.get('epoch', '?')}")
 
-    # ---- Run spectral method ----
-    print(f"[compare] Running spectral: a={args.a}, omega={args.omega}, lam={args.lam}")
-    print(f"         z1={args.z1}, z2={args.z2}, N_left={args.N_left}")
-    spectral = run_spectral(
-        a=args.a, omega=args.omega, lam=args.lam,
-        z1=args.z1, z2=args.z2,
-        N_left=args.N_left, N_mid=args.N_mid, N_right=args.N_right,
-        M=args.M, s=args.s, ell=args.ell, m=args.m,
-    )
-    print(f"[compare] Spectral bases computed: "
-          f"down z∈[{spectral['sol_down']['z'][0]:.4f},{spectral['sol_down']['z'][-1]:.4f}], "
-          f"up z∈[{spectral['sol_up']['z'][0]:.4f},{spectral['sol_up']['z'][-1]:.4f}]")
+    # ---- Run or load spectral method ----
+    if args.spectral_profile is not None:
+        prof = np.load(args.spectral_profile)
+        print(f"[compare] Loaded spectral profile from {args.spectral_profile}")
+        # Build minimal spectral dict from npz
+        spectral = {
+            "sol_down": {"z": prof["z"], "u": prof["u_down"]},
+            "sol_up":   {"z": prof["z"], "u": prof["u_up"]},
+            "sol_in":   {"z": np.array([]), "u": np.array([])},
+            "z1": float(prof["z"][-1]),  # last z in profile
+            "z2": 1.0,
+        }
+    else:
+        print(f"[compare] Running spectral: a={args.a}, omega={args.omega}, lam={args.lam}")
+        print(f"         z1={args.z1}, z2={args.z2}, N_left={args.N_left}")
+        spectral = run_spectral(
+            a=args.a, omega=args.omega, lam=args.lam,
+            z1=args.z1, z2=args.z2,
+            N_left=args.N_left, N_mid=args.N_mid, N_right=args.N_right,
+            M=args.M, s=args.s, ell=args.ell, m=args.m,
+        )
+        print(f"[compare] Spectral bases computed: "
+              f"down z∈[{spectral['sol_down']['z'][0]:.4f},{spectral['sol_down']['z'][-1]:.4f}], "
+              f"up z∈[{spectral['sol_up']['z'][0]:.4f},{spectral['sol_up']['z'][-1]:.4f}]")
 
     # ---- z <-> y mapping ----
     # z = r_plus / r = x,  y = 2*x - 1 = 2*z - 1
@@ -138,6 +192,8 @@ def main():
     omega_t = torch.tensor([[args.omega]], device=device, dtype=dtype)
     lam_complex = complex(args.lam, 0) if isinstance(args.lam, (int, float)) else args.lam
     lam_t = torch.tensor([lam_complex], device=device, dtype=cdtype)
+    u_t = torch.tensor([[args.u]], device=device, dtype=dtype) if args.u is not None else None
+    v_t = torch.tensor([[args.v]], device=device, dtype=dtype) if args.v is not None else None
 
     # Build a combined y grid for evaluation: left patch dense + right patch
     z_left = spectral["sol_down"]["z"]
@@ -147,31 +203,39 @@ def main():
 
     # Stage-3 decoder evaluation
     y_left_t = torch.tensor(y_left, device=device, dtype=dtype).unsqueeze(0)
-    y_right_t = torch.tensor(y_right, device=device, dtype=dtype).unsqueeze(0)
+    has_right = len(z_right) > 0
+    if has_right:
+        y_right_t = torch.tensor(y_right, device=device, dtype=dtype).unsqueeze(0)
 
     with torch.no_grad():
-        f_up_left = model.predict_u_up(a_t, omega_t, y_left_t)
-        f_down_left = model.predict_u_down(a_t, omega_t, y_left_t)
-        f_up_right = model.predict_u_up(a_t, omega_t, y_right_t)
-        f_down_right = model.predict_u_down(a_t, omega_t, y_right_t)
+        f_up_left = model.predict_u_up(a_t, omega_t, y_left_t, u_t, v_t)
+        f_down_left = model.predict_u_down(a_t, omega_t, y_left_t, u_t, v_t)
+        if has_right:
+            f_up_right = model.predict_u_up(a_t, omega_t, y_right_t, u_t, v_t)
+            f_down_right = model.predict_u_down(a_t, omega_t, y_right_t, u_t, v_t)
+        else:
+            f_up_right = f_down_right = None
 
     c_up, c_down = infinity_slopes_y(a_t, omega_t, lam_t, m=args.m, M=args.M)
     u_up_left = compose_u_from_f(f_up_left, y_left_t, c_up)
     u_down_left = compose_u_from_f(f_down_left, y_left_t, c_down)
-    u_up_right = compose_u_from_f(f_up_right, y_right_t, c_up)
-    u_down_right = compose_u_from_f(f_down_right, y_right_t, c_down)
+    if has_right:
+        u_up_right = compose_u_from_f(f_up_right, y_right_t, c_up)
+        u_down_right = compose_u_from_f(f_down_right, y_right_t, c_down)
+    else:
+        u_up_right = u_down_right = None
 
     # Convert to numpy
     u_up_left_np = u_up_left.detach().cpu().numpy().ravel()
     u_down_left_np = u_down_left.detach().cpu().numpy().ravel()
-    u_up_right_np = u_up_right.detach().cpu().numpy().ravel()
-    u_down_right_np = u_down_right.detach().cpu().numpy().ravel()
+    u_up_right_np = u_up_right.detach().cpu().numpy().ravel() if has_right else np.array([])
+    u_down_right_np = u_down_right.detach().cpu().numpy().ravel() if has_right else np.array([])
 
     # ---- Exact boundary check at y=-1 ----
     y0 = torch.tensor([[-1.0]], device=device, dtype=dtype, requires_grad=True)
     with torch.no_grad():
-        f_up_0 = model.predict_u_up(a_t, omega_t, y0)
-        f_down_0 = model.predict_u_down(a_t, omega_t, y0)
+        f_up_0 = model.predict_u_up(a_t, omega_t, y0, u_t, v_t)
+        f_down_0 = model.predict_u_down(a_t, omega_t, y0, u_t, v_t)
     u_up_0 = compose_u_from_f(f_up_0, y0, c_up)
     u_down_0 = compose_u_from_f(f_down_0, y0, c_down)
     u_up_at_inf = u_up_0[0, 0].detach().item()
@@ -183,8 +247,8 @@ def main():
     y_dense_left = np.linspace(y_left[0], y_left[-1], args.n_y_diag)
     y_dense_t = torch.tensor(y_dense_left, device=device, dtype=dtype).unsqueeze(0)
     with torch.no_grad():
-        f_up_dense = model.predict_u_up(a_t, omega_t, y_dense_t)
-        f_down_dense = model.predict_u_down(a_t, omega_t, y_dense_t)
+        f_up_dense = model.predict_u_up(a_t, omega_t, y_dense_t, u_t, v_t)
+        f_down_dense = model.predict_u_down(a_t, omega_t, y_dense_t, u_t, v_t)
     u_up_dense = compose_u_from_f(f_up_dense, y_dense_t, c_up).detach().cpu().numpy().ravel()
     u_down_dense = compose_u_from_f(f_down_dense, y_dense_t, c_down).detach().cpu().numpy().ravel()
 
@@ -217,8 +281,8 @@ def main():
     }
     # Boundary derivative: analytic pass + autograd verify
     y0_g = y0.clone().detach().requires_grad_(True)
-    f_up_g0 = model.predict_u_up(a_t, omega_t, y0_g)
-    f_down_g0 = model.predict_u_down(a_t, omega_t, y0_g)
+    f_up_g0 = model.predict_u_up(a_t, omega_t, y0_g, u_t, v_t)
+    f_down_g0 = model.predict_u_down(a_t, omega_t, y0_g, u_t, v_t)
     u_up_g0 = compose_u_from_f(f_up_g0, y0_g, c_up)
     u_down_g0 = compose_u_from_f(f_down_g0, y0_g, c_down)
     uy_up_real = torch.autograd.grad(u_up_g0.real.sum(), y0_g, create_graph=False, retain_graph=True)[0]
