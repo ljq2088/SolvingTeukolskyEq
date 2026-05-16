@@ -171,9 +171,16 @@ def main():
         use_residual=bool(model_cfg.get("use_residual", True)),
         amp_hidden_dim=int(model_cfg.get("amp_hidden_dim", 128)),
         amp_n_blocks=int(model_cfg.get("amp_n_blocks", 3)),
+        decoder_hidden_dim=int(model_cfg.get("decoder_hidden_dim", 128)),
+        decoder_n_hidden=int(model_cfg.get("decoder_n_hidden", 0)),
         **model_cfg.get("encoder_kwargs", {}),
     )
-    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    # Strip decoder keys — decoders are trained from scratch in Stage-3
+    state_dict = {k: v for k, v in ckpt["model_state_dict"].items()
+                  if not any(k.startswith(p) for p in ["up_decoder.", "down_decoder.", "rin_decoder."])}
+    missing, unexpected = model.load_state_dict(state_dict, strict=False)
+    if missing:
+        print(f"[train] New decoder params (fresh init): {len(missing)} keys")
     model.to(device=device, dtype=dtype)
 
     # ---- Stage-3 freeze: only up_decoder / down_decoder trainable ----

@@ -144,9 +144,13 @@ def main():
         use_residual=bool(model_cfg.get("use_residual", True)),
         amp_hidden_dim=int(model_cfg.get("amp_hidden_dim", 128)),
         amp_n_blocks=int(model_cfg.get("amp_n_blocks", 3)),
+        decoder_hidden_dim=int(model_cfg.get("decoder_hidden_dim", 128)),
+        decoder_n_hidden=int(model_cfg.get("decoder_n_hidden", 0)),
         **model_cfg.get("encoder_kwargs", {}),
     )
-    model.load_state_dict(ckpt["model_state_dict"], strict=False)
+    state_dict = {k: v for k, v in ckpt["model_state_dict"].items()
+                  if not any(k.startswith(p) for p in ["up_decoder.", "down_decoder.", "rin_decoder."])}
+    model.load_state_dict(state_dict, strict=False)
     model.to(device=device, dtype=dtype)
     model.eval()
     print(f"[compare] Stage-3 checkpoint: epoch={ckpt.get('epoch', '?')}")

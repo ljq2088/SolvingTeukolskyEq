@@ -380,14 +380,35 @@ class TaylorComplexDecoder(nn.Module):
     Four-head Taylor expansion decoder:
         f = f_base + alpha*f_a + xi*f_omega + rho2*f_nl
     where each head outputs (real, imag) -> complex.
+
+    Optionally includes a shared hidden trunk before the heads for
+    increased expressivity.
+
+    Args:
+        fusion_dim: input latent dimension from encoder
+        hidden_dim: width of hidden layers (default 128)
+        n_hidden: number of hidden layers before heads (0 = original linear heads)
     """
 
-    def __init__(self, fusion_dim: int):
+    def __init__(self, fusion_dim: int, hidden_dim: int = 128, n_hidden: int = 0):
         super().__init__()
-        self.base_head = nn.Linear(fusion_dim, 2)
-        self.a_head = nn.Linear(fusion_dim, 2)
-        self.omega_head = nn.Linear(fusion_dim, 2)
-        self.nl_head = nn.Linear(fusion_dim, 2)
+        self.n_hidden = n_hidden
+        if n_hidden > 0:
+            layers = []
+            in_dim = fusion_dim
+            for i in range(n_hidden):
+                layers.append(nn.Linear(in_dim, hidden_dim))
+                layers.append(nn.SiLU())
+                in_dim = hidden_dim
+            self.trunk = nn.Sequential(*layers)
+            head_in = hidden_dim
+        else:
+            self.trunk = nn.Identity()
+            head_in = fusion_dim
+        self.base_head = nn.Linear(head_in, 2)
+        self.a_head = nn.Linear(head_in, 2)
+        self.omega_head = nn.Linear(head_in, 2)
+        self.nl_head = nn.Linear(head_in, 2)
         self._init_weights()
 
     def _init_weights(self):
@@ -395,8 +416,10 @@ class TaylorComplexDecoder(nn.Module):
             if isinstance(module, nn.Linear):
                 if module is self.base_head:
                     nn.init.xavier_normal_(module.weight, gain=0.05)
-                else:
+                elif any(module is h for h in [self.a_head, self.omega_head, self.nl_head]):
                     nn.init.zeros_(module.weight)
+                else:
+                    nn.init.xavier_normal_(module.weight, gain=1.0)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
@@ -410,6 +433,7 @@ class TaylorComplexDecoder(nn.Module):
         Returns:
             f_complex: (B*N,) complex
         """
+        h = self.trunk(h)
         out = (self.base_head(h)
                + alpha * self.a_head(h)
                + xi * self.omega_head(h)
@@ -457,6 +481,8 @@ class AutoencoderTeukolskyPINN(nn.Module):
         m_mode: int = 2,
         amp_hidden_dim: int = 128,
         amp_n_blocks: int = 3,
+        decoder_hidden_dim: int = 128,
+        decoder_n_hidden: int = 0,
     ):
         super().__init__()
         if hidden_dims is None:
@@ -477,9 +503,9 @@ class AutoencoderTeukolskyPINN(nn.Module):
             M=M, m_mode=m_mode,
         )
         self.encoder = SharedPINNEncoder(**encoder_kwargs)
-        self.rin_decoder = TaylorComplexDecoder(self.encoder.fusion_dim)
-        self.up_decoder = TaylorComplexDecoder(self.encoder.fusion_dim)
-        self.down_decoder = TaylorComplexDecoder(self.encoder.fusion_dim)
+        self.rin_decoder = TaylorComplexDecoder(self.encoder.fusion_dim, decoder_hidden_dim, decoder_n_hidden)
+        self.up_decoder = TaylorComplexDecoder(self.encoder.fusion_dim, decoder_hidden_dim, decoder_n_hidden)
+        self.down_decoder = TaylorComplexDecoder(self.encoder.fusion_dim, decoder_hidden_dim, decoder_n_hidden)
         self.amplitude_net = AmplitudeNet(
             param_in_dim=self.encoder.param_in_dim,
             hidden_dim=amp_hidden_dim,

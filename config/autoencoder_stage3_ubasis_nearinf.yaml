@@ -22,6 +22,8 @@ model:
   use_residual: true
   amp_hidden_dim: 128
   amp_n_blocks: 3
+  decoder_hidden_dim: 128
+  decoder_n_hidden: 2
   encoder_kwargs: {}
 
 stage3:
