@@ -176,25 +176,32 @@ def compute_u_equation_residual(model, a, omega, y, lambda_, u=None, v=None,
 
 def compute_stage3_loss_u_equation(model, a, omega, y, lambda_, u=None, v=None,
                                    M=1.0, s=-2, m=2,
-                                   weight_up=1.0, weight_down=1.0):
+                                   weight_up=1.0, weight_down=1.0,
+                                   train_up=True, train_down=True):
     """Compute Stage-3 loss using u-equation residual.
 
     Returns:
         total_loss: scalar
         info: dict with loss_up, loss_down, etc.
     """
-    _, res_up, pw_up = compute_u_equation_residual(
-        model, a, omega, y, lambda_, u, v, M, s, m, basis="up")
-    _, res_down, pw_down = compute_u_equation_residual(
-        model, a, omega, y, lambda_, u, v, M, s, m, basis="down")
+    loss_up_val = torch.tensor(0.0, device=y.device, dtype=y.dtype)
+    loss_down_val = torch.tensor(0.0, device=y.device, dtype=y.dtype)
 
-    loss_up = torch.mean(pw_up)
-    loss_down = torch.mean(pw_down)
-    total_loss = weight_up * loss_up + weight_down * loss_down
+    if train_up:
+        _, res_up, pw_up = compute_u_equation_residual(
+            model, a, omega, y, lambda_, u, v, M, s, m, basis="up")
+        loss_up_val = torch.mean(pw_up)
+
+    if train_down:
+        _, res_down, pw_down = compute_u_equation_residual(
+            model, a, omega, y, lambda_, u, v, M, s, m, basis="down")
+        loss_down_val = torch.mean(pw_down)
+
+    total_loss = weight_up * loss_up_val + weight_down * loss_down_val
 
     info = {
-        "loss_up": float(loss_up.detach().cpu().item()),
-        "loss_down": float(loss_down.detach().cpu().item()),
+        "loss_up": float(loss_up_val.detach().cpu().item()),
+        "loss_down": float(loss_down_val.detach().cpu().item()),
         "total_loss": float(total_loss.detach().cpu().item()),
     }
     return total_loss, info
@@ -273,29 +280,36 @@ def compute_u_basis_residual(model, a, omega, y, lambda_, u=None, v=None,
 def compute_stage3_loss(model, a, omega, y, lambda_, u=None, v=None,
                          M=1.0, s=-2, m=2,
                          weight_up=1.0, weight_down=1.0,
-                         normalize_residual=False, eps=1e-12):
+                         normalize_residual=False, eps=1e-12,
+                         train_up=True, train_down=True):
     """[DEBUG] Compute Stage-3 loss via direct R residual.
 
     Use compute_stage3_loss_u_equation for training.
     """
-    R_up, res_up, pw_up = compute_u_basis_residual(
-        model, a, omega, y, lambda_, u, v, M, s, m, basis="up")
-    R_down, res_down, pw_down = compute_u_basis_residual(
-        model, a, omega, y, lambda_, u, v, M, s, m, basis="down")
+    loss_up_val = torch.tensor(0.0, device=y.device, dtype=y.dtype)
+    loss_down_val = torch.tensor(0.0, device=y.device, dtype=y.dtype)
 
-    if normalize_residual:
-        scale_up = torch.abs(R_up.detach()) ** 2 + eps
-        scale_down = torch.abs(R_down.detach()) ** 2 + eps
-        pw_up = pw_up / scale_up
-        pw_down = pw_down / scale_down
+    if train_up:
+        R_up, res_up, pw_up = compute_u_basis_residual(
+            model, a, omega, y, lambda_, u, v, M, s, m, basis="up")
+        if normalize_residual:
+            scale_up = torch.abs(R_up.detach()) ** 2 + eps
+            pw_up = pw_up / scale_up
+        loss_up_val = torch.mean(pw_up)
 
-    loss_up = torch.mean(pw_up)
-    loss_down = torch.mean(pw_down)
-    total_loss = weight_up * loss_up + weight_down * loss_down
+    if train_down:
+        R_down, res_down, pw_down = compute_u_basis_residual(
+            model, a, omega, y, lambda_, u, v, M, s, m, basis="down")
+        if normalize_residual:
+            scale_down = torch.abs(R_down.detach()) ** 2 + eps
+            pw_down = pw_down / scale_down
+        loss_down_val = torch.mean(pw_down)
+
+    total_loss = weight_up * loss_up_val + weight_down * loss_down_val
 
     info = {
-        "loss_up": float(loss_up.detach().cpu().item()),
-        "loss_down": float(loss_down.detach().cpu().item()),
+        "loss_up": float(loss_up_val.detach().cpu().item()),
+        "loss_down": float(loss_down_val.detach().cpu().item()),
         "total_loss": float(total_loss.detach().cpu().item()),
     }
     return total_loss, info

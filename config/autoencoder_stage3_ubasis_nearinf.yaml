@@ -20,9 +20,9 @@ model:
   param_embed_dim: 64
   use_film: true
   use_residual: true
-  encoder_kwargs:
-    amp_hidden_dim: 128
-    amp_n_blocks: 3
+  amp_hidden_dim: 128
+  amp_n_blocks: 3
+  encoder_kwargs: {}
 
 stage3:
   checkpoint: null

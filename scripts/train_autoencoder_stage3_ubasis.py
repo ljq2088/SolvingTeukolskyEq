@@ -44,27 +44,31 @@ def _get_dtype(dtype_name):
 
 
 def _build_y_grid(n_interior, n_near_inf, y_inf_min, y_inf_max, device, dtype,
-                  y_eps=1e-3, y_min=-1.0, y_max=1.0, y_strategy="chebyshev"):
+                  y_eps=1e-3, y_min=-1.0, y_max=1.0, y_strategy="full_domain"):
     """Build y-grid for PDE collocation.
 
     y_strategy:
-        "chebyshev":       full-domain Chebyshev-Gauss-Lobatto grid, clipped to [y_min+y_eps, y_max-y_eps]
-        "near_infinity_only": train only in [y_min, y_max], typically [-1, 0]
+        "full_domain":        full Chebyshev grid mapped to [-1+y_eps, 1-y_eps]
+        "near_infinity_only": Chebyshev grid mapped to [y_min+y_eps, y_max]
     """
     if y_strategy == "near_infinity_only":
-        y_all = torch.linspace(y_min + y_eps, y_max - y_eps, n_interior,
-                               device=device, dtype=dtype)
+        k = torch.arange(n_interior, device=device, dtype=dtype)
+        y_base = -torch.cos(torch.pi * k / (n_interior - 1))
+        y_base = (y_base + 1.0) / 2.0 * (y_max - y_min - 2 * y_eps) + y_min + y_eps
+        y_base = y_base.clamp(y_min + y_eps, y_max - y_eps)
     else:
         k = torch.arange(n_interior, device=device, dtype=dtype)
-        y_cheb = -torch.cos(torch.pi * k / (n_interior - 1))
-        y_cheb = y_cheb.clamp(-1.0 + y_eps, 1.0 - y_eps)
-        y_all = y_cheb
+        y_base = -torch.cos(torch.pi * k / (n_interior - 1))
+        y_base = y_base.clamp(-1.0 + y_eps, 1.0 - y_eps)
 
     if n_near_inf > 0:
         y_extra = torch.linspace(y_inf_min, y_inf_max, n_near_inf,
                                   device=device, dtype=dtype)
         y_extra = y_extra.clamp(-1.0 + y_eps, 1.0 - y_eps)
-        y_all = torch.cat([y_all, y_extra])
+        y_all = torch.cat([y_base, y_extra])
+        y_all = torch.unique(y_all)
+    else:
+        y_all = y_base
 
     return y_all  # (N_total,)
 
@@ -172,13 +176,20 @@ def main():
     model.load_state_dict(ckpt["model_state_dict"], strict=False)
     model.to(device=device, dtype=dtype)
 
-    # ---- Stage-3 freeze: only up_decoder + down_decoder trainable ----
+    # ---- Stage-3 freeze: only up_decoder / down_decoder trainable ----
+    train_up = bool(stage3_cfg.get("train_up", True))
+    train_down = bool(stage3_cfg.get("train_down", True))
+    if not train_up and not train_down:
+        raise ValueError("At least one of train_up or train_down must be True")
+
     for _, p in model.named_parameters():
         p.requires_grad = False
-    for _, p in model.up_decoder.named_parameters():
-        p.requires_grad = True
-    for _, p in model.down_decoder.named_parameters():
-        p.requires_grad = True
+    if train_up:
+        for _, p in model.up_decoder.named_parameters():
+            p.requires_grad = True
+    if train_down:
+        for _, p in model.down_decoder.named_parameters():
+            p.requires_grad = True
 
     n_total = sum(p.numel() for p in model.parameters())
     n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -187,7 +198,7 @@ def main():
     print(f"[stage3] Model loaded from {ckpt_path}")
     print(f"         Source: {'Stage-3 continuation' if ckpt.get('history') else 'Stage-2 init'}, epoch: {ckpt_epoch}")
     print(f"         Params: {n_trainable}/{n_total} trainable")
-    print(f"         up_decoder: {n_up}, down_decoder: {n_down}")
+    print(f"         train_up: {train_up} (up_decoder: {n_up}), train_down: {train_down} (down_decoder: {n_down})")
 
     # ---- Load parameter pool ----
     pool = _load_artifact(artifact_dir)
@@ -208,13 +219,20 @@ def main():
                             device, dtype, y_eps=y_eps,
                             y_min=y_grid_min, y_max=y_grid_max,
                             y_strategy=y_strategy)  # (N,)
-    n_y = len(y_grid)
-    print(f"[stage3] y-grid: {n_y} points ({n_interior} Cheb + {n_near_inf} near-inf), y_eps={y_eps}")
+    print(f"[stage3] y-strategy: {y_strategy}, base y-range: [{y_grid_min+y_eps:.4f}, {y_grid_max:.4f}]")
+    if n_near_inf > 0:
+        print(f"         near-inf y-range: [{y_inf_min:.4f}, {y_inf_max:.4f}], n_extra={n_near_inf}")
+    print(f"         final y min/max: [{y_grid.min().item():.6f}, {y_grid.max().item():.6f}]")
+    print(f"         total points: {len(y_grid)} ({n_interior} Cheb + {n_near_inf} near-inf), y_eps={y_eps}")
 
     # ---- Optimizer ----
     lr = args.lr if args.lr is not None else float(opt_cfg.get("lr", 1e-4))
     wd = float(opt_cfg.get("weight_decay", 0.0))
-    opt_params = list(model.up_decoder.parameters()) + list(model.down_decoder.parameters())
+    opt_params = []
+    if train_up:
+        opt_params.extend(list(model.up_decoder.parameters()))
+    if train_down:
+        opt_params.extend(list(model.down_decoder.parameters()))
     optimizer = torch.optim.Adam(opt_params, lr=lr, weight_decay=wd)
 
     # ---- Scheduler ----
@@ -244,19 +262,23 @@ def main():
 
     if residual_mode == "u_equation":
         loss_fn = compute_stage3_loss_u_equation
-        loss_kwargs = dict(weight_up=weight_up, weight_down=weight_down)
+        loss_kwargs = dict(weight_up=weight_up, weight_down=weight_down,
+                           train_up=train_up, train_down=train_down)
     else:
         loss_fn = compute_stage3_loss
         loss_kwargs = dict(weight_up=weight_up, weight_down=weight_down,
-                           normalize_residual=normalize_res, eps=eps)
+                           normalize_residual=normalize_res, eps=eps,
+                           train_up=train_up, train_down=train_down)
 
     best_val = float("inf")
     best_epoch = 0
     history = []
 
-    model.eval()  # encoder/rin_decoder frozen, up/down in eval for BN but we need train mode
-    model.up_decoder.train()
-    model.down_decoder.train()
+    model.eval()
+    if train_up:
+        model.up_decoder.train()
+    if train_down:
+        model.down_decoder.train()
 
     print(f"\n[stage3] Training: {epochs_max} epochs, batch_size={batch_size}, lr={lr}")
     print(f"         residual_mode: {residual_mode}, y_eps={y_eps}, grad_clip={grad_clip}")
@@ -280,8 +302,8 @@ def main():
         total_loss.backward()
 
         # ---- Gradient norms before clipping ----
-        gn_up = _grad_norm(model.up_decoder)
-        gn_down = _grad_norm(model.down_decoder)
+        gn_up = _grad_norm(model.up_decoder) if train_up else 0.0
+        gn_down = _grad_norm(model.down_decoder) if train_down else 0.0
         gn_total = (gn_up ** 2 + gn_down ** 2) ** 0.5
 
         # ---- Gradient clipping ----
