@@ -103,6 +103,41 @@ def compute_q_terms(r, a, omega, basis, M=1.0):
 # u-equation residual  (training default)
 # ============================================================
 
+def compute_u_equation_coefficients(a, omega, y, lambda_, M=1.0, s=-2, m=2, basis="up"):
+    """Compute C2, C1, C0 in y-space without model or autograd.
+
+    Returns C2, C1, C0 (all (B,N) complex) such that:
+        C2 * u_yy + C1 * u_y + C0 * u = 0
+    is equivalent to the Teukolsky ODE after R = A * u substitution.
+
+    For validation against spectral coeffs_numeric (z-space, z = (y+1)/2):
+        C2_y = 4 * B2_z,  C1_y = 2 * B1_z,  C0_y = B0_z
+    """
+    a2 = _ensure_2d(a, "a")
+    omega2 = _ensure_2d(omega, "omega")
+    lambda2 = _ensure_2d(lambda_, "lambda_")
+
+    rp = r_plus(a2, M)
+    x = (y + 1.0) / 2.0
+    r = rp / x
+
+    y1 = y + 1.0
+    y_r = -y1 ** 2 / (2.0 * rp)
+    y_rr = y1 ** 3 / (2.0 * rp ** 2)
+
+    Delta = delta(r, a2, M)
+    Delta_r_v = delta_r(r, M)
+    V = V_of_r(r, a2, omega2, m, s, lambda2, M)
+
+    q_r, q_rr = compute_q_terms(r, a2, omega2, basis, M)
+
+    C2 = Delta * (y_r ** 2)
+    C1 = Delta * y_rr + (2.0 * Delta * q_r + (s + 1.0) * Delta_r_v) * y_r
+    C0 = Delta * (q_rr + q_r ** 2) + (s + 1.0) * Delta_r_v * q_r + V
+
+    return C2, C1, C0
+
+
 def compute_u_equation_residual(model, a, omega, y, lambda_, u=None, v=None,
                                 M=1.0, s=-2, m=2, basis="up"):
     """Compute Teukolsky residual via the u-equation (no A_up/A_down blow-up).
@@ -205,6 +240,75 @@ def compute_stage3_loss_u_equation(model, a, omega, y, lambda_, u=None, v=None,
         "total_loss": float(total_loss.detach().cpu().item()),
     }
     return total_loss, info
+
+
+def compute_spectral_anchor_loss(model, anchor_targets, y_grid, device, dtype,
+                                  train_up=True, train_down=True):
+    """Compute MSE between model u_up/u_down and spectral reference.
+
+    Args:
+        model: AutoencoderTeukolskyPINN
+        anchor_targets: dict from torch.load('anchor_targets.pt')
+            Each entry has: a, omega, u, v, lambda, y, u_down, u_up
+        y_grid: training y-grid tensor (N,) — used for PDE loss; anchor
+                targets already have their own y values.
+        device, dtype: torch device and dtype
+        train_up, train_down: whether each decoder is trainable
+
+    Returns:
+        anchor_loss: scalar tensor
+        info: dict with anchor_loss_up, anchor_loss_down
+    """
+    from physical_ansatz.u_basis import infinity_slopes_y, compose_u_from_f
+
+    cdtype = torch.complex128 if dtype == torch.float64 else torch.complex64
+
+    loss_up_val = torch.tensor(0.0, device=device, dtype=torch.float64)
+    loss_down_val = torch.tensor(0.0, device=device, dtype=torch.float64)
+    n_anchors = 0
+
+    for label, tgt in anchor_targets.items():
+        a_val = float(tgt["a"])
+        omega_val = float(tgt["omega"])
+        lam_val = float(tgt["lambda"])
+        u_val = float(tgt["u"])
+        v_val = float(tgt["v"])
+        y_anchor = torch.tensor(tgt["y"], device=device, dtype=dtype).unsqueeze(0)  # (1, Ny)
+        u_down_ref = torch.tensor(tgt["u_down"], device=device, dtype=cdtype).unsqueeze(0)
+        u_up_ref = torch.tensor(tgt["u_up"], device=device, dtype=cdtype).unsqueeze(0)
+
+        a_t = torch.tensor([[a_val]], device=device, dtype=dtype)
+        omega_t = torch.tensor([[omega_val]], device=device, dtype=dtype)
+        lam_t = torch.tensor([[lam_val]], device=device, dtype=cdtype)
+        u_t = torch.tensor([[u_val]], device=device, dtype=dtype)
+        v_t = torch.tensor([[v_val]], device=device, dtype=dtype)
+
+        c_up, c_down = infinity_slopes_y(a_t, omega_t, lam_t, m=2, M=1.0)
+
+        if train_up:
+            f_up = model.predict_u_up(a_t, omega_t, y_anchor, u_t, v_t)
+            u_up_pred = compose_u_from_f(f_up, y_anchor, c_up)
+            loss_up_val = loss_up_val + torch.mean(torch.abs(u_up_pred - u_up_ref) ** 2)
+
+        if train_down:
+            f_down = model.predict_u_down(a_t, omega_t, y_anchor, u_t, v_t)
+            u_down_pred = compose_u_from_f(f_down, y_anchor, c_down)
+            loss_down_val = loss_down_val + torch.mean(torch.abs(u_down_pred - u_down_ref) ** 2)
+
+        n_anchors += 1
+
+    if n_anchors > 0:
+        loss_up_val = loss_up_val / n_anchors
+        loss_down_val = loss_down_val / n_anchors
+
+    anchor_loss = loss_up_val + loss_down_val
+    info = {
+        "anchor_loss_up": float(loss_up_val.detach().cpu().item()),
+        "anchor_loss_down": float(loss_down_val.detach().cpu().item()),
+        "anchor_loss": float(anchor_loss.detach().cpu().item()),
+        "n_anchors": n_anchors,
+    }
+    return anchor_loss, info
 
 
 # ============================================================

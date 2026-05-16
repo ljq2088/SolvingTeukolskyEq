@@ -115,7 +115,8 @@ def main():
             parser.error("--lam required when using --a/--omega directly")
 
     if args.u is None or args.v is None:
-        print("[compare] WARNING: u/v not provided — decoder will run without local chart features")
+        raise ValueError("--u and --v are required (must come from calibration point or CLI). "
+                         "Decoder needs local chart features. No silent fallback allowed.")
 
     print(f"[compare] Point: a={args.a:.6f}, omega={args.omega:.6e}, lam={args.lam}")
     if args.u is not None:
@@ -283,6 +284,35 @@ def main():
         "max_rel_err_down": float(np.max(rel_err_down)),
         "max_rel_err_up": float(np.max(rel_err_up)),
     }
+
+    # ---- Per-interval errors ----
+    intervals = {
+        "near_core":       (-0.999, -0.95),
+        "near_extended":   (-0.999, -0.5),
+        "train_nearinf":   (-0.999, -0.001),
+        "left_patch_full": (-0.999, 0.25),
+    }
+    print("\n[compare] Per-interval errors:")
+    print(f"  {'interval':18s}  {'med_rel_down':>14s}  {'max_rel_down':>14s}  {'med_rel_up':>14s}  {'max_rel_up':>14s}  {'med_abs_down':>14s}  {'med_abs_up':>14s}")
+    print(f"  {'-'*18}  {'-'*14}  {'-'*14}  {'-'*14}  {'-'*14}  {'-'*14}  {'-'*14}")
+    for int_name, (y_lo, y_hi) in intervals.items():
+        mask = (y_dense_left >= y_lo) & (y_dense_left <= y_hi)
+        if mask.sum() < 2:
+            print(f"  {int_name:18s}  (no points in range)")
+            continue
+        mr_d = float(np.median(rel_err_down[mask]))
+        Mr_d = float(np.max(rel_err_down[mask]))
+        mr_u = float(np.median(rel_err_up[mask]))
+        Mr_u = float(np.max(rel_err_up[mask]))
+        ma_d = float(np.median(abs_err_down[mask]))
+        ma_u = float(np.median(abs_err_up[mask]))
+        errors[f"{int_name}_med_rel_down"] = mr_d
+        errors[f"{int_name}_max_rel_down"] = Mr_d
+        errors[f"{int_name}_med_rel_up"] = mr_u
+        errors[f"{int_name}_max_rel_up"] = Mr_u
+        errors[f"{int_name}_med_abs_down"] = ma_d
+        errors[f"{int_name}_med_abs_up"] = ma_u
+        print(f"  {int_name:18s}  {mr_d:14.4e}  {Mr_d:14.4e}  {mr_u:14.4e}  {Mr_u:14.4e}  {ma_d:14.4e}  {ma_u:14.4e}")
     # Boundary derivative: analytic pass + autograd verify
     y0_g = y0.clone().detach().requires_grad_(True)
     f_up_g0 = model.predict_u_up(a_t, omega_t, y0_g, u_t, v_t)
