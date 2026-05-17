@@ -1,0 +1,78 @@
+# Stage-4 Spectral Consistency Polishing Config
+
+# Stage-4: Low-LR consistency polishing
+# Freezes encoder and up/down decoders.
+# Only RinDecoder and AmplitudeNet are fine-tuned.
+# Uses FIXED spectral u_up/u_down basis (NOT learned Stage-3 decoders).
+
+include:
+  physics: config/teukolsky_radial.yaml
+
+stage4:
+  basis_source: spectral_cache
+  spectral_basis_cache: outputs/stage4_spectral_basis_cache/patch_000_logw_v2/spectral_basis_cache.npz
+  pre_stage4_bundle: outputs/pre_stage4_bundle/patch_000_logw_v2
+
+  # ---- Freeze policy ----
+  train_encoder: false
+  train_rin_decoder: true
+  train_amplitude_net: true
+  train_up_decoder: false
+  train_down_decoder: false
+
+  # ---- Optimizer ----
+  optimizer:
+    lr_rin_decoder: 1.0e-7
+    lr_amplitude_net: 5.0e-7
+    lr_encoder: 0.0
+    weight_decay: 0.0
+
+  epochs: 500
+  batch_size: 8
+  grad_clip: 0.1
+
+  # ---- Loss weights ----
+  loss:
+    weight_consistency: 1.0
+    weight_rin_drift: 50.0
+    weight_amp_drift: 50.0
+    eps: 1.0e-12
+
+  # ---- y region (near-infinity core) ----
+  y_region:
+    y_min: -0.999
+    y_max: -0.95
+    n_y: 128
+
+  # ---- Parameter pool ----
+  artifact_dir: outputs/stage1_artifacts/patch_000_logw_v2
+  stage2_checkpoint: outputs/autoencoder_stage2_amplitude_train/20260515_192625_stage2_amplitude/checkpoints/best_model.pt
+
+  output_root: outputs/autoencoder_stage4_spectral_consistency
+  save_every_epochs: 100
+  val_every_epochs: 20
+
+# Physics (consistent with Stage-1/2)
+physics:
+  problem:
+    M: 1.0
+    s: -2
+    l: 2
+    m: 2
+
+# Model architecture (same as Stage-2)
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  param_embed_dim: 64
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  use_film: true
+  use_residual: true
+  amp_hidden_dim: 128
+  amp_n_blocks: 3
+  decoder_hidden_dim: 128
+  decoder_n_hidden: 0
+
+runtime:
+  dtype: float64
