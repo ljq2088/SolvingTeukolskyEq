@@ -1,0 +1,81 @@
+# ============================================================
+# Autoencoder Stage 2: Absolute AmplitudeNet training config
+# ============================================================
+
+include:
+  physics: config/teukolsky_radial.yaml
+
+autoencoder:
+  stage: stage2_absolute
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+  amp_hidden_dim: 128
+  amp_n_blocks: 3
+  decoder_hidden_dim: 128
+  decoder_n_hidden: 0
+
+# Stage-2 absolute: supervised regression of AmplitudeNet with absolute amplitudes
+stage2:
+  # Absolute amplitude teacher (from spectral teukrad, NO B_inc=1 normalization)
+  teacher_npz: outputs/stage2_absolute_amplitude_teacher/patch_000_logw_v2/absolute_amplitude_teacher_64.npz
+
+  # Stage-1 checkpoint for frozen encoder+decoders
+  stage1_checkpoint: outputs/pre_stage4_bundle/patch_000_logw_v2/stage1_best_model.pt
+
+  # Freeze policy: only AmplitudeNet trainable
+  freeze_encoder: true
+  freeze_rin_decoder: true
+  freeze_up_decoder: true
+  freeze_down_decoder: true
+  train_amplitude_net: true
+
+  # Loss: log-magnitude MSE + normalised phase MSE
+  #   loss = MSE(log|B_pred|, log|B_true|)
+  #        + MSE(Re(B_pred/|B_pred|), Re(B_true/|B_true|))
+  #        + MSE(Im(B_pred/|B_pred|), Im(B_true/|B_true|))
+  loss:
+    weight_logmag: 1.0
+    weight_phase: 1.0
+    eps: 1.0e-8
+
+  optimizer:
+    lr: 5.0e-5
+    weight_decay: 0.0
+
+  scheduler:
+    enabled: true
+    mode: min
+    factor: 0.5
+    patience: 500
+    min_lr: 1.0e-7
+    monitor: val_loss
+
+  # Data split
+  train_fraction: 0.8
+  batch_size: 32
+  epochs: 10000
+
+  # Validation
+  val_fraction: 0.2
+  val_every_epochs: 100
+
+  # Early stopping
+  early_stopping:
+    patience: 2000
+    min_delta: 1.0e-7
+
+  # Output
+  output_root: outputs/autoencoder_stage2_absolute_amplitude_train
+  save_every_epochs: 500
+
+  train_seed: 1234
+
+runtime:
+  dtype: float64

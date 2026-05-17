@@ -483,6 +483,7 @@ class AutoencoderTeukolskyPINN(nn.Module):
         amp_n_blocks: int = 3,
         decoder_hidden_dim: int = 128,
         decoder_n_hidden: int = 0,
+        amp_use_lambda: bool = False,
     ):
         super().__init__()
         if hidden_dims is None:
@@ -506,8 +507,10 @@ class AutoencoderTeukolskyPINN(nn.Module):
         self.rin_decoder = TaylorComplexDecoder(self.encoder.fusion_dim, decoder_hidden_dim, decoder_n_hidden)
         self.up_decoder = TaylorComplexDecoder(self.encoder.fusion_dim, decoder_hidden_dim, decoder_n_hidden)
         self.down_decoder = TaylorComplexDecoder(self.encoder.fusion_dim, decoder_hidden_dim, decoder_n_hidden)
+        amp_param_dim = self.encoder.param_in_dim + (2 if amp_use_lambda else 0)
+        self.amp_use_lambda = amp_use_lambda
         self.amplitude_net = AmplitudeNet(
-            param_in_dim=self.encoder.param_in_dim,
+            param_in_dim=amp_param_dim,
             hidden_dim=amp_hidden_dim,
             n_blocks=amp_n_blocks,
             activation=activation,
@@ -555,8 +558,11 @@ class AutoencoderTeukolskyPINN(nn.Module):
         """Return f_down(y) complex, shape (B,N). Free function inside u_down ansatz."""
         return self._predict_decoder(self.down_decoder, a, omega, y, u, v)
 
-    def predict_amplitudes(self, a, omega, u=None, v=None):
-        """Return (Binc, Bref, raw) — pure network, no spectral dependency."""
+    def predict_amplitudes(self, a, omega, u=None, v=None, lambda_=None):
+        """Return (Binc, Bref, raw) — pure network, no spectral dependency.
+
+        If amp_use_lambda=True, lambda_ is concatenated to param features.
+        """
         a, omega, _, u, v = self._to_model_dtype(a, omega, None, u, v)
         if a.ndim == 1:
             a = a.unsqueeze(-1)
@@ -567,6 +573,15 @@ class AutoencoderTeukolskyPINN(nn.Module):
         if v is not None and v.ndim == 1:
             v = v.unsqueeze(-1)
         param_feats, _, _ = self.encoder._build_param_features(a=a, omega=omega, u=u, v=v)
+        if self.amp_use_lambda and lambda_ is not None:
+            if lambda_.ndim == 1:
+                lambda_ = lambda_.unsqueeze(-1)
+            lam_real = lambda_.real.to(dtype=param_feats.dtype, device=param_feats.device)
+            lam_imag = lambda_.imag.to(dtype=param_feats.dtype, device=param_feats.device)
+            # Scale to O(1) range: lambda_ ~ 3.7-4.0
+            lam_real_scaled = (lam_real - 3.8) / 0.2
+            lam_imag_scaled = lam_imag / 0.01
+            param_feats = torch.cat([param_feats, lam_real_scaled, lam_imag_scaled], dim=-1)
         return self.amplitude_net(param_feats)
 
     def predict_asymptotic_amplitudes(self, a, omega, u=None, v=None):
