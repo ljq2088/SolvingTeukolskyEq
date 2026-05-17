@@ -1,0 +1,82 @@
+# ============================================================
+# Stage-1 Near-Infinity PDE + Spectral Consistency Refinement
+# ============================================================
+# Only trains RinDecoder. Encoder, AmplitudeNet, Up/Down decoders frozen.
+# Loss: w_pde * L_pde + w_cons * L_cons + w_drift * L_drift
+# ============================================================
+
+include:
+  physics: config/teukolsky_radial.yaml
+
+autoencoder:
+  stage: stage1_nearinf_refine
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+  amp_hidden_dim: 128
+  amp_n_blocks: 3
+  decoder_hidden_dim: 128
+  decoder_n_hidden: 0
+
+stage1_refine:
+  # Checkpoints
+  stage1_checkpoint: outputs/pre_stage4_bundle/patch_000_logw_v2/stage1_best_model.pt
+  stage2_checkpoint: outputs/autoencoder_stage2_absolute_amplitude_train/20260517_182923_stage2_absolute_amp/checkpoints/best_model.pt
+  spectral_basis_cache: outputs/stage4_spectral_basis_cache/patch_000_logw_v2/spectral_basis_cache.npz
+
+  # Freeze policy: only RinDecoder trainable
+  train_encoder: false
+  train_rin_decoder: true
+  train_up_decoder: false
+  train_down_decoder: false
+  train_amplitude_net: false
+
+  # Optimizer
+  optimizer:
+    lr_rin_decoder: 1.0e-6
+    weight_decay: 0.0
+
+  # Training length
+  epochs: 500
+  batch_size: 8
+  grad_clip: 0.1
+
+  # Loss weights
+  loss:
+    weight_pde: 0.1
+    weight_consistency: 10.0
+    weight_rin_drift: 100.0
+    eps: 1.0e-12
+
+  # Sampling: near-infinity + transition
+  sampling:
+    near_core:
+      y_min: -0.999
+      y_max: -0.95
+      n_y: 96
+    transition:
+      y_min: -0.95
+      y_max: 0.0
+      n_y: 32
+
+  # Validation
+  val_every_epochs: 10
+
+  # Early stopping
+  early_stopping:
+    enabled: false
+
+  # Output
+  output_root: outputs/autoencoder_stage1_nearinf_consistency_refine
+  save_every_epochs: 50
+
+  train_seed: 1234
+
+runtime:
+  dtype: float64

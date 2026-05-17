@@ -1,0 +1,294 @@
+当前分支：feature/autoencoder-asymptotic-decoder2。
+
+现在暂停 Stage-4 训练。不要提高 Stage-4 学习率，不要继续 200 epoch，不要开始联合 PDE+consistency 训练。
+
+最新发现：
+Stage-4 当前 loss 使用的是 AmplitudeNet 输出的 B_inc/B_ref，不是谱方法 B；这一点是正确的。
+但 AmplitudeNet 的 B_inc 输出几乎恒为 ~1，而谱方法绝对 B_inc 在 patch 0 上达到 1e7–1e10。B_inc 相对误差约 100%。这说明 Stage-2 的 amplitude teacher 或 convention 很可能错了。
+
+当前最高优先级：
+修正 Stage-2 absolute amplitude teacher 和 AmplitudeNet 训练。
+
+------------------------------------------------------------
+任务 1：确认当前 Stage-4 loss 是否使用 AmpNet
+------------------------------------------------------------
+
+检查：
+
+scripts/train_autoencoder_stage4_spectral_consistency.py
+
+确认：
+
+B_inc, B_ref = model.predict_amplitudes(...)
+
+并且 Stage-4 组合项为：
+
+R_combo_over_P =
+(B_ref_net * u_up_spec * A_up + B_inc_net * u_down_spec * A_down) / P
+
+报告：
+- Stage-4 training loss 使用 AmpNet B；
+- 谱方法 B 只用于诊断，不用于训练；
+- 当前问题不是 Stage-4 用错 B，而是 AmpNet 学到的 B_inc convention 错。
+
+------------------------------------------------------------
+任务 2：重新审计 Stage-2 amplitude teacher
+------------------------------------------------------------
+
+检查：
+
+amplitude_teacher/
+scripts/build_stage2_amplitude_teacher.py
+scripts/train_autoencoder_stage2_amplitude.py
+scripts/check_stage2_amplitude_teacher_convention.py
+utils/amplitude.py
+
+重点确认：
+
+1. Stage-2 teacher 中 B_inc 是否被强行设成 1；
+2. teacher 里保存的 B_inc/B_ref 是绝对 Teukolsky 振幅，还是归一化 scattering coefficient；
+3. Stage-4 所需 convention 是：
+
+R_in = B_ref * u_up * A_up + B_inc * u_down * A_down
+
+4. 这个 convention 下的 B_inc 应该和谱方法 compute_smatrix / MMA fitting 的 B_inc 一致。
+
+输出一个审计报告：
+
+outputs/stage2_amplitude_audit/patch_000_logw_v2/amplitude_convention_audit.md
+
+报告必须包含：
+- 当前 teacher B_inc range；
+- 当前 teacher B_ref range；
+- spectral absolute B_inc range；
+- spectral absolute B_ref range；
+- AmpNet B_inc range；
+- AmpNet B_ref range；
+- B_inc 是否被归一化为 1；
+- 如果是，指出具体代码位置。
+
+------------------------------------------------------------
+任务 3：构建新的 absolute amplitude teacher
+------------------------------------------------------------
+
+新增或修正脚本：
+
+scripts/build_stage2_absolute_amplitude_teacher.py
+
+输入：
+
+--spectral-cache outputs/stage4_spectral_basis_cache/patch_000_logw_v2/spectral_basis_cache.npz
+--calibration-dir outputs/spectral_calibration/patch_000_logw_v2
+--output-dir outputs/stage2_absolute_amplitude_teacher/patch_000_logw_v2
+
+输出：
+
+absolute_amplitude_teacher.npz
+
+必须包含：
+
+- a
+- omega
+- u
+- v
+- lambda_
+- B_inc_abs
+- B_ref_abs
+- logabs_B_inc
+- logabs_B_ref
+- phase_unit_B_inc
+- phase_unit_B_ref
+- source=spectral
+- convention:
+  R_in = B_ref*u_up*A_up + B_inc*u_down*A_down
+
+B_inc_abs 和 B_ref_abs 必须来自谱方法绝对振幅，不允许归一化 B_inc=1。
+
+同时保存：
+
+absolute_amplitude_teacher_summary.md
+
+其中打印：
+
+- min/max/median |B_inc_abs|
+- min/max/median |B_ref_abs|
+- min/max log10|B_inc_abs|
+- min/max log10|B_ref_abs|
+
+------------------------------------------------------------
+任务 4：修改 Stage-2 训练脚本支持 log-amplitude target
+------------------------------------------------------------
+
+修改或新增：
+
+scripts/train_autoencoder_stage2_absolute_amplitude.py
+
+不要覆盖旧训练结果。
+
+训练目标：
+
+对每个 B：
+
+rho_true = log(|B_true| + eps)
+unit_true = B_true / (|B_true| + eps)
+
+rho_pred = log(|B_pred| + eps)
+unit_pred = B_pred / (|B_pred| + eps)
+
+loss_B =
+MSE(rho_pred, rho_true)
++
+MSE(Re(unit_pred), Re(unit_true))
++
+MSE(Im(unit_pred), Im(unit_true))
+
+总 loss：
+
+loss =
+loss_Binc + loss_Bref
+
+可选：
+如果 B_inc 动态范围比 B_ref 大很多，可以加权：
+
+loss = 1.0 * loss_Binc + 1.0 * loss_Bref
+
+先不要偏置权重。
+
+验证指标必须输出：
+
+- median_rel_complex_err_Binc
+- max_rel_complex_err_Binc
+- median_logabs_err_Binc
+- median_phase_unit_err_Binc
+- median_rel_complex_err_Bref
+- max_rel_complex_err_Bref
+- median_logabs_err_Bref
+- median_phase_unit_err_Bref
+
+特别注意：
+complex relative error 对巨大 B 有意义，但 phase 也必须看。
+
+------------------------------------------------------------
+任务 5：训练新的 Stage-2 absolute AmpNet
+------------------------------------------------------------
+
+新增配置：
+
+config/autoencoder_stage2_absolute_amplitude.yaml
+
+建议：
+
+stage2:
+  teacher_npz: outputs/stage2_absolute_amplitude_teacher/patch_000_logw_v2/absolute_amplitude_teacher.npz
+  stage1_checkpoint: outputs/stage1_artifacts/patch_000_logw_v2/stage1_best_model.pt
+
+  freeze_encoder: true
+  freeze_rin_decoder: true
+  freeze_up_decoder: true
+  freeze_down_decoder: true
+  train_amplitude_net: true
+
+  optimizer:
+    lr: 1.0e-4
+    weight_decay: 0.0
+
+  epochs: 5000
+  batch_size: 16
+  val_fraction: 0.2
+  output_root: outputs/autoencoder_stage2_absolute_amplitude_train
+
+注意：
+只训练 AmplitudeNet。
+不要训练 encoder。
+不要训练 RinDecoder。
+不要动 Stage-1。
+
+先跑 500 epoch pilot：
+
+python scripts/train_autoencoder_stage2_absolute_amplitude.py \
+  --config config/autoencoder_stage2_absolute_amplitude.yaml \
+  --device cuda \
+  --epochs 500 \
+  --verbose
+
+通过条件：
+
+- B_inc median complex relative error 明显下降，不再 100%；
+- B_inc logabs error 明显下降；
+- B_ref 不变差；
+- 无 NaN/Inf。
+
+如果 500 epoch 后有效，再跑 5000。
+
+------------------------------------------------------------
+任务 6：重新做 Stage-4 preflight
+------------------------------------------------------------
+
+训练新的 absolute AmplitudeNet 后，不要立刻训练 Stage-4。
+
+先用新的 Stage-2 absolute checkpoint 重新跑：
+
+scripts/diagnose_stage4_spectral_consistency.py
+
+输入新的 stage2 checkpoint：
+
+outputs/autoencoder_stage2_absolute_amplitude_train/.../checkpoints/best_model.pt
+
+判断：
+
+- median_rel_err 是否从 0.6 明显下降；
+- low_omega cases 是否改善；
+- error decomposition 是否仍指向 Stage-1；
+- B_inc contribution 是否量级正确。
+
+只有当 preflight median_rel_err 明显下降，才考虑 Stage-4 联合训练。
+
+------------------------------------------------------------
+任务 7：之后再考虑 Stage-4 PDE + consistency 联合训练
+------------------------------------------------------------
+
+只有在新的 AmpNet 正确后，才新增 Stage-4 joint loss：
+
+L =
+w_pde * L_stage1_PDE
++
+w_cons * L_cons
++
+w_R * L_R_drift
++
+w_B * L_B_drift
+
+其中：
+
+L_stage1_PDE 使用原 Stage-1 的 interior residual，但采样要适配当前问题：
+- 主要采样 near-infinity y in [-0.999, -0.95]
+- 加少量 y in [-0.95, 0] 保持方程传播
+- 不需要全域强约束
+
+L_cons =
+|h2*S(y) - (B_ref_net*u_up_spec*A_up + B_inc_net*u_down_spec*A_down)/P|^2
+
+但这一步现在先不要实现，等 absolute AmpNet 修好后再做。
+
+------------------------------------------------------------
+任务 8：提交
+------------------------------------------------------------
+
+提交 amplitude audit 和 absolute Stage-2 训练代码：
+
+git add scripts/build_stage2_absolute_amplitude_teacher.py \
+        scripts/train_autoencoder_stage2_absolute_amplitude.py \
+        config/autoencoder_stage2_absolute_amplitude.yaml \
+        scripts/audit_stage2_amplitude_convention.py
+
+git commit -m "Fix Stage-2 absolute amplitude convention for Stage-4 consistency"
+git push
+
+最终报告必须包含：
+
+1. 当前 commit hash；
+2. 旧 Stage-2 teacher 的 B_inc convention；
+3. 新 absolute teacher 的 |B_inc|/|B_ref| range；
+4. 新 AmpNet 训练后 B_inc/B_ref 的误差；
+5. 新 Stage-4 preflight median_rel_err；
+6. 是否仍需要 Stage-1 near-infinity PDE+consistency 联合训练。
