@@ -20,6 +20,7 @@ from config.config_loader import load_pinn_full_config
 from model.autoencoder_pinn import AutoencoderTeukolskyPINN
 from physical_ansatz.mapping import r_plus, r_minus
 from physical_ansatz.u_basis import A_up, A_down
+from physical_ansatz.stage1_reconstruction import compute_R_over_P_from_model
 
 
 def _get_dtype(dtype_name):
@@ -131,8 +132,11 @@ def main():
     omega_t = torch.tensor([[0.5]], device=device, dtype=dtype)
     u_t = torch.tensor([[0.5]], device=device, dtype=dtype)
     v_t = torch.tensor([[0.5]], device=device, dtype=dtype)
+    lam_t = torch.tensor([[complex(cache["lambda_"][0])]], device=device, dtype=cdtype)
     with torch.no_grad():
-        R_over_P = model.predict_Rin(a_t, omega_t, y_t, u_t, v_t)
+        R_over_P = compute_R_over_P_from_model(
+            model, a_t, omega_t, y_t, lam_t, u_t, v_t, m=m_phys, M=M_phys, s=s_phys,
+        )
     check("4. R_model_over_P shape (1, N)", R_over_P.shape == (1, len(y_t[0])),
           f"got {R_over_P.shape}")
     check("4a. R_model_over_P finite", torch.all(torch.isfinite(torch.abs(R_over_P))).item())
@@ -200,7 +204,9 @@ def main():
         p.requires_grad = False
 
     with torch.no_grad():
-        R_s1 = ref_model.predict_Rin(a_t, omega_t, y_t, u_t, v_t)[:, :16]
+        R_s1 = compute_R_over_P_from_model(
+            ref_model, a_t, omega_t, y_t, lam_t, u_t, v_t, m=m_phys, M=M_phys, s=s_phys,
+        )[:, :16]
         B_inc_s2, B_ref_s2, _ = ref_model.predict_amplitudes(a_t, omega_t, u_t, v_t)
     L_rin_drift = torch.mean(torch.abs(R_over_P[:, :16] - R_s1) ** 2) / \
                   (torch.mean(torch.abs(R_s1) ** 2) + eps)
@@ -241,7 +247,9 @@ def main():
 
     # Check gradients after a backward pass
     y_full = torch.tensor(cache["y"], device=device, dtype=dtype).unsqueeze(0)
-    R_over_P_full = model.predict_Rin(a_t, omega_t, y_full, u_t, v_t)
+    R_over_P_full = compute_R_over_P_from_model(
+        model, a_t, omega_t, y_full, lam_t, u_t, v_t, m=m_phys, M=M_phys, s=s_phys,
+    )
     B_inc_full, B_ref_full, _ = model.predict_amplitudes(a_t, omega_t, u_t, v_t)
 
     # Compute a simple loss and backward
@@ -295,7 +303,9 @@ def main():
 
     model.zero_grad()
     # Re-forward
-    R_over_P2 = model.predict_Rin(a_t, omega_t, y_full, u_t, v_t)
+    R_over_P2 = compute_R_over_P_from_model(
+        model, a_t, omega_t, y_full, lam_t, u_t, v_t, m=m_phys, M=M_phys, s=s_phys,
+    )
     B_inc2, B_ref2, _ = model.predict_amplitudes(a_t, omega_t, u_t, v_t)
     R_combo2 = (B_ref2.unsqueeze(-1) * A_u_full * u_up_f +
                 B_inc2.unsqueeze(-1) * A_d_full * u_down_f) / P_full

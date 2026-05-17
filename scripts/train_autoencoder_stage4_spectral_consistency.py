@@ -33,8 +33,8 @@ import torch
 from config.config_loader import load_pinn_full_config
 from model.autoencoder_pinn import AutoencoderTeukolskyPINN
 from physical_ansatz.mapping import r_plus, r_minus
-from physical_ansatz.prefactor import r_star
 from physical_ansatz.u_basis import A_up, A_down
+from physical_ansatz.stage1_reconstruction import compute_R_over_P_from_model
 
 
 def _get_dtype(dtype_name):
@@ -50,15 +50,13 @@ def Leaver_P(r, a, omega, m=2, M=1.0, s=-2):
     return ((r - rp) ** pp) * ((r - rm) ** pm) * torch.exp(1j * omega * r)
 
 
-def compute_stage4_loss(model, a, omega, y, u, v, spectral_cache, stage1_model,
+def compute_stage4_loss(model, a, omega, y, u, v, lambda_, stage1_model,
                         weight_rin_drift=50.0, weight_amp_drift=50.0, eps=1e-12,
-                        M=1.0, s=-2, m=2, a_cache=None, omega_cache=None,
-                        u_up_cache=None, u_down_cache=None):
-    """Compute Stage-4 consistency + drift losses.
+                        M=1.0, s=-2, m=2, u_up_spec=None, u_down_spec=None):
+    """Compute Stage-4 v2 consistency + drift losses.
 
-    Returns:
-        total_loss: scalar
-        info: dict with loss components and metrics
+    v2 fix: R_over_P = h2 * S(y) via compute_R_over_P_from_model, NOT f_R.
+    Parameters sampled from spectral cache (exact u_up/u_down match).
     """
     B = a.shape[0]
     N = y.shape[1]
@@ -66,44 +64,37 @@ def compute_stage4_loss(model, a, omega, y, u, v, spectral_cache, stage1_model,
     dtype = a.dtype
     cdtype = torch.complex128 if dtype == torch.float64 else torch.complex64
 
-    # ---- R_model / P from RinDecoder ----
-    R_over_P = model.predict_Rin(a, omega, y, u, v)  # (B, N) complex
+    # ---- R_model / P from RinDecoder (CORRECTED) ----
+    R_over_P = compute_R_over_P_from_model(
+        model, a, omega, y, lambda_, u, v, m=m, M=M, s=s,
+    )
 
     # ---- B_inc, B_ref from AmplitudeNet ----
-    B_inc, B_ref, _ = model.predict_amplitudes(a, omega, u, v)  # (B,) complex
+    B_inc, B_ref, _ = model.predict_amplitudes(a, omega, u, v)
 
     # ---- r from y for A_up, A_down, P ----
     rp = r_plus(a, M)
     x = (y + 1.0) / 2.0
     r = rp / x
 
-    A_u = A_up(r, a, omega, M)   # (B, N)
-    A_d = A_down(r, a, omega, M)  # (B, N)
+    A_u = A_up(r, a, omega, M)
+    A_d = A_down(r, a, omega, M)
     P = Leaver_P(r, a, omega, m=m, M=M, s=s)
 
-    # ---- Look up spectral u_up/u_down for these parameter points ----
-    u_up_spec = torch.zeros(B, N, dtype=cdtype, device=device)
-    u_down_spec = torch.zeros(B, N, dtype=cdtype, device=device)
-    a_np = a.squeeze(-1).cpu().numpy()
-    omega_np = omega.squeeze(-1).cpu().numpy()
-    for b in range(B):
-        dist = np.abs(a_cache - a_np[b]) + np.abs(omega_cache - omega_np[b])
-        idx = np.argmin(dist)
-        u_up_spec[b] = torch.from_numpy(u_up_cache[idx]).to(device=device, dtype=cdtype)
-        u_down_spec[b] = torch.from_numpy(u_down_cache[idx]).to(device=device, dtype=cdtype)
-
     # ---- R_combo / P ----
-    B_ref_exp = B_ref.unsqueeze(-1)  # (B, 1)
-    B_inc_exp = B_inc.unsqueeze(-1)  # (B, 1)
+    B_ref_exp = B_ref.unsqueeze(-1)
+    B_inc_exp = B_inc.unsqueeze(-1)
     R_combo_over_P = (B_ref_exp * A_u * u_up_spec + B_inc_exp * A_d * u_down_spec) / P
 
     # ---- L_cons ----
     diff = R_over_P - R_combo_over_P
     L_cons = torch.mean(torch.abs(diff) ** 2) / (torch.mean(torch.abs(R_over_P) ** 2) + eps)
 
-    # ---- L_rin_drift: R_model vs frozen Stage-1 R ----
+    # ---- L_rin_drift: CORRECTED R_over_P vs frozen Stage-1 ----
     with torch.no_grad():
-        R_stage1_over_P = stage1_model.predict_Rin(a, omega, y, u, v)
+        R_stage1_over_P = compute_R_over_P_from_model(
+            stage1_model, a, omega, y, lambda_, u, v, m=m, M=M, s=s,
+        )
     L_rin_drift = torch.mean(torch.abs(R_over_P - R_stage1_over_P) ** 2) / \
                   (torch.mean(torch.abs(R_stage1_over_P) ** 2) + eps)
 
@@ -179,12 +170,15 @@ def main():
     cache = np.load(cache_path)
     a_cache = cache["a"]
     omega_cache = cache["omega"]
+    u_cache = cache["u"]
+    v_cache = cache["v"]
+    lam_cache = cache["lambda_"]
     u_up_cache = cache["u_up"]
     u_down_cache = cache["u_down"]
     y_grid_np = cache["y"]
     n_cache = len(a_cache)
     n_y = len(y_grid_np)
-    print(f"[stage4-train] Spectral cache: {n_cache} params, {n_y} y-points")
+    print(f"[stage4-train] Spectral cache: {n_cache} params, {n_y} y-points (direct index sampling)")
 
     # ---- Build model ----
     model_cfg = train_cfg.get("model", {})
@@ -327,37 +321,37 @@ def main():
     save_every = int(stage4_cfg.get("save_every_epochs", 100))
     val_every = int(stage4_cfg.get("val_every_epochs", 20))
 
-    # ---- Training points from parameter pool ----
-    artifact_dir = Path(stage4_cfg.get("artifact_dir", "outputs/stage1_artifacts/patch_000_logw_v2"))
-    pool = np.load(artifact_dir / "rpred_cache.npz")
-    valid = np.isfinite(pool["a"]) & np.isfinite(pool["omega"]) & np.isfinite(pool["lambda_"])
-    a_pool = pool["a"][valid]
-    omega_pool = pool["omega"][valid]
-    u_pool = pool["u"][valid]
-    v_pool = pool["v"][valid]
-    n_pool = len(a_pool)
-    print(f"[stage4-train] Parameter pool: {n_pool} valid points")
+    # ---- Training points: sampled directly from spectral cache ----
+    print(f"[stage4-train] Parameter source: spectral cache ({n_cache} points, exact u_up/u_down match)")
 
     y_t = torch.tensor(y_grid_np, device=device, dtype=dtype).unsqueeze(0)  # (1, N_y)
     rng = np.random.default_rng(42)
 
+    def _make_cache_batch(indices):
+        """Build batch tensors from cache indices."""
+        B = len(indices)
+        a_b = torch.tensor(a_cache[indices], device=device, dtype=dtype).reshape(-1, 1)
+        omega_b = torch.tensor(omega_cache[indices], device=device, dtype=dtype).reshape(-1, 1)
+        u_b = torch.tensor(u_cache[indices], device=device, dtype=dtype).reshape(-1, 1)
+        v_b = torch.tensor(v_cache[indices], device=device, dtype=dtype).reshape(-1, 1)
+        lam_b = torch.tensor(lam_cache[indices], device=device, dtype=cdtype).reshape(-1, 1)
+        u_up_b = torch.tensor(u_up_cache[indices], device=device, dtype=cdtype)
+        u_down_b = torch.tensor(u_down_cache[indices], device=device, dtype=cdtype)
+        return a_b, omega_b, u_b, v_b, lam_b, u_up_b, u_down_b
+
     # ---- Initial metrics ----
     print(f"\n[stage4-train] === Initial metrics ===")
     model.eval()
-    idx_init = rng.choice(n_pool, min(16, n_pool), replace=False)
+    idx_init = rng.choice(n_cache, min(16, n_cache), replace=False)
     init_infos = []
     for i in idx_init:
-        a_t = torch.tensor([[float(a_pool[i])]], device=device, dtype=dtype)
-        omega_t = torch.tensor([[float(omega_pool[i])]], device=device, dtype=dtype)
-        u_t = torch.tensor([[float(u_pool[i])]], device=device, dtype=dtype)
-        v_t = torch.tensor([[float(v_pool[i])]], device=device, dtype=dtype)
+        a_t, omega_t, u_t, v_t, lam_t, u_up_t, u_down_t = _make_cache_batch([i])
         _, info = compute_stage4_loss(
-            model, a_t, omega_t, y_t, u_t, v_t,
-            spectral_cache=None, stage1_model=ref_model,
+            model, a_t, omega_t, y_t, u_t, v_t, lam_t,
+            stage1_model=ref_model,
             weight_rin_drift=weight_rin_drift, weight_amp_drift=weight_amp_drift, eps=eps,
             M=M_phys, s=s_phys, m=m_phys,
-            a_cache=a_cache, omega_cache=omega_cache,
-            u_up_cache=u_up_cache, u_down_cache=u_down_cache,
+            u_up_spec=u_up_t, u_down_spec=u_down_t,
         )
         init_infos.append(info)
 
@@ -379,22 +373,18 @@ def main():
 
     for epoch in range(start_epoch, start_epoch + epochs):
         model.train()
-        # Sample batch
-        idx = rng.choice(n_pool, batch_size, replace=False)
-        a_b = torch.tensor(a_pool[idx], device=device, dtype=dtype).unsqueeze(-1)
-        omega_b = torch.tensor(omega_pool[idx], device=device, dtype=dtype).unsqueeze(-1)
-        u_b = torch.tensor(u_pool[idx], device=device, dtype=dtype).unsqueeze(-1)
-        v_b = torch.tensor(v_pool[idx], device=device, dtype=dtype).unsqueeze(-1)
+        # Sample batch from cache indices
+        idx = rng.choice(n_cache, min(batch_size, n_cache), replace=False)
+        a_b, omega_b, u_b, v_b, lam_b, u_up_b, u_down_b = _make_cache_batch(idx)
         y_b = y_t.expand(len(idx), -1)
 
         optimizer.zero_grad(set_to_none=True)
         loss, loss_info = compute_stage4_loss(
-            model, a_b, omega_b, y_b, u_b, v_b,
-            spectral_cache=None, stage1_model=ref_model,
+            model, a_b, omega_b, y_b, u_b, v_b, lam_b,
+            stage1_model=ref_model,
             weight_rin_drift=weight_rin_drift, weight_amp_drift=weight_amp_drift, eps=eps,
             M=M_phys, s=s_phys, m=m_phys,
-            a_cache=a_cache, omega_cache=omega_cache,
-            u_up_cache=u_up_cache, u_down_cache=u_down_cache,
+            u_up_spec=u_up_b, u_down_spec=u_down_b,
         )
 
         if not torch.isfinite(loss):
@@ -423,21 +413,17 @@ def main():
         # ---- Validation ----
         if (epoch + 1) % val_every == 0:
             model.eval()
-            val_idx = rng.choice(n_pool, min(16, n_pool), replace=False)
+            val_idx = rng.choice(n_cache, min(16, n_cache), replace=False)
             val_infos = []
             with torch.no_grad():
                 for vi in val_idx:
-                    a_t = torch.tensor([[float(a_pool[vi])]], device=device, dtype=dtype)
-                    omega_t = torch.tensor([[float(omega_pool[vi])]], device=device, dtype=dtype)
-                    u_t = torch.tensor([[float(u_pool[vi])]], device=device, dtype=dtype)
-                    v_t = torch.tensor([[float(v_pool[vi])]], device=device, dtype=dtype)
+                    a_t, omega_t, u_t, v_t, lam_t, u_up_t, u_down_t = _make_cache_batch([vi])
                     _, info = compute_stage4_loss(
-                        model, a_t, omega_t, y_t, u_t, v_t,
-                        spectral_cache=None, stage1_model=ref_model,
+                        model, a_t, omega_t, y_t, u_t, v_t, lam_t,
+                        stage1_model=ref_model,
                         weight_rin_drift=weight_rin_drift, weight_amp_drift=weight_amp_drift, eps=eps,
                         M=M_phys, s=s_phys, m=m_phys,
-                        a_cache=a_cache, omega_cache=omega_cache,
-                        u_up_cache=u_up_cache, u_down_cache=u_down_cache,
+                        u_up_spec=u_up_t, u_down_spec=u_down_t,
                     )
                     val_infos.append(info)
             val_loss = float(np.mean([x["total_loss"] for x in val_infos]))
@@ -527,21 +513,17 @@ def main():
 
     # Final metrics
     model.eval()
-    final_idx = rng.choice(n_pool, min(16, n_pool), replace=False)
+    final_idx = rng.choice(n_cache, min(16, n_cache), replace=False)
     final_infos = []
     with torch.no_grad():
         for fi in final_idx:
-            a_t = torch.tensor([[float(a_pool[fi])]], device=device, dtype=dtype)
-            omega_t = torch.tensor([[float(omega_pool[fi])]], device=device, dtype=dtype)
-            u_t = torch.tensor([[float(u_pool[fi])]], device=device, dtype=dtype)
-            v_t = torch.tensor([[float(v_pool[fi])]], device=device, dtype=dtype)
+            a_t, omega_t, u_t, v_t, lam_t, u_up_t, u_down_t = _make_cache_batch([fi])
             _, info = compute_stage4_loss(
-                model, a_t, omega_t, y_t, u_t, v_t,
-                spectral_cache=None, stage1_model=ref_model,
+                model, a_t, omega_t, y_t, u_t, v_t, lam_t,
+                stage1_model=ref_model,
                 weight_rin_drift=weight_rin_drift, weight_amp_drift=weight_amp_drift, eps=eps,
                 M=M_phys, s=s_phys, m=m_phys,
-                a_cache=a_cache, omega_cache=omega_cache,
-                u_up_cache=u_up_cache, u_down_cache=u_down_cache,
+                u_up_spec=u_up_t, u_down_spec=u_down_t,
             )
             final_infos.append(info)
 

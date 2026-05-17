@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""Preflight diagnostic for Stage-4: compute consistency error WITHOUT training.
+"""Stage-4 v2 preflight: compute consistency error with CORRECT R_over_P.
 
-Checks whether R_model (Rin decoder) is consistent with:
-  R_combo = B_ref * A_up * u_up_spec + B_inc * A_down * u_down_spec
+Key fix: R_over_P = h2 * S(y), NOT f_R(y).
+S(y) = compose_reduced_shape_from_f(f_R, y, c_H)
 
-Reports consistency metrics but does NOT update any model parameters.
+Also adds error decomposition:
+  1. spectral self-consistency
+  2. amplitude-net consistency
+  3. Stage-1 consistency
+  4. actual Stage-4 consistency
 
 Usage:
   python scripts/diagnose_stage4_spectral_consistency.py \
     --pre-stage4-bundle outputs/pre_stage4_bundle/patch_000_logw_v2 \
     --stage2-checkpoint outputs/autoencoder_stage2_amplitude_train/20260515_192625_stage2_amplitude/checkpoints/best_model.pt \
     --spectral-basis-cache outputs/stage4_spectral_basis_cache/patch_000_logw_v2/spectral_basis_cache.npz \
-    --config config/autoencoder_stage3_ubasis_refine.yaml \
+    --config config/autoencoder_stage4_spectral_consistency.yaml \
     --device cuda \
     --output-dir outputs/stage4_spectral_preflight/patch_000_logw_v2
 """
@@ -31,6 +35,9 @@ from model.autoencoder_pinn import AutoencoderTeukolskyPINN
 from physical_ansatz.mapping import r_plus, r_minus
 from physical_ansatz.prefactor import r_star
 from physical_ansatz.u_basis import A_up, A_down
+from physical_ansatz.stage1_reconstruction import compute_R_over_P_from_model
+from utils.mode import KerrMode
+from utils.amplitude import solve_basis_domain
 
 
 def _get_dtype(dtype_name):
@@ -38,7 +45,6 @@ def _get_dtype(dtype_name):
 
 
 def Leaver_P(r, a, omega, m=2, M=1.0, s=-2):
-    """Leaver prefactor P(r) for Teukolsky equation."""
     rp = r_plus(a, M)
     rm = r_minus(a, M)
     sigma_p = (2.0 * omega * rp - m * a) / (rp - rm)
@@ -47,15 +53,42 @@ def Leaver_P(r, a, omega, m=2, M=1.0, s=-2):
     return ((r - rp) ** pp) * ((r - rm) ** pm) * torch.exp(1j * omega * r)
 
 
+def compute_spectral_Rin_over_P(a, omega, y, lambda_, M=1.0, s=-2, m=2, N_out=80, z_b=0.05):
+    """Compute R_in/P directly from spectral method for error decomposition.
+
+    Solves Teukolsky ODE for Rin and returns R_in/P at grid points.
+    """
+    a_val = float(a.squeeze().cpu().numpy())
+    omega_val = float(omega.squeeze().cpu().numpy())
+    lam_val = complex(float(lambda_.squeeze().cpu().real.numpy()),
+                      float(lambda_.squeeze().cpu().imag.numpy()))
+
+    mode = KerrMode(M=M, a=a_val, omega=omega_val, ell=2, m=m, s=s, lam=lam_val)
+    sol = solve_basis_domain(mode, "in", N_out, 0.0, z_b, "right")
+
+    z_grid_np = ((y.squeeze().cpu().numpy() + 1.0) / 2.0)
+
+    # Interpolate spectral Rin to y-grid (mask z=0 to avoid 1/z divergence)
+    z_mask = z_grid_np > 1e-12
+    u_interp = np.zeros(len(z_grid_np), dtype=np.complex128)
+    u_interp[z_mask] = np.interp(z_grid_np[z_mask], sol["z"][::-1], sol["u"][::-1].real) + \
+                       1j * np.interp(z_grid_np[z_mask], sol["z"][::-1], sol["u"][::-1].imag)
+
+    return torch.tensor(u_interp, device=y.device, dtype=torch.complex128).unsqueeze(0)
+
+
+def rel_error(val, ref, eps=1e-12):
+    return np.abs(val - ref) / (np.abs(ref) + eps)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Stage-4 preflight diagnostic")
+    parser = argparse.ArgumentParser(description="Stage-4 v2 preflight diagnostic")
     parser.add_argument("--pre-stage4-bundle", type=str, required=True)
     parser.add_argument("--stage2-checkpoint", type=str, required=True)
     parser.add_argument("--spectral-basis-cache", type=str, required=True)
-    parser.add_argument("--config", type=str, default="config/autoencoder_stage3_ubasis_refine.yaml")
+    parser.add_argument("--config", type=str, default="config/autoencoder_stage4_spectral_consistency.yaml")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--output-dir", type=str, required=True)
-    parser.add_argument("--n-param-eval", type=int, default=16)
     args = parser.parse_args()
 
     device = torch.device(args.device if torch.cuda.is_available() else "cpu")
@@ -77,27 +110,26 @@ def main():
 
     # ---- Load spectral cache ----
     cache = np.load(args.spectral_basis_cache)
-    y_grid_np = cache["y"]
-    z_grid_np = cache["z"]
-    u_up_cache = cache["u_up"]
-    u_down_cache = cache["u_down"]
     a_cache = cache["a"]
     omega_cache = cache["omega"]
     u_cache = cache["u"]
     v_cache = cache["v"]
     lam_cache = cache["lambda_"]
+    u_up_cache = cache["u_up"]
+    u_down_cache = cache["u_down"]
+    y_grid_np = cache["y"]
+    z_grid_np = cache["z"]
     n_cache = len(a_cache)
     n_y = len(y_grid_np)
-    print(f"[preflight] Spectral cache: {n_cache} params, {n_y} y-points, "
+    z_b = float(cache["z_b"])
+    N_out = int(cache["N_out"])
+    print(f"[preflight-v2] Spectral cache: {n_cache} params, {n_y} y-points, "
           f"y=[{y_grid_np[0]:.4f}, {y_grid_np[-1]:.4f}]")
 
-    # ---- Load Stage-1 model from pre-stage4 bundle ----
+    # ---- Load Stage-1 model ----
     bundle_dir = Path(args.pre_stage4_bundle)
     stage1_ckpt_path = bundle_dir / "stage1_best_model.pt"
-    if not stage1_ckpt_path.exists():
-        raise FileNotFoundError(f"Stage-1 checkpoint not found: {stage1_ckpt_path}")
 
-    # ---- Build model ----
     model_cfg = train_cfg.get("model", {})
     model = AutoencoderTeukolskyPINN(
         hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
@@ -113,57 +145,61 @@ def main():
         decoder_n_hidden=int(model_cfg.get("decoder_n_hidden", 0)),
     )
 
-    # Load stage-1 weights
     ckpt1 = torch.load(stage1_ckpt_path, map_location="cpu", weights_only=False)
     sd1 = ckpt1.get("model_state_dict", ckpt1)
     missing, unexpected = model.load_state_dict(sd1, strict=False)
-    print(f"[preflight] Stage-1 model: {len(missing)} missing, {len(unexpected)} unexpected keys")
+    print(f"[preflight-v2] Stage-1: {len(missing)} missing, {len(unexpected)} unexpected keys")
 
-    # Load stage-2 amplitude weights
     stage2_ckpt_path = Path(args.stage2_checkpoint)
     ckpt2 = torch.load(stage2_ckpt_path, map_location="cpu", weights_only=False)
     sd2 = ckpt2.get("model_state_dict", ckpt2)
     amp_keys = {k: v for k, v in sd2.items() if k.startswith("amplitude_net.")}
     model.load_state_dict(amp_keys, strict=False)
-    print(f"[preflight] Stage-2 AmplitudeNet: loaded {len(amp_keys)} keys")
+    print(f"[preflight-v2] Stage-2 AmplitudeNet: {len(amp_keys)} keys")
 
     model.to(device=device, dtype=dtype)
     model.eval()
 
-    # ---- Evaluate on sample of cache points ----
-    n_eval = min(args.n_param_eval, n_cache)
-    idx_eval = np.linspace(0, n_cache - 1, n_eval, dtype=int)
-
+    # ---- Evaluate ALL cache points ----
     y_t = torch.tensor(y_grid_np, device=device, dtype=dtype).unsqueeze(0)  # (1, N_y)
 
-    results = []
-    all_rel_errs = []
+    # For spectral error decomposition, compute spectral Rin for a few points
+    n_decomp = min(5, n_cache)
+    decomp_idx = np.linspace(0, n_cache - 1, n_decomp, dtype=int)
 
-    for i in idx_eval:
+    results = []
+    decomp_results = []
+
+    for i in range(n_cache):
         a_val = float(a_cache[i])
         omega_val = float(omega_cache[i])
         u_val = float(u_cache[i])
         v_val = float(v_cache[i])
+        lam_val = complex(lam_cache[i])
 
         a_t = torch.tensor([[a_val]], device=device, dtype=dtype)
         omega_t = torch.tensor([[omega_val]], device=device, dtype=dtype)
         u_t = torch.tensor([[u_val]], device=device, dtype=dtype)
         v_t = torch.tensor([[v_val]], device=device, dtype=dtype)
+        lam_t = torch.tensor([[lam_val]], device=device, dtype=cdtype)
 
         with torch.no_grad():
-            # R_model / P = f_R(y) from Rin decoder
-            R_over_P = model.predict_Rin(a_t, omega_t, y_t, u_t, v_t)  # (1, N_y) complex
+            # CORRECTED: R_model/P = h2 * S(y)
+            R_over_P = compute_R_over_P_from_model(
+                model, a_t, omega_t, y_t, lam_t, u_t, v_t,
+                m=m_phys, M=M_phys, s=s_phys,
+            )  # (1, N_y) complex
 
             # B_inc, B_ref from AmplitudeNet
             B_inc, B_ref, _ = model.predict_amplitudes(a_t, omega_t, u_t, v_t)
 
-            # Compute r from y for A_up, A_down, P
+            # r from y
             rp = r_plus(a_t, M_phys)
             x = (y_t + 1.0) / 2.0
             r = rp / x
 
-            A_u = A_up(r, a_t, omega_t, M_phys)  # (1, N_y)
-            A_d = A_down(r, a_t, omega_t, M_phys)  # (1, N_y)
+            A_u = A_up(r, a_t, omega_t, M_phys)
+            A_d = A_down(r, a_t, omega_t, M_phys)
             P = Leaver_P(r, a_t, omega_t, m=m_phys, M=M_phys, s=s_phys)
 
             # Spectral u
@@ -181,7 +217,6 @@ def main():
 
         med_err = float(np.median(rel_err_np))
         max_err = float(np.max(rel_err_np))
-        all_rel_errs.extend(rel_err_np.tolist())
 
         results.append({
             "idx": int(i),
@@ -193,13 +228,61 @@ def main():
             "max_rel_err": max_err,
         })
 
-    # ---- Summary ----
-    all_rel = np.array(all_rel_errs)
-    median_all = float(np.median(all_rel))
-    max_all = float(np.max(all_rel))
-    has_nan = bool(np.any(~np.isfinite(all_rel)))
+        # ---- Error decomposition for subset ----
+        if i in decomp_idx:
+            with torch.no_grad():
+                # 1. Spectral self-consistency: spectral R_in/P vs spectral combo
+                R_spec_over_P = compute_spectral_Rin_over_P(
+                    a_t, omega_t, y_t, lam_t, M=M_phys, s=s_phys, m=m_phys,
+                    N_out=N_out, z_b=z_b,
+                )
+                # Get spectral B_inc, B_ref
+                from utils.amplitude import TeukRadAmplitudeInWithAbelChecks
+                mode = KerrMode(M=M_phys, a=a_val, omega=omega_val, ell=2, m=m_phys, s=s_phys, lam=lam_val)
+                amp = TeukRadAmplitudeInWithAbelChecks(mode, z_m=z_b, N_out=N_out, N_in=N_out)
+                B_inc_spec = amp.B_inc
+                B_ref_spec = amp.B_ref
 
-    print(f"\n[preflight] Results ({n_eval} points):")
+                B_inc_s = torch.tensor([[B_inc_spec]], device=device, dtype=cdtype)
+                B_ref_s = torch.tensor([[B_ref_spec]], device=device, dtype=cdtype)
+                R_spec_combo = (B_ref_s.unsqueeze(-1) * A_u * u_up_spec +
+                               B_inc_s.unsqueeze(-1) * A_d * u_down_spec) / P
+
+                spec_self = rel_error(R_spec_over_P.cpu().numpy().ravel(),
+                                      R_spec_combo.cpu().numpy().ravel())
+
+                # 2. Amplitude-net: B_net + spectral u vs spectral R_in/P
+                R_amp_combo = (B_ref.unsqueeze(-1) * A_u * u_up_spec +
+                              B_inc.unsqueeze(-1) * A_d * u_down_spec) / P
+                amp_cons = rel_error(R_amp_combo.cpu().numpy().ravel(),
+                                    R_spec_over_P.cpu().numpy().ravel())
+
+                # 3. Stage-1: R_model/P vs spectral R_in/P
+                s1_cons = rel_error(R_over_P.cpu().numpy().ravel(),
+                                   R_spec_over_P.cpu().numpy().ravel())
+
+                # 4. Actual Stage-4: R_model/P vs B_net*spectral_u/P
+                s4_cons = rel_error(R_over_P.cpu().numpy().ravel(),
+                                   R_amp_combo.cpu().numpy().ravel())
+
+                decomp_results.append({
+                    "idx": int(i),
+                    "a": a_val,
+                    "omega": omega_val,
+                    "spectral_self_consistency_med": float(np.median(spec_self)),
+                    "amplitude_net_consistency_med": float(np.median(amp_cons)),
+                    "stage1_consistency_med": float(np.median(s1_cons)),
+                    "stage4_consistency_med": float(np.median(s4_cons)),
+                })
+
+    # ---- Summary ----
+    rel_errs_all = np.array([r["median_rel_err"] for r in results])
+    max_errs_all = np.array([r["max_rel_err"] for r in results])
+    median_all = float(np.median(rel_errs_all))
+    max_all = float(np.max(max_errs_all))
+    has_nan = bool(np.any(~np.isfinite(rel_errs_all)))
+
+    print(f"\n[preflight-v2] Results ({n_cache} points):")
     print(f"  median_rel_err: {median_all:.4e}")
     print(f"  max_rel_err:    {max_all:.4e}")
     print(f"  NaN/Inf:        {has_nan}")
@@ -209,25 +292,54 @@ def main():
     for r in results:
         print(f"  {r['idx']:4d} {r['a']:8.4f} {r['omega']:12.6e} {r['median_rel_err']:10.4e} {r['max_rel_err']:10.4e}")
 
+    # ---- Error decomposition ----
+    if decomp_results:
+        print(f"\n{'='*80}")
+        print("  Error Decomposition (5 sample points)")
+        print(f"{'='*80}")
+        print(f"  {'idx':>4s} {'a':>8s} {'omega':>12s} {'spec_self':>10s} {'amp_net':>10s} {'stage1':>10s} {'stage4':>10s}")
+        for d in decomp_results:
+            print(f"  {d['idx']:4d} {d['a']:8.4f} {d['omega']:12.6e} "
+                  f"{d['spectral_self_consistency_med']:10.4e} {d['amplitude_net_consistency_med']:10.4e} "
+                  f"{d['stage1_consistency_med']:10.4e} {d['stage4_consistency_med']:10.4e}")
+
     # ---- Save ----
     summary = {
+        "version": "v2",
+        "note": "CORRECTED: R_over_P = h2 * S(y), NOT f_R(y)",
         "pre_stage4_bundle": str(bundle_dir.resolve()),
         "stage2_checkpoint": str(stage2_ckpt_path.resolve()),
         "spectral_basis_cache": str(Path(args.spectral_basis_cache).resolve()),
-        "n_param_eval": int(n_eval),
+        "n_points": int(n_cache),
         "n_y": int(n_y),
         "y_range": [float(y_grid_np[0]), float(y_grid_np[-1])],
         "median_rel_err": median_all,
         "max_rel_err": max_all,
         "has_nan_inf": has_nan,
         "per_point": results,
+        "error_decomposition": decomp_results,
         "verdict": "GOOD" if (median_all < 1.0 and not has_nan) else "NEEDS_IMPROVEMENT",
     }
     with open(out_dir / "preflight_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n[preflight] Saved to {out_dir / 'preflight_summary.json'}")
-    print(f"[preflight] Verdict: {summary['verdict']}")
+    print(f"\n[preflight-v2] Saved to {out_dir / 'preflight_summary.json'}")
+    print(f"[preflight-v2] Verdict: {summary['verdict']}")
+
+    if decomp_results:
+        s1_med = float(np.median([d["stage1_consistency_med"] for d in decomp_results]))
+        amp_med = float(np.median([d["amplitude_net_consistency_med"] for d in decomp_results]))
+        spec_med = float(np.median([d["spectral_self_consistency_med"] for d in decomp_results]))
+        print(f"\n[preflight-v2] Bottleneck analysis:")
+        print(f"  spectral self-consistency: {spec_med:.4e}")
+        print(f"  amplitude-net consistency: {amp_med:.4e}")
+        print(f"  Stage-1 PINN consistency:  {s1_med:.4e}")
+        if s1_med > amp_med and s1_med > spec_med:
+            print(f"  => Primary bottleneck: Stage-1 Rin PINN")
+        elif amp_med > s1_med:
+            print(f"  => Primary bottleneck: AmplitudeNet")
+        else:
+            print(f"  => Bottleneck: spectral self-consistency (check cache)")
 
 
 if __name__ == "__main__":
