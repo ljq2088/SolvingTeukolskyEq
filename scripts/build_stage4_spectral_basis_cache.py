@@ -123,14 +123,14 @@ def main():
         sol_up = solve_basis_domain(mode, "up", args.N_out, 0.0, z_b, "left")
 
         # Interpolate spectral solutions to common y-grid
-        u_down_interp = np.interp(z_grid, sol_down["z"][::-1],
-                                  sol_down["u"][::-1].real) + \
-                        1j * np.interp(z_grid, sol_down["z"][::-1],
-                                       sol_down["u"][::-1].imag)
-        u_up_interp = np.interp(z_grid, sol_up["z"][::-1],
-                                sol_up["u"][::-1].real) + \
-                      1j * np.interp(z_grid, sol_up["z"][::-1],
-                                     sol_up["u"][::-1].imag)
+        u_down_interp = np.interp(z_grid, sol_down["z"],
+                                  sol_down["u"].real) + \
+                        1j * np.interp(z_grid, sol_down["z"],
+                                       sol_down["u"].imag)
+        u_up_interp = np.interp(z_grid, sol_up["z"],
+                                sol_up["u"].real) + \
+                      1j * np.interp(z_grid, sol_up["z"],
+                                     sol_up["u"].imag)
 
         u_down_cache[i, :] = u_down_interp
         u_up_cache[i, :] = u_up_interp
