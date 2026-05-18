@@ -129,7 +129,7 @@ mathematica:
   wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
 
 atlas_training:
-  steps: 5000
+  steps: 10000
   batch_size: 8
   n_interior: 128
   n_interior_outer_extra: 0
@@ -137,6 +137,8 @@ atlas_training:
   normalize_residual: false
 
   lbfgs_steps: 0
+
+  infinity_robin_weight: 1.0e-2
 
   val_fraction: 0.2
   val_param_samples: 24
@@ -147,7 +149,7 @@ atlas_training:
     enabled: true
     patience: 100
     min_rel_improve: 1.0e-5
-    min_steps: 5000
+    min_steps: 10000
 
   save_every: 500
   ckpt_every: 500

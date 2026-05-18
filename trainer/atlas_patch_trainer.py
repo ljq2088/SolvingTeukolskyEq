@@ -1080,6 +1080,7 @@ class AtlasPatchTrainer:
         info["loss_anchor"] = 0.0
         info["loss_coeff_reg"] = 0.0
         info["loss_integral"] = 0.0
+        info["loss_infinity_robin"] = 0.0
         info["anchor_weight_eff"] = 0.0
         info["anchor_success_count"] = 0
         info["anchor_failed_count"] = 0
@@ -1118,6 +1119,49 @@ class AtlasPatchTrainer:
             if torch.isfinite(loss_integral):
                 total_loss = total_loss + integral_weight * loss_integral
                 info["loss_integral"] = float(loss_integral.detach().cpu().item())
+
+        # Infinity Robin loss at y=-1 (analytic, unsupervised)
+        inf_robin_weight = float(self.atlas_train_cfg.get("infinity_robin_weight", 0.0))
+        if inf_robin_weight > 0:
+            from physical_ansatz.infinity_robin import (
+                analytic_c_inf, infinity_robin_loss, compute_S_and_Sy_at_infinity,
+            )
+            y_inf = torch.full((1,), -1.0, device=self.device, dtype=self.dtype)
+            y_inf_batch = y_inf.unsqueeze(0).expand(a_batch.shape[0], 1)
+
+            if output_type == "S":
+                S_inf, Sy_inf, _ = compute_f_derivatives_autograd(
+                    self.model, a_batch, omega_batch, y_inf_batch,
+                    u_batch=u_batch, v_batch=v_batch,
+                )
+                S_inf = S_inf.squeeze(-1)
+                Sy_inf = Sy_inf.squeeze(-1)
+            else:
+                f_inf, fy_inf, _ = compute_f_derivatives_autograd(
+                    self.model, a_batch, omega_batch, y_inf_batch,
+                    u_batch=u_batch, v_batch=v_batch,
+                )
+                f_inf = f_inf.squeeze(-1)
+                fy_inf = fy_inf.squeeze(-1)
+                slope_inf = _horizon_slope(
+                    a=a_batch, omega=omega_batch, lambda_=lambda_batch,
+                    m=m_phys, M=M_phys, s=s_phys,
+                )
+                S_inf, Sy_inf = compute_S_and_Sy_at_infinity(f_inf, fy_inf, slope_inf)
+
+            # Ensure complex dtype for c_inf computation
+            cdtype = torch.complex128 if a_batch.dtype == torch.float64 else torch.complex64
+            if not torch.is_complex(S_inf):
+                S_inf = S_inf.to(dtype=cdtype)
+            if not torch.is_complex(Sy_inf):
+                Sy_inf = Sy_inf.to(dtype=cdtype)
+            lambda_c = lambda_batch.to(dtype=cdtype) if not torch.is_complex(lambda_batch) else lambda_batch
+
+            c_inf = analytic_c_inf(a_batch, omega_batch, lambda_c, m=m_phys, M=M_phys, s=s_phys)
+            loss_inf_robin = infinity_robin_loss(S_inf, Sy_inf, c_inf).mean()
+            if torch.isfinite(loss_inf_robin):
+                total_loss = total_loss + inf_robin_weight * loss_inf_robin
+                info["loss_infinity_robin"] = float(loss_inf_robin.detach().cpu().item())
 
         # Chebyshev coefficient regularization (spectral decay prior)
         if self.model_type in ("cheb", "cheb_deeponet"):
@@ -1824,6 +1868,7 @@ class AtlasPatchTrainer:
                 pbar.set_postfix({
                     "tot": f"{info['total_loss']:.2e}",
                     "pde": f"{info['loss_pde']:.2e}",
+                    "inf": f"{info.get('loss_infinity_robin', 0.0):.2e}",
                     "int": f"{info.get('loss_integral', 0.0):.2e}",
                     "anc": f"{info.get('loss_anchor', 0.0):.2e}",
                     "aw": f"{info.get('anchor_weight_eff', 0.0):.2e}",
