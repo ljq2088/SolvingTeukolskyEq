@@ -1,0 +1,70 @@
+include:
+  physics: config/teukolsky_radial.yaml
+
+# ============================================================
+# Stage-1 Infinity Robin + Adam/L-BFGS Refinement
+# ============================================================
+
+stage1_infinity_robin:
+  base_checkpoint: outputs/autoencoder_stage1_rin_train/20260518_194655_patch_000_comp_0_u_0.500_v_0.603/checkpoints/best_model.pt
+  output_root: outputs/stage1_infinity_robin
+
+  # Freeze policy — only encoder + rin_decoder are trained
+  train_encoder: true
+  train_rin_decoder: true
+  train_amplitude_net: false
+  train_up_decoder: false
+  train_down_decoder: false
+
+  adam:
+    enabled: true
+    lr_encoder: 2.0e-7
+    lr_rin_decoder: 1.0e-6
+    weight_decay: 0.0
+    epochs: 50
+    batch_size: 8
+    grad_clip: 0.1
+
+  lbfgs:
+    enabled: true
+    max_epochs: 50
+    max_iter_per_epoch: 20
+    history_size: 50
+    line_search_fn: strong_wolfe
+    lr: 0.5
+    fixed_batch_size: 8
+    restart_every: 10
+    grad_clip: 0.1
+
+  loss:
+    weight_pde: 1.0
+    weight_inf_robin: 1.0
+    weight_near_pde: 2.0
+    weight_drift: 0.1
+    eps: 1.0e-12
+
+  sampling:
+    near_infinity:
+      y_min: -0.999
+      y_max: -0.95
+      n_y: 96
+    transition:
+      y_min: -0.95
+      y_max: 0.0
+      n_y: 48
+    horizon_side:
+      y_min: 0.0
+      y_max: 0.999
+      n_y: 32
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+
+runtime:
+  dtype: float64

@@ -43,65 +43,43 @@ def compute_f_derivatives_autograd(
             a_batch, omega_batch, y_points, u=u_batch, v=v_batch
         )
 
-    # Fallback: autograd
-    if not y_points.requires_grad:
-        y_points = y_points.clone().requires_grad_(True)
+    # Fallback: per-sample autograd to avoid O(B²) memory from retain_graph
+    # on full batch. Each sample retains its own (1,N) graph, B× smaller.
+    f_list, fy_list, fyy_list = [], [], []
 
-    if u_batch is None and v_batch is None:
-        f = model(a_batch, omega_batch, y_points)
-    else:
-        f = model(a_batch, omega_batch, y_points, u=u_batch, v=v_batch)
+    B = a_batch.shape[0]
+    for i in range(B):
+        a_i = a_batch[i:i+1]
+        omega_i = omega_batch[i:i+1]
+        y_i = y_points[i:i+1].detach().clone().requires_grad_(True)
+        u_i = u_batch[i:i+1] if u_batch is not None else None
+        v_i = v_batch[i:i+1] if v_batch is not None else None
 
-    f_re = f.real
-    f_im = f.imag
+        f_i = model(a_i, omega_i, y_i, u=u_i, v=v_i)
+        f_list.append(f_i)
 
-    fy_re_list = []
-    fy_im_list = []
-
-    for i in range(f.shape[0]):
-        grad_re = torch.autograd.grad(
-            outputs=f_re[i].sum(),
-            inputs=y_points,
-            create_graph=True,
-            retain_graph=True,
+        fy_re_i = torch.autograd.grad(
+            f_i.real.sum(), y_i, create_graph=True, retain_graph=True,
         )[0]
-        fy_re_list.append(grad_re)
-
-        grad_im = torch.autograd.grad(
-            outputs=f_im[i].sum(),
-            inputs=y_points,
-            create_graph=True,
-            retain_graph=True,
+        fy_im_i = torch.autograd.grad(
+            f_i.imag.sum(), y_i, create_graph=True, retain_graph=True,
         )[0]
-        fy_im_list.append(grad_im)
+        fy_i = torch.complex(fy_re_i, fy_im_i)
+        fy_list.append(fy_i)
 
-    fy_re = torch.stack(fy_re_list, dim=0)
-    fy_im = torch.stack(fy_im_list, dim=0)
-    fy = torch.complex(fy_re, fy_im)
-
-    fyy_re_list = []
-    fyy_im_list = []
-
-    for i in range(f.shape[0]):
-        grad2_re = torch.autograd.grad(
-            outputs=fy_re[i].sum(),
-            inputs=y_points,
-            create_graph=True,
-            retain_graph=True,
+        # fyy from fy — retain_graph=True on all; graph consumed by caller's backward
+        fyy_re_i = torch.autograd.grad(
+            fy_re_i.sum(), y_i, create_graph=False, retain_graph=True,
         )[0]
-        fyy_re_list.append(grad2_re)
-
-        grad2_im = torch.autograd.grad(
-            outputs=fy_im[i].sum(),
-            inputs=y_points,
-            create_graph=True,
-            retain_graph=True,
+        fyy_im_i = torch.autograd.grad(
+            fy_im_i.sum(), y_i, create_graph=False, retain_graph=True,
         )[0]
-        fyy_im_list.append(grad2_im)
+        fyy_i = torch.complex(fyy_re_i, fyy_im_i)
+        fyy_list.append(fyy_i)
 
-    fyy_re = torch.stack(fyy_re_list, dim=0)
-    fyy_im = torch.stack(fyy_im_list, dim=0)
-    fyy = torch.complex(fyy_re, fyy_im)
+    f = torch.cat(f_list, dim=0)
+    fy = torch.cat(fy_list, dim=0)
+    fyy = torch.cat(fyy_list, dim=0)
 
     return f, fy, fyy
 
