@@ -128,8 +128,8 @@ def main():
         lam = compute_lambda(a_v, w_v, ell, m_mode, s=s_val)
         lam_list.append(lam)
 
-    a_t = torch.tensor(a_points, device=device, dtype=dtype).unsqueeze(-1)
-    omega_t = torch.tensor(omega_points, device=device, dtype=dtype).unsqueeze(-1)
+    a_t = torch.tensor(a_points, device=device, dtype=dtype)
+    omega_t = torch.tensor(omega_points, device=device, dtype=dtype)
     lam_t = torch.tensor(np.array(lam_list), device=device, dtype=cdtype)
     u_t = torch.zeros(args.n_points, device=device, dtype=dtype)
     v_t = torch.ones(args.n_points, device=device, dtype=dtype) * 0.6
