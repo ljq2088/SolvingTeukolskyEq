@@ -76,14 +76,28 @@ def predict_R_full(model, a, omega, u, v, lam, r_grid, M=1.0, m=2, s=-2):
     return r_out, R_out
 
 
-def sample_grid(comp, n_a=6, n_w=6):
-    """Sample (a,omega) points within the component's support."""
-    a0, a1 = comp.a_support[0], comp.a_support[-1]
-    a_vals = np.linspace(a0 + 0.02, a1 - 0.02, n_a)
-    # Get omega bounds at each a (take the min lower and max upper)
-    w_min = np.min(comp.omega_lower) * 2
-    w_max = np.max(comp.omega_upper) * 0.9
-    w_vals = np.logspace(np.log10(w_min), np.log10(w_max), n_w)
+def sample_grid(comp, u_c=0.5, v_c=0.6026456460798848, h_u=0.3, h_v=0.12,
+                n_a=6, n_w=6, omega_chart_mode="log10"):
+    """Sample (a,omega) points within the patch's (u,v) support.
+
+    Patch 0: u in [u_c-h_u, u_c+h_u], v in [v_c-h_v, v_c+h_v].
+    """
+    from domain.atlas_builder import map_from_chart
+
+    u_min, u_max = u_c - h_u, u_c + h_u
+    v_min, v_max = v_c - h_v, v_c + h_v
+
+    # Map patch corners to (a,omega)
+    a0, _ = map_from_chart(comp, u_min, v_c, omega_chart_mode=omega_chart_mode)
+    a1, _ = map_from_chart(comp, u_max, v_c, omega_chart_mode=omega_chart_mode)
+    _, w0 = map_from_chart(comp, u_c, v_min, omega_chart_mode=omega_chart_mode)
+    _, w1 = map_from_chart(comp, u_c, v_max, omega_chart_mode=omega_chart_mode)
+
+    # Add margin
+    a_margin = (a1 - a0) * 0.05
+    w_margin = (w1 - w0) * 0.05
+    a_vals = np.linspace(a0 + a_margin, a1 - a_margin, n_a)
+    w_vals = np.logspace(np.log10(w0 + w_margin), np.log10(w1 - w_margin), n_w)
     return a_vals, w_vals
 
 
@@ -130,7 +144,7 @@ def main():
     (out_dir / "plots").mkdir(exist_ok=True)
 
     # Sample points
-    a_vals, w_vals = sample_grid(comp, args.n_a, args.n_w)
+    a_vals, w_vals = sample_grid(comp, n_a=args.n_a, n_w=args.n_w, omega_chart_mode=omega_chart_mode)
     print(f"\nGrid: {len(a_vals)} × {len(w_vals)} = {len(a_vals)*len(w_vals)} points")
     print(f"a ∈ [{a_vals[0]:.2f}, {a_vals[-1]:.2f}]")
     print(f"ω ∈ [{w_vals[0]:.2e}, {w_vals[-1]:.2e}]")
