@@ -41,7 +41,28 @@
 
 ## 4. 结果
 
-### 4.1 50-epoch 对比
+> **重要:** 训练 loss 仅为优化过程的相对判据，**最终评价标准是 pybhpt 基准的相对误差**。Loss 下降不等于物理精度提升。
+
+### 4.1 原始 Chebyshev baseline 的 pybhpt 基准（step 10000, 9 个 val case）
+
+| a | ω | median rel_err | max rel_err |
+|---|---|---|---|
+| 0.255 | 0.0514 | 2.34% | 2.38% |
+| 0.296 | 0.0770 | 2.69% | 2.75% |
+| 0.337 | 0.0514 | 3.04% | 3.32% |
+| 0.378 | 0.0770 | 2.54% | 2.58% |
+| 0.500 | 0.0257 | 8.23% | 9.03% |
+| 0.541 | 0.0514 | 2.56% | 3.26% |
+| 0.663 | 0.0514 | 2.96% | 3.64% |
+| 0.745 | 0.0257 | 13.27% | 14.15% |
+| 0.786 | 0.0770 | 2.19% | 2.22% |
+
+- **median of medians: 2.69%**
+- **max: 13.27%**（最差 case: a=0.745, ω=0.0257, 高自旋低频率）
+
+### 4.2 50-epoch 配点策略对比（训练 loss）
+
+训练 loss 仅作相对比较参考，不代表物理精度：
 
 | 策略 | PDE Loss (final) | Robin Loss (final) |
 |------|-------------------|---------------------|
@@ -50,20 +71,31 @@
 | mixed (70/30) | 1,265,640 | 0.961 |
 | adaptive | 2,930,815 | 0.892 |
 
-**排序 (PDE loss 从低到高):** baseline < mixed < gaussian < adaptive
+PDE loss 排序: baseline < mixed < gaussian < adaptive。所有策略的 Robin loss 基本持平(~0.9)，但 baseline PDE loss 仅为 adaptive 的 26%，gaussian 的 49%。
 
-所有策略的 Robin loss 基本持平(~0.9)，但 PDE loss 差距显著：baseline 的 PDE loss 仅为 adaptive 的 26%，gaussian 的 49%。
+### 4.3 Adaptive 200-epoch 长跑的 pybhpt 基准对比
 
-### 4.2 Adaptive 200-epoch 长跑 (robin_weight=1e5)
-
-为进一步验证 adaptive 策略，运行了 200 epoch 的长跑（robin_weight 提升至 1e5），并与原始 baseline checkpoint 进行 pybhpt 基准对比（6×6 网格，36 点）：
+运行 200 epoch adaptive 训练（robin_weight=1e5），与 baseline checkpoint 在 6×6 网格（36 点, ω∈[0.012,0.074], a∈[0.235,0.765]）上做 pybhpt 对比：
 
 | 模型 | rel_err (mean of means) | rel_err (median of medians) | phase_err (mean) |
 |------|------------------------|---------------------------|-------------------|
-| baseline checkpoint (step 10000) | **0.129** | **0.064** | **0.130** |
-| adaptive 200-epoch 训练后 | 0.193 | 0.176 | 0.168 |
+| baseline checkpoint (step 10000) | **12.9%** | **6.4%** | **0.130 rad** |
+| adaptive 200-epoch 训练后 | 19.3% | 17.6% | 0.168 rad |
 
-Adaptive 训练后的模型在所有指标上均**劣于**原始 baseline checkpoint。
+**Adaptive 训练后相对误差恶化约 50%（mean）~175%（median）。**
+
+按 ω 分组的相对误差（adaptive 模型 / baseline 模型）：
+
+| ω | baseline rel_err | adaptive rel_err | 退化 |
+|---|---|---|---|
+| 0.0120 | 14.0% | 21.8% | +56% |
+| 0.0173 | 11.0% | 21.8% | +98% |
+| 0.0249 | 7.2% | 21.3% | +196% |
+| 0.0358 | 4.4% | 19.6% | +345% |
+| 0.0516 | 11.4% | 15.5% | +36% |
+| 0.0743 | 29.7% | 15.8% | −47%（仅高频端改善）|
+
+除了最高频端（ω=0.0743），adaptive 模型在所有频率区间均显著劣于 baseline。尤其在原本精度最高的中间频率（ω=0.0358, rel_err 仅 4.4%）退化最严重（→19.6%, +345%）。
 
 ### 4.3 多次重复验证
 
