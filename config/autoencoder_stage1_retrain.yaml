@@ -1,0 +1,174 @@
+include:
+  physics: config/teukolsky_radial.yaml
+
+# ============================================================
+# Autoencoder Stage 1: R_in only — clean retrain config
+# Patch 0: a∈[0.206,0.794], ω∈[0.0085,0.0777]
+# ============================================================
+
+autoencoder:
+  stage: stage1
+
+model:
+  hidden_dims: [128, 128, 128, 128]
+  activation: silu
+  fourier_num_freqs: 2
+  fourier_base_scale: 1.0
+  param_embed_dim: 64
+  use_film: true
+  use_residual: true
+
+sampling:
+  parameter_batch:
+    mode: fixed_pool
+    sampler: sobol
+    batch_size: 8
+    n_param_samples: 48
+
+  collocation:
+    interior:
+      strategy: chebyshev_horizon
+      n_points: 128
+
+    boundary:
+      strategy: none
+      n_points: 0
+
+    adaptive:
+      enabled: false
+
+  anchors:
+    mode: none
+    n_base: 0
+    n_adaptive: 0
+    n_random: 0
+
+training:
+  optimizer:
+    lr: 5.0e-5
+
+  anchor:
+    freq: 0
+    start_step: 999999
+    n_anchors: 0
+
+  scheduler:
+    enabled: false
+
+  loss:
+    weight_interior: 1.0
+    weight_boundary: 0.0
+    weight_anchor: 0.0
+
+  loss_balance:
+    mode: fixed
+
+  validation:
+    mode: fixed_pool
+    val_freq: 100
+    val_n_points: 128
+    n_param_samples: 24
+    param_sampler: sobol
+    monitor: mean
+    track_worst: true
+    sobol_seed: 4321
+    sobol_skip: 0
+
+  early_stop:
+    patience: 2000
+    threshold: 1.0e-6
+
+  weight_schedule:
+    interior:
+      enabled: false
+
+  epochs: 50000
+
+curriculum:
+  parameter:
+    enabled: false
+  collocation:
+    enabled: false
+
+regularization:
+  anti_trivial:
+    enabled: false
+  dynamic_balance:
+    enabled: false
+  flat_variance:
+    enabled: false
+  head_reg:
+    enabled: true
+    weight_nl: 1.0e-6
+    weight_resp: 1.0e-8
+  param_curvature:
+    enabled: true
+    weight: 1.0e-4
+    delta_alpha: 0.05
+    delta_xi: 0.05
+    n_probe_points: 64
+
+restart:
+  enabled: false
+
+visualization:
+  viz_show_enabled: false
+  viz_enabled: true
+  viz_every_steps: 500
+  viz_auto_close_sec: 3.0
+  viz_num_points: 400
+  viz_r_min: 2.0
+  viz_r_max: 1000.0
+  viz_save_enabled: true
+  viz_subdir: "figures"
+
+runtime:
+  dtype: float64
+
+mathematica:
+  kernel_path: "/mnt/f/mma/WolframKernel.exe"
+  wl_path_win: "F:/EMRI/Radial_flow/Radial_Function.wl"
+
+atlas_training:
+  steps: 20000
+  batch_size: 8
+  n_interior: 128
+  n_interior_outer_extra: 0
+  grad_clip: 0.5
+  normalize_residual: false
+
+  lbfgs_steps: 0
+
+  infinity_robin_weight: 0.0
+
+  f_anchor_file: "outputs/stage1_retrain/f_anchors_patch0.pt"
+  f_anchor_weight: 0.0
+
+  val_fraction: 0.2
+  val_param_samples: 24
+  val_every: 100
+  val_n_points: 128
+
+  early_stopping:
+    enabled: true
+    patience: 500
+    min_rel_improve: 1.0e-5
+    min_steps: 2000
+
+  save_every: 500
+  ckpt_every: 200
+  viz_every: 500
+  viz_num_points: 400
+  viz_r_min: 2.0
+  viz_r_max: 1000.0
+  anchor_backend: pybhpt
+  viz_benchmark_backend: pybhpt
+
+  val_benchmark_backend: "none"
+  val_benchmark_every: 100
+  val_benchmark_max_cases: 24
+  val_benchmark_at_final: true
+
+  anchor_target_ratio: 1.0e-2
+  train_seed: 1234
+  output_root: outputs/stage1_retrain

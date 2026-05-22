@@ -110,13 +110,18 @@ def main():
     parser.add_argument("--n-r", type=int, default=200, help="Number of r points")
     parser.add_argument("--output-dir", type=str, default=None)
     parser.add_argument("--skip-pybhpt", action="store_true", help="Skip pybhpt comparison, only compute model profiles")
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="Override checkpoint path (default: original best model)")
     args = parser.parse_args()
 
     device = torch.device(args.device)
     dtype = torch.float64
 
     # Load model
-    ckpt_path = "outputs/autoencoder_stage1_rin_train/20260518_194655_patch_000_comp_0_u_0.500_v_0.603/checkpoints/best_model.pt"
+    if args.checkpoint is not None:
+        ckpt_path = args.checkpoint
+    else:
+        ckpt_path = "outputs/autoencoder_stage1_rin_train/20260518_194655_patch_000_comp_0_u_0.500_v_0.603/checkpoints/best_model.pt"
     ckpt = torch.load(ckpt_path, map_location="cpu")
     model = AutoencoderTeukolskyPINN()
     sd = ckpt.get("model_state_dict", ckpt.get("state_dict", ckpt))

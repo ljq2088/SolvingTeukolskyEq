@@ -45,13 +45,20 @@ def compute_f_derivatives_autograd(
 
     # Fallback: per-sample autograd to avoid O(B²) memory from retain_graph
     # on full batch. Each sample retains its own (1,N) graph, B× smaller.
+
+    # Ensure y_points is 2D (B,N) for per-sample slicing
+    if y_points.ndim == 1:
+        y_2d = y_points.unsqueeze(0).expand(a_batch.shape[0], -1)
+    else:
+        y_2d = y_points
+
     f_list, fy_list, fyy_list = [], [], []
 
     B = a_batch.shape[0]
     for i in range(B):
         a_i = a_batch[i:i+1]
         omega_i = omega_batch[i:i+1]
-        y_i = y_points[i:i+1].detach().clone().requires_grad_(True)
+        y_i = y_2d[i:i+1].detach().clone().requires_grad_(True)
         u_i = u_batch[i:i+1] if u_batch is not None else None
         v_i = v_batch[i:i+1] if v_batch is not None else None
 
@@ -94,6 +101,7 @@ def compute_pointwise_pde_residual(
     eps=1e-12,
     u_batch=None,
     v_batch=None,
+    normalize_mode="term",
 ):
     M = float(cfg["problem"].get("M", 1.0))
     s = int(cfg["problem"].get("s", -2))
@@ -161,13 +169,34 @@ def compute_pointwise_pde_residual(
     pointwise = torch.abs(residual_int) ** 2
 
     if normalize:
-        scale = (
-            1.0
-            + torch.abs(term2.detach()) ** 2
-            + torch.abs(term1.detach()) ** 2
-            + torch.abs(term0.detach()) ** 2
-            + torch.abs(rhs.detach()) ** 2
-        )
+        if normalize_mode == "term":
+            scale = (
+                1.0
+                + torch.abs(term2.detach()) ** 2
+                + torch.abs(term1.detach()) ** 2
+                + torch.abs(term0.detach()) ** 2
+                + torch.abs(rhs.detach()) ** 2
+            )
+        elif normalize_mode == "coeff":
+            # Normalize by coefficient magnitudes — prevents vanishing
+            # coefficients near y=1 from hiding PDE violations.
+            if output_type == "S":
+                scale = (
+                    torch.abs(D2_int.detach()) ** 2
+                    + torch.abs(D1_int.detach()) ** 2
+                    + torch.abs(D0_int.detach()) ** 2
+                    + eps
+                )
+            else:
+                scale = (
+                    torch.abs(B2_int.detach()) ** 2
+                    + torch.abs(B1_int.detach()) ** 2
+                    + torch.abs(B0_int.detach()) ** 2
+                    + torch.abs(rhs.detach()) ** 2
+                    + eps
+                )
+        else:
+            raise ValueError(f"Unknown normalize_mode: {normalize_mode}")
         pointwise = pointwise / scale.clamp_min(eps)
 
     return residual_int, pointwise
@@ -276,6 +305,7 @@ def pinn_residual_loss(
     return_pointwise=False,
     u_batch=None,
     v_batch=None,
+    normalize_mode="term",
 ):
     residual_int, pointwise_interior = compute_pointwise_pde_residual(
         model=model,
@@ -290,6 +320,7 @@ def pinn_residual_loss(
         eps=residual_scale_eps,
         u_batch=u_batch,
         v_batch=v_batch,
+        normalize_mode=normalize_mode,
     )
 
     loss_interior = torch.mean(pointwise_interior)

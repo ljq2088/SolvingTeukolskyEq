@@ -323,6 +323,143 @@ def sample_points_chebyshev_grid(
     return torch.sort(y).values
 
 
+def sample_points_chebyshev_horizon(
+    n_points,
+    y_min=-0.9999,
+    y_max=0.9999,
+    device='cpu',
+    dtype=torch.float64,
+):
+    """
+    视界侧集中的 Chebyshev 采点：y = 2*cos(k*pi/(2N)) - 1, k=0,...,N-1.
+    点聚集在 y=1（视界）附近，y=-1（无穷远）侧较稀疏.
+    """
+    if n_points <= 0:
+        return torch.empty(0, device=device, dtype=dtype)
+    if n_points == 1:
+        return torch.tensor([0.5 * (y_min + y_max)], device=device, dtype=dtype)
+
+    k = torch.arange(n_points, device=device, dtype=dtype)
+    y_ref = 2.0 * torch.cos(torch.pi * (2.0 * n_points - k) / (2.0 * n_points)) + 1.0
+
+    y = 0.5 * (y_max - y_min) * y_ref + 0.5 * (y_max + y_min)
+    return torch.sort(y).values
+
+
+def sample_points_normal_truncated(
+    n_points: int,
+    sigma: float = 0.3,
+    y_min: float = -0.999,
+    y_max: float = 0.999,
+    device: str = 'cpu',
+    dtype: torch.dtype = torch.float64,
+    seed: int = None,
+) -> torch.Tensor:
+    """Sample from truncated normal centered at y=-1 (infinity endpoint).
+
+    Concentrates points near y=-1 where the solution is hardest to fit.
+    Distribution is N(loc=-1, scale=sigma) truncated to [y_min, y_max].
+
+    Args:
+        n_points: number of collocation points
+        sigma: standard deviation; smaller = tighter concentration near y=-1
+        y_min: left truncation bound (default -0.999, avoids exact y=-1)
+        y_max: right truncation bound (default 0.999)
+        device, dtype: output tensor properties
+        seed: optional numpy random seed for reproducibility
+
+    Returns:
+        y: (n_points,) sorted tensor
+    """
+    from scipy.stats import truncnorm
+
+    if seed is not None:
+        np.random.seed(seed)
+
+    loc = -1.0
+    a = (y_min - loc) / sigma
+    b = (y_max - loc) / sigma
+    rng = truncnorm(a, b, loc=loc, scale=sigma)
+    y_np = rng.rvs(size=n_points)
+    y = torch.from_numpy(y_np).to(device=device, dtype=dtype)
+    return torch.sort(y).values
+
+
+def sample_points_residual_weighted(
+    candidate_y: torch.Tensor,
+    residual_profile: torch.Tensor,
+    n_select: int,
+    uniform_frac: float = 0.3,
+    temperature: float = 1.0,
+    device: str = 'cpu',
+    dtype: torch.dtype = torch.float64,
+) -> torch.Tensor:
+    """Sample collocation points based on PDE residual distribution.
+
+    Mixes residual-based sampling (focusing on hard regions) with uniform
+    sampling (maintaining domain coverage), following FI-PINN approach.
+
+    Args:
+        candidate_y: (M,) dense evaluation grid
+        residual_profile: (M,) |PDE_residual| on candidate_y
+        n_select: number of points to select
+        uniform_frac: fraction from uniform sampling (0.3 = 30%)
+        temperature: softmax temperature; smaller = sharper focus on peaks
+        device, dtype: output tensor properties
+
+    Returns:
+        y_selected: (n_select,) sorted tensor
+    """
+    n_select = min(n_select, candidate_y.numel())
+    n_uniform = max(0, int(uniform_frac * n_select))
+    n_residual = n_select - n_uniform
+
+    # Pure uniform: no residual sampling needed
+    if n_residual <= 0:
+        perm = torch.randperm(candidate_y.numel(), device=device)
+        y = candidate_y[perm[:n_select]]
+        return torch.sort(y).values
+
+    # Pure residual: sample all from residual distribution
+    if n_uniform <= 0:
+        profile = residual_profile.detach().clone().flatten().to(dtype=torch.float64)
+        profile = torch.clamp(profile, min=0.0)
+        if profile.sum() < 1e-30:
+            profile = torch.ones_like(profile)
+        logits = profile / max(temperature, 1e-8)
+        probs = torch.softmax(logits, dim=0)
+        probs = probs / probs.sum().clamp_min(1e-12)
+        idx = torch.multinomial(probs, n_select, replacement=True)
+        y = candidate_y[idx]
+        return torch.sort(y).values
+
+    # Mixed: residual + uniform
+
+    # Residual-based sampling
+    profile = residual_profile.detach().clone().flatten().to(dtype=torch.float64)
+    profile = torch.clamp(profile, min=0.0)
+    if profile.sum() < 1e-30:
+        profile = torch.ones_like(profile)
+    logits = profile / max(temperature, 1e-8)
+    probs = torch.softmax(logits, dim=0)
+    probs = probs / probs.sum().clamp_min(1e-12)
+    idx_residual = torch.multinomial(probs, n_residual, replacement=True)
+
+    # Uniform sampling
+    idx_remain = torch.ones(candidate_y.numel(), dtype=torch.bool, device=device)
+    idx_remain[idx_residual] = False
+    available = torch.nonzero(idx_remain, as_tuple=False).squeeze(-1)
+    if available.numel() >= n_uniform:
+        perm = available[torch.randperm(available.numel(), device=device)]
+        idx_uniform = perm[:n_uniform]
+    else:
+        idx_uniform = available
+
+    idx = torch.cat([idx_residual, idx_uniform], dim=0)
+    y = candidate_y[idx]
+    return torch.sort(y).values
+
+
 def sample_interior_points(
     strategy,
     n_points,
@@ -366,6 +503,15 @@ def sample_interior_points(
 
     if strategy == "chebyshev":
         return sample_points_chebyshev_grid(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+    if strategy == "chebyshev_horizon":
+        return sample_points_chebyshev_horizon(
             n_points=n_points,
             y_min=y_min,
             y_max=y_max,

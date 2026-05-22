@@ -157,6 +157,27 @@ class AtlasPatchTrainer:
         )
         self.n_interior = int(atlas_train_cfg.get("n_interior", 64))
         self.n_interior_outer_extra = int(atlas_train_cfg.get("n_interior_outer_extra", 8))
+
+        # --- conservative adaptive collocation ---
+        adp_cfg = atlas_train_cfg.get("adaptive_collocation", {})
+        self.adaptive_enabled = bool(adp_cfg.get("enabled", False))
+        if self.adaptive_enabled:
+            self.adaptive_resample_every = int(adp_cfg.get("resample_every", 5))
+            self.adaptive_warmup_epochs = int(adp_cfg.get("warmup_epochs", 20))
+            self.adaptive_transition_epochs = int(adp_cfg.get("transition_epochs", 30))
+            self.adaptive_uniform_frac_final = float(adp_cfg.get("uniform_frac_final", 0.7))
+            self.adaptive_temperature = float(adp_cfg.get("temperature", 1.0))
+            self.adaptive_eval_n = int(adp_cfg.get("eval_n_points", 256))
+            self.adaptive_param_batch = int(adp_cfg.get("param_batch", 4))
+            self._adaptive_eval_y = sample_points_chebyshev_grid(
+                n_points=self.adaptive_eval_n, y_min=-0.99, y_max=0.99,
+                device=self.device, dtype=self.dtype,
+            )
+            self._adaptive_current_y = None
+            self._adaptive_epoch = -1
+        else:
+            self._adaptive_eval_y = None
+            self._adaptive_current_y = None
         self.n_anchor_y = int(n_anchor_y if n_anchor_y is not None else atlas_train_cfg.get("n_anchor_y", 4))
         self.steps_default = int(atlas_train_cfg.get("steps", 2000))
         self.grad_clip = float(atlas_train_cfg.get("grad_clip", 1.0))
@@ -219,6 +240,9 @@ class AtlasPatchTrainer:
 
         self.anchor_enabled = bool(anchor_enabled)
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
+        self.f_anchor_file = str(atlas_train_cfg.get("f_anchor_file", ""))
+        self.f_anchor_weight = float(atlas_train_cfg.get("f_anchor_weight", 1.0))
+        self.f_anchor_data = None  # loaded from file
         self.lr = float(self.cfg.get("training", {}).get("optimizer", {}).get("lr", 1.0e-3))
         self.verbose = bool(verbose)
         self.model_type = str(model_type)
@@ -248,6 +272,19 @@ class AtlasPatchTrainer:
                     mathematica_cfg,
                     timeout_sec=float(atlas_train_cfg.get("viz_mma_timeout", 20.0)),
                 )
+
+        # --- pre-computed f-anchor targets (Stage-1: direct f(y) supervision) ---
+        if self.f_anchor_file:
+            self._vprint(f"[f-anchor] loading pre-computed f-anchor targets from {self.f_anchor_file}")
+            self.f_anchor_data = torch.load(self.f_anchor_file, map_location="cpu")
+            # Build lookup: key = "a_omega" -> f array at fixed y points
+            # Extract anchor y-grid from first entry
+            first_key = next(iter(self.f_anchor_data))
+            self._f_anchor_y = torch.tensor(
+                self.f_anchor_data[first_key]["y"], device=self.device, dtype=self.dtype
+            )
+            self._vprint(f"[f-anchor] loaded {len(self.f_anchor_data)} targets, "
+                         f"{len(self._f_anchor_y)} y-points per target")
 
         # ---------------------------------------------------------
         # patch cover + valid chart points
@@ -617,7 +654,8 @@ class AtlasPatchTrainer:
         case_losses = val_metrics.get("case_losses", None)
         if case_losses is None:
             return 0
-        if self.best_val_case_means is None or self.best_val_case_steps is None:
+        if self.best_val_case_means is None or self.best_val_case_steps is None \
+                or len(case_losses) != len(self.best_val_case_means):
             self._init_best_val_case_tracking()
         improved_count = 0
         for i, loss_i in enumerate(case_losses):
@@ -820,6 +858,9 @@ class AtlasPatchTrainer:
         return a_batch, omega_batch, u_batch, v_batch
 
     def sample_y_interior(self):
+        if self.adaptive_enabled and self._adaptive_current_y is not None:
+            return self._adaptive_current_y.clone().requires_grad_(True)
+
         y_base = sample_points_chebyshev_grid(
             n_points=self.n_interior,
             y_min=-0.99,
@@ -860,6 +901,117 @@ class AtlasPatchTrainer:
             dtype=self.dtype,
         )
         return y.clone().requires_grad_(True)
+
+    def resample_adaptive_grid(self):
+        """Recompute collocation grid from residual profile (conservative)."""
+        if not self.adaptive_enabled:
+            return
+
+        epoch = getattr(self, '_adaptive_epoch', -1) + 1
+        self._adaptive_epoch = epoch
+
+        # Cosine-annealing schedule for uniform (Chebyshev) fraction
+        if epoch < self.adaptive_warmup_epochs:
+            uniform_frac = 1.0
+        elif epoch < self.adaptive_warmup_epochs + self.adaptive_transition_epochs:
+            progress = (epoch - self.adaptive_warmup_epochs) / self.adaptive_transition_epochs
+            alpha = 0.5 * (1.0 - math.cos(math.pi * progress))
+            uniform_frac = 1.0 + alpha * (self.adaptive_uniform_frac_final - 1.0)
+        else:
+            uniform_frac = self.adaptive_uniform_frac_final
+
+        n_cheb = max(1, int(self.n_interior * uniform_frac))
+        n_residual = self.n_interior - n_cheb
+
+        if n_residual == 0:
+            self._adaptive_current_y = sample_points_chebyshev_grid(
+                n_points=self.n_interior, y_min=-0.99, y_max=0.99,
+                device=self.device, dtype=self.dtype,
+            )
+            return
+
+        # Compute PDE residual profile on dense eval grid
+        was_training = self.model.training
+        self.model.eval()
+        try:
+            a_b, omega_b, u_b, v_b = self.sample_param_batch()
+            # Use a subset for efficiency
+            n_eval_params = min(self.adaptive_param_batch, a_b.shape[0])
+            a_b = a_b[:n_eval_params]
+            omega_b = omega_b[:n_eval_params]
+            u_b = u_b[:n_eval_params]
+            v_b = v_b[:n_eval_params]
+            lambda_b = self.resolve_aux_batch(a_b, omega_b)
+
+            eval_y = self._adaptive_eval_y.unsqueeze(0).expand(n_eval_params, -1)
+
+            from physical_ansatz.residual_pinn import compute_f_derivatives_autograd
+            from physical_ansatz.transform_y import (
+                horizon_regularity_slope, transform_coeffs_x_to_y,
+            )
+            from physical_ansatz.mapping import coeffs_x
+
+            M_phys = float(self.physics_cfg["problem"].get("M", 1.0))
+            s_phys = int(self.physics_cfg["problem"].get("s", -2))
+            m_phys = int(self.physics_cfg["problem"].get("m", 2))
+            output_type = getattr(self.model, "output_type", "f")
+
+            # Compute f, f_y, f_yy on eval grid
+            f_val, f_y_val, f_yy_val = compute_f_derivatives_autograd(
+                self.model, a_b, omega_b, eval_y,
+                u_batch=u_b, v_batch=v_b,
+            )
+
+            # Compute PDE coefficients
+            x_val = (eval_y + 1.0) / 2.0
+            A2_l, A1_l, A0_l = [], [], []
+            for i in range(n_eval_params):
+                A2i, A1i, A0i = coeffs_x(
+                    x=x_val, a=a_b[i], omega=omega_b[i],
+                    m=m_phys, lambda_=lambda_b[i], s=s_phys, M=M_phys,
+                )
+                A2_l.append(A2i); A1_l.append(A1i); A0_l.append(A0i)
+            A2 = torch.stack(A2_l, dim=0)
+            A1 = torch.stack(A1_l, dim=0)
+            A0 = torch.stack(A0_l, dim=0)
+
+            slope = horizon_regularity_slope(
+                a=a_b, omega=omega_b, lambda_=lambda_b,
+                m=m_phys, M=M_phys, s=s_phys,
+            )
+
+            B2, B1, B0, rhs = transform_coeffs_x_to_y(
+                A2, A1, A0, eval_y, slope=slope,
+            )
+            residual = B2 * f_yy_val + B1 * f_y_val + B0 * f_val - rhs
+            pointwise = torch.abs(residual) ** 2  # (n_params, n_points)
+
+            # Average over parameter batch, then softmax
+            profile = pointwise.mean(dim=0)  # (n_points,)
+            profile = profile.detach().cpu()
+
+            # Build residual-weighted distribution
+            logits = profile / max(self.adaptive_temperature, 1e-8)
+            logits = logits - logits.max()  # numerical stability
+            probs = torch.softmax(logits, dim=0)
+
+            # Sample n_residual points from residual distribution
+            indices = torch.multinomial(probs, n_residual, replacement=False)
+            y_residual = self._adaptive_eval_y[indices].to(device=self.device, dtype=self.dtype)
+
+            # Sample n_cheb points from Chebyshev grid
+            y_cheb = sample_points_chebyshev_grid(
+                n_points=n_cheb, y_min=-0.99, y_max=0.99,
+                device=self.device, dtype=self.dtype,
+            )
+
+            # Merge and sort
+            y_merged = torch.cat([y_cheb, y_residual], dim=0)
+            self._adaptive_current_y, _ = torch.sort(y_merged)
+
+        finally:
+            if was_training:
+                self.model.train()
 
     # =========================================================
     # aux
@@ -956,6 +1108,34 @@ class AtlasPatchTrainer:
         if anc_val <= 0.0:
             return 0.0
         return self.anchor_target_ratio * pde_val / (anc_val + 1.0e-12)
+
+    def _compute_f_anchor_loss(self, a_batch, omega_batch, u_batch, v_batch):
+        """Compute MSE between model f(y) and pre-computed pybhpt f-targets at anchor y-points."""
+        from physical_ansatz.residual_pinn import compute_f_derivatives_autograd
+
+        B = a_batch.shape[0]
+        y_anchor_batch = self._f_anchor_y.unsqueeze(0).expand(B, -1)  # (B, N_anchors)
+
+        f_pred, _, _ = compute_f_derivatives_autograd(
+            self.model, a_batch, omega_batch, y_anchor_batch,
+            u_batch=u_batch, v_batch=v_batch,
+        )
+
+        # Collect pre-computed f-targets for each batch element
+        f_target_list = []
+        for i in range(B):
+            a_val = float(a_batch[i].detach().cpu().item())
+            omega_val = float(omega_batch[i].detach().cpu().item())
+            key = f"{a_val:.12f}_{omega_val:.12f}"
+            if key in self.f_anchor_data:
+                f_t = self.f_anchor_data[key]["f"]
+                f_target_list.append(torch.tensor(f_t, device=f_pred.device, dtype=f_pred.dtype))
+            else:
+                # Fallback: use zeros with zero weight to avoid NaN
+                f_target_list.append(torch.zeros(len(self._f_anchor_y), device=f_pred.device, dtype=f_pred.dtype))
+
+        f_target = torch.stack(f_target_list, dim=0)  # (B, N_anchors)
+        return torch.mean(torch.abs(f_pred - f_target) ** 2)
 
     # =========================================================
     # one step
@@ -1211,6 +1391,15 @@ class AtlasPatchTrainer:
                 else:
                     info["anchor_failed_count"] += ok_mask.numel()
 
+        # ---- Pre-computed f-anchor loss (Stage-1: direct f(y) supervision) ----
+        if self.f_anchor_data is not None:
+            loss_f_anchor = self._compute_f_anchor_loss(a_batch, omega_batch, u_batch, v_batch)
+            if torch.isfinite(loss_f_anchor):
+                total_loss = total_loss + self.f_anchor_weight * loss_f_anchor
+                info["loss_f_anchor"] = float(loss_f_anchor.detach().cpu().item())
+            else:
+                info["loss_f_anchor"] = float("nan")
+
         total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
@@ -1310,6 +1499,169 @@ class AtlasPatchTrainer:
             })
 
         self._vprint(f"[lbfgs] done. best_val_mean={self.best_val_mean:.6e}")
+        return final_val
+
+    def _train_lbfgs_robin(self, steps: int = 30, prox_weight: float = 1e-4,
+                           val_every: int = 5):
+        """L-BFGS fine-tune of infinity Robin BC with proximal constraint.
+
+        Uses ONLY the Robin loss at y=-1 plus a parameter-shift penalty
+        to stay close to the PDE-converged solution. L-BFGS line search
+        naturally controls step sizes, avoiding the Adam overstep problem.
+
+        Args:
+            steps: number of L-BFGS iterations.
+            prox_weight: λ_prox in |θ - θ₀|² penalty (higher = more conservative).
+            val_every: validate every N steps.
+        """
+        self._vprint(
+            f"[lbfgs-robin] starting {steps} steps, prox_weight={prox_weight:.1e} ..."
+        )
+        from physical_ansatz.infinity_robin import (
+            analytic_c_inf, infinity_robin_loss, compute_S_and_Sy_at_infinity,
+        )
+        from physical_ansatz.residual_pinn import compute_f_derivatives_autograd
+
+        # Snapshot PDE-converged parameters
+        p0 = [p.detach().clone() for p in self.model.parameters()]
+
+        optimizer = torch.optim.LBFGS(
+            self.model.parameters(),
+            lr=0.5,
+            max_iter=20,
+            max_eval=25,
+            tolerance_grad=1e-12,
+            tolerance_change=1e-14,
+            history_size=100,
+            line_search_fn="strong_wolfe",
+        )
+
+        fixed_batches = []
+        n_fixed = 4
+        for _ in range(n_fixed):
+            fixed_batches.append(self.sample_param_batch())
+
+        M_phys = float(self.physics_cfg["problem"].get("M", 1.0))
+        s_phys = int(self.physics_cfg["problem"].get("s", -2))
+        m_phys = int(self.physics_cfg["problem"].get("m", 2))
+        output_type = getattr(self.model, "output_type", "f")
+
+        final_val = None
+        step_count = [0]
+        pbar = trange(steps, desc=f"lbfgs-robin patch {self.patch.patch_id}",
+                      dynamic_ncols=True)
+
+        for _ in pbar:
+            batch_idx = step_count[0] % n_fixed
+            a_b, omega_b, u_b, v_b = fixed_batches[batch_idx]
+            lambda_b = self.resolve_aux_batch(a_b, omega_b)
+
+            def closure():
+                optimizer.zero_grad()
+                y_inf = torch.full((1,), -1.0, device=self.device, dtype=self.dtype)
+                y_inf_batch = y_inf.unsqueeze(0).expand(a_b.shape[0], 1)
+
+                if output_type == "S":
+                    S_inf, Sy_inf, _ = compute_f_derivatives_autograd(
+                        self.model, a_b, omega_b, y_inf_batch,
+                        u_batch=u_b, v_batch=v_b,
+                    )
+                    S_inf = S_inf.squeeze(-1)
+                    Sy_inf = Sy_inf.squeeze(-1)
+                else:
+                    f_inf, fy_inf, _ = compute_f_derivatives_autograd(
+                        self.model, a_b, omega_b, y_inf_batch,
+                        u_batch=u_b, v_batch=v_b,
+                    )
+                    f_inf = f_inf.squeeze(-1)
+                    fy_inf = fy_inf.squeeze(-1)
+                    slope_inf = horizon_regularity_slope(
+                        a=a_b, omega=omega_b, lambda_=lambda_b,
+                        m=m_phys, M=M_phys, s=s_phys,
+                    )
+                    S_inf, Sy_inf = compute_S_and_Sy_at_infinity(
+                        f_inf, fy_inf, slope_inf,
+                    )
+
+                cdtype = torch.complex128 if a_b.dtype == torch.float64 else torch.complex64
+                if not torch.is_complex(S_inf):
+                    S_inf = S_inf.to(dtype=cdtype)
+                    Sy_inf = Sy_inf.to(dtype=cdtype)
+                lambda_c = lambda_b.to(dtype=cdtype) if not torch.is_complex(lambda_b) else lambda_b
+
+                c_inf = analytic_c_inf(
+                    a_b, omega_b, lambda_c, m=m_phys, M=M_phys, s=s_phys,
+                )
+                loss_robin = infinity_robin_loss(S_inf, Sy_inf, c_inf).mean()
+
+                # Proximal penalty: discourage parameters from leaving PDE solution
+                loss_prox = sum(
+                    ((p - p0_i) ** 2).sum()
+                    for p, p0_i in zip(self.model.parameters(), p0)
+                )
+                loss = loss_robin + prox_weight * loss_prox
+                loss.backward()
+                return loss
+
+            loss_val = optimizer.step(closure)
+            step_count[0] += 1
+
+            if step_count[0] % val_every == 0 or step_count[0] == 1:
+                final_val = self.validate()
+                improved = self._update_best_val_cases(final_val)
+                final_val["case_improved_count"] = int(improved)
+                if improved:
+                    self._save_checkpoint(
+                        self.ckpt_dir / "best_model.pt", val_metrics=final_val,
+                    )
+
+            # Report Robin loss separately for monitoring
+            y_inf_m = torch.full((1,), -1.0, device=self.device, dtype=self.dtype)
+            y_inf_batch_m = y_inf_m.unsqueeze(0).expand(a_b.shape[0], 1)
+            if output_type == "S":
+                S_inf_r, Sy_inf_r, _ = compute_f_derivatives_autograd(
+                    self.model, a_b, omega_b, y_inf_batch_m,
+                    u_batch=u_b, v_batch=v_b,
+                )
+                S_inf_r = S_inf_r.squeeze(-1)
+                Sy_inf_r = Sy_inf_r.squeeze(-1)
+            else:
+                f_inf_r, fy_inf_r, _ = compute_f_derivatives_autograd(
+                    self.model, a_b, omega_b, y_inf_batch_m,
+                    u_batch=u_b, v_batch=v_b,
+                )
+                f_inf_r = f_inf_r.squeeze(-1)
+                fy_inf_r = fy_inf_r.squeeze(-1)
+                slope_inf_r = horizon_regularity_slope(
+                    a=a_b, omega=omega_b, lambda_=lambda_b,
+                    m=m_phys, M=M_phys, s=s_phys,
+                )
+                S_inf_r, Sy_inf_r = compute_S_and_Sy_at_infinity(
+                    f_inf_r, fy_inf_r, slope_inf_r,
+                )
+            cdtype_m = torch.complex128 if a_b.dtype == torch.float64 else torch.complex64
+            if not torch.is_complex(S_inf_r):
+                S_inf_r = S_inf_r.to(dtype=cdtype_m)
+                Sy_inf_r = Sy_inf_r.to(dtype=cdtype_m)
+            lambda_cr = lambda_b.to(dtype=cdtype_m) if not torch.is_complex(lambda_b) else lambda_b
+            c_inf_r = analytic_c_inf(
+                a_b, omega_b, lambda_cr, m=m_phys, M=M_phys, s=s_phys,
+            )
+            robin_monitor = float(
+                infinity_robin_loss(S_inf_r, Sy_inf_r, c_inf_r).detach().mean()
+                .cpu().item()
+            )
+
+            pbar.set_postfix({
+                "loss": f"{loss_val.item():.2e}",
+                "robin": f"{robin_monitor:.2e}",
+                "val": f"{final_val['val_mean']:.2e}" if final_val is not None else "-",
+                "best": f"{self.best_val_mean:.2e}" if np.isfinite(self.best_val_mean) else "-",
+            })
+
+        self._vprint(
+            f"[lbfgs-robin] done. best_val_mean={self.best_val_mean:.6e}"
+        )
         return final_val
 
     # =========================================================
@@ -1736,6 +2088,23 @@ class AtlasPatchTrainer:
     # save / log
     # =========================================================
     def _save_checkpoint(self, path: Path, val_metrics: dict | None = None):
+        # Compute patch parameter bounds
+        h_u = float(self.patch.h_u)
+        h_v = float(self.patch.h_v)
+        uc = float(self.patch.u_center)
+        vc = float(self.patch.v_center)
+        u_min, u_max = uc - h_u, uc + h_u
+        v_min, v_max = vc - h_v, vc + h_v
+        a_min = 0.01 + u_min * 0.98
+        a_max = 0.01 + u_max * 0.98
+        omega_chart = self.patch_cover.meta.get("omega_chart_mode", "linear")
+        if omega_chart == "log10":
+            w_min = 10.0 ** (v_min * 4.0 - 4.0)
+            w_max = 10.0 ** (v_max * 4.0 - 4.0)
+        else:
+            w_min = float(v_min)
+            w_max = float(v_max)
+
         payload = {
             "step": int(self.global_step),
             "model_state_dict": self.model.state_dict(),
@@ -1744,6 +2113,15 @@ class AtlasPatchTrainer:
             "patch_id": int(self.patch.patch_id),
             "component_id": int(self.patch.component_id),
             "patch_center": {"u": float(self.patch.u_center), "v": float(self.patch.v_center)},
+            "patch_boundaries": {
+                "u": [float(u_min), float(u_max)],
+                "v": [float(v_min), float(v_max)],
+                "a": [float(a_min), float(a_max)],
+                "omega": [float(w_min), float(w_max)],
+                "omega_chart_mode": omega_chart,
+            },
+            "train_pool_size": int(len(self.train_aw)),
+            "val_pool_size": int(len(self.val_aw)),
             "history_tail": self.history[-50:],
             "best_val_mean": float(self.best_val_mean),
             "best_val_case_means": self.best_val_case_means.tolist() if self.best_val_case_means is not None else None,
@@ -1822,9 +2200,35 @@ class AtlasPatchTrainer:
 
         pbar = trange(start_step, steps + 1, desc=f"patch {self.patch.patch_id}", dynamic_ncols=True)
 
+        # Print run dir for easy access to visualizations
+        h_u = float(self.patch.h_u); h_v = float(self.patch.h_v)
+        uc = float(self.patch.u_center); vc = float(self.patch.v_center)
+        a_lo = 0.01 + (uc - h_u) * 0.98; a_hi = 0.01 + (uc + h_u) * 0.98
+        omega_chart = self.patch_cover.meta.get("omega_chart_mode", "linear")
+        if omega_chart == "log10":
+            w_lo = 10.0 ** ((vc - h_v) * 4.0 - 4.0); w_hi = 10.0 ** ((vc + h_v) * 4.0 - 4.0)
+        else:
+            w_lo = vc - h_v; w_hi = vc + h_v
+        print(f"\n{'='*60}")
+        print(f"Patch {self.patch.patch_id}: a=[{a_lo:.4f}, {a_hi:.4f}], "
+              f"ω=[{w_lo:.6f}, {w_hi:.4f}]")
+        print(f"Train pool: {len(self.train_aw)}, Val pool: {len(self.val_aw)}")
+        print(f"Run dir:   {self.run_dir}")
+        print(f"Figures:   {self.fig_dir}")
+        print(f"{'='*60}\n")
+
         try:
+            # Initialize adaptive grid before first step
+            if self.adaptive_enabled and self._adaptive_current_y is None:
+                self.resample_adaptive_grid()
+
             for step in pbar:
                 self.global_step = step
+
+                # Conservative adaptive collocation resampling
+                if self.adaptive_enabled and step % self.adaptive_resample_every == 0:
+                    self.resample_adaptive_grid()
+
                 info = self.train_one_step()
                 info["step"] = int(step)
                 self._append_history(info)
@@ -1857,6 +2261,11 @@ class AtlasPatchTrainer:
                 # periodic visualization
                 if step % self.viz_every == 0 or step == 1:
                     self.visualize_reference(step)
+                    fig_path = self.fig_dir / f"step_{step:06d}_ref.png"
+                    val_str = f"{final_val['val_mean']:.4f}" if final_val is not None else "-"
+                    print(f"\n[Step {step:06d}] loss={info['total_loss']:.4f}, "
+                          f"val_mean={val_str}, grad_norm={info['grad_norm']:.2f}")
+                    print(f"  查看可视化: {fig_path}")
 
                 # periodic latest / step ckpt
                 if step % self.save_every == 0 or step == steps:
@@ -1871,6 +2280,7 @@ class AtlasPatchTrainer:
                     "inf": f"{info.get('loss_infinity_robin', 0.0):.2e}",
                     "int": f"{info.get('loss_integral', 0.0):.2e}",
                     "anc": f"{info.get('loss_anchor', 0.0):.2e}",
+                    "f_anc": f"{info.get('loss_f_anchor', 0.0):.2e}",
                     "aw": f"{info.get('anchor_weight_eff', 0.0):.2e}",
                     "ok": f"{info.get('anchor_success_count', 0)}",
                     "fail": f"{info.get('anchor_failed_count', 0)}",
