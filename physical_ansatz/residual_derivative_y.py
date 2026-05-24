@@ -13,10 +13,8 @@ import torch
 from physical_ansatz.transform_y import (
     horizon_regularity_slope,
     compose_reduced_shape_from_f,
-    transform_coeffs_x_to_y_S,
 )
 from physical_ansatz.teukolsky_coeffs import coeffs_x
-from physical_ansatz.mapping import r_plus
 
 
 def chebyshev_half_points(n_points, y_min=-0.9999, y_max=0.9999, device='cpu', dtype=torch.float64):
@@ -111,7 +109,12 @@ def compute_S_reduced_coeffs_y(a_batch, omega_batch, lambda_batch, y_batch,
 
     F = D2*S_yy + D1*S_y + D0*S = 0
 
-    Reuses transform_coeffs_x_to_y_S internally.
+    coeffs_x already returns the P-extracted S(x)-equation coefficients:
+        A2*S_xx + A1*S_x + A0*S = 0   where R = P*S.
+    The x=(y+1)/2 coordinate transform gives S_x=2*S_y, S_xx=4*S_yy, so:
+        D2 = 4*A2,  D1 = 2*A1,  D0 = A0.
+    Do NOT call transform_coeffs_x_to_y_S here — P is already extracted.
+
     Returns: D2, D1, D0  each (B, N) complex, detached.
     """
     B = a_batch.shape[0]
@@ -120,22 +123,14 @@ def compute_S_reduced_coeffs_y(a_batch, omega_batch, lambda_batch, y_batch,
     D2_list, D1_list, D0_list = [], [], []
 
     for i in range(B):
-        rp = r_plus(a_batch[i], M)
-        r_i = rp / x_batch
-
         A2_i, A1_i, A0_i = coeffs_x(
             x=x_batch, a=a_batch[i:i+1], omega=omega_batch[i:i+1],
             m=m, lambda_=lambda_batch[i:i+1], s=s, M=M,
         )
 
-        D2_i, D1_i, D0_i = transform_coeffs_x_to_y_S(
-            A2_i, A1_i, A0_i, r_i,
-            a_batch[i:i+1], omega_batch[i:i+1], m=m, M=M, s=s,
-        )
-
-        D2_list.append(D2_i.detach())
-        D1_list.append(D1_i.detach())
-        D0_list.append(D0_i.detach())
+        D2_list.append((4.0 * A2_i).detach())
+        D1_list.append((2.0 * A1_i).detach())
+        D0_list.append(A0_i.detach())
 
     D2 = torch.cat(D2_list, dim=0)
     D1 = torch.cat(D1_list, dim=0)
@@ -149,8 +144,10 @@ def compute_coeff_derivatives_y(a_batch, omega_batch, lambda_batch, y_batch,
     """
     Compute y-derivatives of S-space coefficients via autograd.
 
-    Re-traces the full chain y → x → r → A2,A1,A0 → D2,D1,D0
-    with y as a leaf, then uses autograd for dD/dy.
+    Re-traces the chain y → x → r → A2,A1,A0, then uses
+        D2=4*A2, D1=2*A1, D0=A0
+    (pure x→y coordinate transform; coeffs_x already extracted P).
+    Autograd on y gives dD/dy.
 
     Returns: D2, D1, D0, D2_y, D1_y, D0_y  each (B, N) complex, detached.
     """
@@ -170,18 +167,17 @@ def compute_coeff_derivatives_y(a_batch, omega_batch, lambda_batch, y_batch,
         y_i_2d = y_i.unsqueeze(0)  # (1, N)
 
         x_i = (y_i_2d + 1.0) / 2.0
-        rp = r_plus(a_batch[i], M)
-        r_i = rp / x_i
 
         A2_i, A1_i, A0_i = coeffs_x(
             x=x_i, a=a_batch[i:i+1], omega=omega_batch[i:i+1],
             m=m, lambda_=lambda_batch[i:i+1], s=s, M=M,
         )
 
-        D2_i, D1_i, D0_i = transform_coeffs_x_to_y_S(
-            A2_i, A1_i, A0_i, r_i,
-            a_batch[i:i+1], omega_batch[i:i+1], m=m, M=M, s=s,
-        )
+        # coeffs_x already returns P-extracted S(x)-equation coefficients.
+        # Pure x→y coordinate transform (x=(y+1)/2): S_x=2*S_y, S_xx=4*S_yy.
+        D2_i = 4.0 * A2_i
+        D1_i = 2.0 * A1_i
+        D0_i = A0_i
 
         # dD2/dy
         if D2_i.is_complex():

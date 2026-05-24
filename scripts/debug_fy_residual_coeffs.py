@@ -182,10 +182,8 @@ def main():
     from physical_ansatz.transform_y import (
         horizon_regularity_slope,
         compose_reduced_shape_from_f,
-        transform_coeffs_x_to_y_S,
     )
     from physical_ansatz.teukolsky_coeffs import coeffs_x
-    from physical_ansatz.mapping import r_plus
 
     max_abs_errors = []
     max_rel_errors = []
@@ -198,19 +196,18 @@ def main():
         lambda_i = lambda_batch[i:i+1]
         y_i = y_fy_2d[i:i+1].clone().detach().requires_grad_(True)
 
-        # --- Compute F(y) via autograd path ---
+        # --- Compute F(y) via coefficient formula ---
         x_i = (y_i + 1.0) / 2.0
-        rp_i = r_plus(float(a_i), M_phys)
-        r_i = rp_i / x_i
 
         A2_i, A1_i, A0_i = coeffs_x(
             x=x_i, a=a_i, omega=omega_i,
             m=m_phys, lambda_=lambda_i, s=s_phys, M=M_phys,
         )
-        D2_i, D1_i, D0_i = transform_coeffs_x_to_y_S(
-            A2_i, A1_i, A0_i, r_i,
-            a_i, omega_i, m=m_phys, M=M_phys, s=s_phys,
-        )
+        # coeffs_x already returns P-extracted S(x)-equation coefficients.
+        # Pure x→y: S_x=2*S_y, S_xx=4*S_yy → D2=4*A2, D1=2*A1, D0=A0.
+        D2_i = 4.0 * A2_i
+        D1_i = 2.0 * A1_i
+        D0_i = A0_i
 
         # S and derivatives (only need up to S_yy for F, then autograd for F_y)
         # Use pre-computed S, S_y, S_yy, S_yyy from the module
@@ -228,16 +225,14 @@ def main():
         y_i_grad_2d = y_i_grad.unsqueeze(0)
 
         x_g = (y_i_grad_2d + 1.0) / 2.0
-        r_g = rp_i / x_g
 
         A2_g, A1_g, A0_g = coeffs_x(
             x=x_g, a=a_i, omega=omega_i,
             m=m_phys, lambda_=lambda_i, s=s_phys, M=M_phys,
         )
-        D2_g, D1_g, D0_g = transform_coeffs_x_to_y_S(
-            A2_g, A1_g, A0_g, r_g,
-            a_i, omega_i, m=m_phys, M=M_phys, s=s_phys,
-        )
+        D2_g = 4.0 * A2_g
+        D1_g = 2.0 * A1_g
+        D0_g = A0_g
 
         f_g = model(a_i, omega_i, y_i_grad_2d)
         slope_g = horizon_regularity_slope(
@@ -249,8 +244,8 @@ def main():
         Sy_im = torch.autograd.grad(S_g.imag.sum(), y_i_grad, create_graph=True, retain_graph=True)[0]
         Sy_g = torch.complex(Sy_re, Sy_im).unsqueeze(0)
 
-        Syy_re = torch.autograd.grad(Sy_re.sum(), y_i_grad, create_graph=False, retain_graph=True)[0]
-        Syy_im = torch.autograd.grad(Sy_im.sum(), y_i_grad, create_graph=False, retain_graph=True)[0]
+        Syy_re = torch.autograd.grad(Sy_re.sum(), y_i_grad, create_graph=True, retain_graph=True)[0]
+        Syy_im = torch.autograd.grad(Sy_im.sum(), y_i_grad, create_graph=True, retain_graph=True)[0]
         Syy_g = torch.complex(Syy_re, Syy_im).unsqueeze(0)
 
         F_g = D2_g * Syy_g + D1_g * Sy_g + D0_g * S_g
