@@ -161,7 +161,7 @@ atlas_training:
   # ---- F_y derivative residual ----
   fy_residual:
     enabled: true
-    weight: 1.0e-4
+    weight: 0.1
     n_points: 32
     strategy: chebyshev_half
     y_min: -0.9999
