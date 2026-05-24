@@ -1355,6 +1355,7 @@ class AtlasPatchTrainer:
                 v_batch=v_batch,
                 M=M_phys, s=s_phys, m=m_phys,
                 return_components=True,
+                normalize=bool(fy_cfg.get("normalize", True)),
             )
 
             if torch.isfinite(loss_fy):
