@@ -24,7 +24,7 @@ from model.cheb_coeff_net import ChebCoeffNet
 from model.cheb_deeponet import ChebDeepONet
 from utils.mode import KerrMode
 from utils.amplitude import TeukRadAmplitudeInWithInterpolant
-from dataset.sampling import sample_points_chebyshev_grid, sample_points_uniform_grid
+from dataset.sampling import sample_points_chebyshev_grid, sample_points_uniform_grid, sample_interior_points
 from physical_ansatz.residual import AuxCache, get_lambda_from_cfg
 from physical_ansatz.residual_pinn import pinn_residual_loss, compute_data_anchor_loss, compute_integral_consistency_loss
 from domain.patch_cover import load_patch_cover, load_valid_chart_points
@@ -158,6 +158,12 @@ class AtlasPatchTrainer:
         self.n_interior = int(atlas_train_cfg.get("n_interior", 64))
         self.n_interior_outer_extra = int(atlas_train_cfg.get("n_interior_outer_extra", 8))
 
+        # --- interior collocation config (from sampling.collocation.interior) ---
+        interior_cfg = sampling_cfg.get("collocation", {}).get("interior", {})
+        self.interior_strategy = str(interior_cfg.get("strategy", "chebyshev"))
+        self.interior_y_min = float(interior_cfg.get("y_min", -0.99))
+        self.interior_y_max = float(interior_cfg.get("y_max", 0.99))
+
         # --- conservative adaptive collocation ---
         adp_cfg = atlas_train_cfg.get("adaptive_collocation", {})
         self.adaptive_enabled = bool(adp_cfg.get("enabled", False))
@@ -170,7 +176,7 @@ class AtlasPatchTrainer:
             self.adaptive_eval_n = int(adp_cfg.get("eval_n_points", 256))
             self.adaptive_param_batch = int(adp_cfg.get("param_batch", 4))
             self._adaptive_eval_y = sample_points_chebyshev_grid(
-                n_points=self.adaptive_eval_n, y_min=-0.99, y_max=0.99,
+                n_points=self.adaptive_eval_n, y_min=self.interior_y_min, y_max=self.interior_y_max,
                 device=self.device, dtype=self.dtype,
             )
             self._adaptive_current_y = None
@@ -237,6 +243,18 @@ class AtlasPatchTrainer:
         self.viz_spectral_N = int(atlas_train_cfg.get("viz_spectral_N", 64))
         self.viz_spectral_z_m = float(atlas_train_cfg.get("viz_spectral_z_m", 0.3))
         self.viz_mma_enabled = bool(atlas_train_cfg.get("viz_mma_enabled", False))
+
+        # ---- Causal spatial training ----
+        causal_cfg = atlas_train_cfg.get("causal", {})
+        self.causal_enabled = bool(causal_cfg.get("enabled", False))
+        self.causal_n_chunks = int(causal_cfg.get("n_chunks", 16))
+        self.causal_epsilon = float(causal_cfg.get("epsilon", 1.0))
+        self.causal_update_freq = int(causal_cfg.get("update_freq", 100))
+        self.causal_direction = str(causal_cfg.get("direction", "horizon_first"))
+        self.causal_y_protect_above = causal_cfg.get("y_protect_above", None)
+        if self.causal_y_protect_above is not None:
+            self.causal_y_protect_above = float(self.causal_y_protect_above)
+        self._causal_w = None  # cached causal weights, updated every causal_update_freq steps
 
         self.anchor_enabled = bool(anchor_enabled)
         self.anchor_target_ratio = float(atlas_train_cfg.get("anchor_target_ratio", 1.0e-2))
@@ -384,7 +402,8 @@ class AtlasPatchTrainer:
             self._apply_autoencoder_freeze()
 
             # Optional: migrate weights from old PINN_MLP checkpoint
-            self._init_from_pinn_checkpoint()
+            # Deferred to after resume_checkpoint attribute is set
+            self._pinn_init_deferred = True
         else:
             self.model = PINN_MLP(
                 hidden_dims=model_cfg.get("hidden_dims", [128, 128, 128, 128]),
@@ -446,6 +465,10 @@ class AtlasPatchTrainer:
         self.init_load_optimizer = bool(init_load_optimizer)
         self.resume_checkpoint = resume_checkpoint
         self.resume_run_dir = Path(resume_run_dir) if resume_run_dir is not None else None
+
+        # Deferred PINN checkpoint init — skip when resuming
+        if getattr(self, '_pinn_init_deferred', False) and self.resume_checkpoint is None:
+            self._init_from_pinn_checkpoint()
 
         self.global_step = 0
         self.best_val_mean = float("inf")
@@ -737,6 +760,14 @@ class AtlasPatchTrainer:
 
         if "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            # Reset LR to config value (checkpoint may have a different LR)
+            for pg in self.optimizer.param_groups:
+                pg['lr'] = self.lr
+
+        # ---- restore SGDR scheduler state ----
+        if self.use_sgdr:
+            self.sgdr_T_cur = int(ckpt.get("sgdr_T_cur", self.sgdr_T0))
+            self.sgdr_cycle_start = int(ckpt.get("sgdr_cycle_start", 0))
 
         self.global_step = int(ckpt.get("step", 0))
         self.best_val_mean = float(ckpt.get("best_val_mean", float("inf")))
@@ -861,17 +892,17 @@ class AtlasPatchTrainer:
         if self.adaptive_enabled and self._adaptive_current_y is not None:
             return self._adaptive_current_y.clone().requires_grad_(True)
 
-        y_base = sample_points_chebyshev_grid(
+        y_base = sample_interior_points(
+            strategy=self.interior_strategy,
             n_points=self.n_interior,
-            y_min=-0.99,
-            y_max=0.99,
             device=self.device,
             dtype=self.dtype,
+            article_cfg={"y_min": self.interior_y_min, "y_max": self.interior_y_max},
         )
         if self.n_interior_outer_extra > 0:
             y_extra = sample_points_uniform_grid(
                 n_points=self.n_interior_outer_extra,
-                y_min=-0.99,
+                y_min=self.interior_y_min,
                 y_max=0.0,
                 device=self.device,
                 dtype=self.dtype,
@@ -885,20 +916,20 @@ class AtlasPatchTrainer:
     def sample_y_anchor(self):
         y = sample_points_chebyshev_grid(
             n_points=self.n_anchor_y,
-            y_min=-0.99,
-            y_max=0.99,
+            y_min=self.interior_y_min,
+            y_max=self.interior_y_max,
             device=self.device,
             dtype=self.dtype,
         )
         return y
 
     def sample_y_validation(self):
-        y = sample_points_chebyshev_grid(
+        y = sample_interior_points(
+            strategy=self.interior_strategy,
             n_points=self.val_n_points,
-            y_min=-0.99,
-            y_max=0.99,
             device=self.device,
             dtype=self.dtype,
+            article_cfg={"y_min": self.interior_y_min, "y_max": self.interior_y_max},
         )
         return y.clone().requires_grad_(True)
 
@@ -1204,7 +1235,6 @@ class AtlasPatchTrainer:
                          + torch.abs(D1_int.detach() * S_y_int) ** 2
                          + torch.abs(D0_int.detach() * S_int) ** 2)
                 pointwise_interior = pointwise_interior / scale.clamp_min(1e-12)
-            loss_pde = torch.mean(pointwise_interior)
 
             # For integral consistency: pass S directly
             _f_arg, _f_y_arg = None, None
@@ -1245,10 +1275,28 @@ class AtlasPatchTrainer:
                          + torch.abs(B0_int.detach() * f_int) ** 2
                          + torch.abs(rhs.detach()) ** 2)
                 pointwise_interior = pointwise_interior / scale.clamp_min(1e-12)
-            loss_pde = torch.mean(pointwise_interior)
 
             _f_arg, _f_y_arg = f_int, f_y_int
             _S_arg, _S_y_arg = None, None
+
+        # ---- Causal spatial weighting ----
+        if self.causal_enabled:
+            update_w = (self._causal_w is None
+                        or self.global_step % self.causal_update_freq == 0)
+            if update_w:
+                from trainer.causal_weight import compute_causal_weights
+                self._causal_w, _chunk_info = compute_causal_weights(
+                    y=y_interior,
+                    pointwise_residual=pointwise_interior.detach(),
+                    n_chunks=self.causal_n_chunks,
+                    epsilon=self.causal_epsilon,
+                    direction=self.causal_direction,
+                    y_protect_above=self.causal_y_protect_above,
+                )
+            pointwise_interior = pointwise_interior * self._causal_w.to(device=pointwise_interior.device)
+            loss_pde = torch.mean(pointwise_interior)
+        else:
+            loss_pde = torch.mean(pointwise_interior)
 
         total_loss = loss_pde
         info = {
@@ -1261,6 +1309,7 @@ class AtlasPatchTrainer:
         info["loss_coeff_reg"] = 0.0
         info["loss_integral"] = 0.0
         info["loss_infinity_robin"] = 0.0
+        info["causal_min_w"] = float(self._causal_w.min().item()) if (self.causal_enabled and self._causal_w is not None) else 1.0
         info["anchor_weight_eff"] = 0.0
         info["anchor_success_count"] = 0
         info["anchor_failed_count"] = 0
@@ -2130,6 +2179,8 @@ class AtlasPatchTrainer:
             "latest_val_metrics": val_metrics,
             "model_type": self.model_type,
             "cheb_N": self.cheb_N if self.model_type in ("cheb", "cheb_deeponet") else None,
+            "sgdr_T_cur": int(getattr(self, "sgdr_T_cur", 0)),
+            "sgdr_cycle_start": int(getattr(self, "sgdr_cycle_start", 0)),
         }
         if self.model_type == "autoencoder" and hasattr(self.model, 'encoder'):
             enc = self.model.encoder

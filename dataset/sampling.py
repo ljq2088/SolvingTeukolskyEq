@@ -346,6 +346,54 @@ def sample_points_chebyshev_horizon(
     return torch.sort(y).values
 
 
+def sample_points_chebyshev_half(
+    n_points,
+    y_min=-0.9999,
+    y_max=0.9999,
+    device='cpu',
+    dtype=torch.float64,
+):
+    """
+    半Chebyshev配点：y_ref = 3 - 2*cos(k*pi/(2N)), k=0,...,N-1.
+    点聚集在 y=-1（无穷远）附近（解振荡最剧烈），y=+1（视界）侧稀疏.
+    y_ref ∈ [1, 3], affine映射到 [y_min, y_max].
+    """
+    if n_points <= 0:
+        return torch.empty(0, device=device, dtype=dtype)
+    if n_points == 1:
+        return torch.tensor([0.5 * (y_min + y_max)], device=device, dtype=dtype)
+
+    k = torch.arange(n_points, device=device, dtype=dtype)
+    y_ref = 3.0 - 2.0 * torch.cos(torch.pi * k / (2.0 * n_points))
+
+    y = y_min + (y_max - y_min) * (y_ref - 1.0) / 2.0
+    return torch.sort(y).values
+
+
+def sample_points_chebyshev_half_inf(
+    n_points,
+    y_min=-0.9999,
+    y_max=0.9999,
+    device='cpu',
+    dtype=torch.float64,
+    alpha=0.5,
+):
+    """
+    比 chebyshev_half 更密集于无穷远(y=-1)的配点。
+    y_ref = 3 - 2 * cos(pi*k/(2N))^alpha,  alpha<1 使更多点聚集在k=0(y=-1)附近。
+    """
+    if n_points <= 0:
+        return torch.empty(0, device=device, dtype=dtype)
+    if n_points == 1:
+        return torch.tensor([0.5 * (y_min + y_max)], device=device, dtype=dtype)
+
+    k = torch.arange(n_points, device=device, dtype=dtype)
+    y_ref = 3.0 - 2.0 * torch.cos(torch.pi * k / (2.0 * n_points)) ** alpha
+
+    y = y_min + (y_max - y_min) * (y_ref - 1.0) / 2.0
+    return torch.sort(y).values
+
+
 def sample_points_normal_truncated(
     n_points: int,
     sigma: float = 0.3,
@@ -512,6 +560,24 @@ def sample_interior_points(
 
     if strategy == "chebyshev_horizon":
         return sample_points_chebyshev_horizon(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+    if strategy == "chebyshev_half":
+        return sample_points_chebyshev_half(
+            n_points=n_points,
+            y_min=y_min,
+            y_max=y_max,
+            device=device,
+            dtype=dtype,
+        )
+
+    if strategy == "chebyshev_half_inf":
+        return sample_points_chebyshev_half_inf(
             n_points=n_points,
             y_min=y_min,
             y_max=y_max,
