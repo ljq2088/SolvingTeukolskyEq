@@ -2,9 +2,8 @@ include:
   physics: config/teukolsky_radial.yaml
 
 # ============================================================
-# Autoencoder Stage 1: F + F_y normalized residual
+# Autoencoder Stage 1: F + F_y raw residual (create_graph=True)
 # Patch 0: a∈[0.206,0.794], ω∈[0.0085,0.0777]
-# F_y uses coefficient-magnitude normalization, create_graph=True
 # ============================================================
 
 autoencoder:
@@ -158,11 +157,10 @@ atlas_training:
     direction: "horizon_first"
     y_protect_above: -0.75
 
-  # ---- F_y derivative residual (normalized) ----
+  # ---- F_y derivative residual ----
   fy_residual:
     enabled: true
-    weight: 0.001
-    normalize: true
+    weight: 1.0e-5
     n_points: 32
     strategy: chebyshev_half
     y_min: -0.9999

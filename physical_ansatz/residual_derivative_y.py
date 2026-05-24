@@ -243,15 +243,11 @@ def compute_Fy_loss(
     u_batch=None, v_batch=None,
     M=1.0, s=-2, m=2,
     return_components=False,
-    normalize=True,
 ):
     """
     Compute F_y derivative residual loss.
 
-    L_{F_y} = mean(|F_y_norm|^2)
-
-    If normalize=True: F_y_norm = F_y / (|D2|^2 + |D2_y+D1|^2 + |D1_y+D0|^2 + |D0_y|^2)^{1/2}
-    This makes the residual dimensionless and balances contributions across y.
+    L_{F_y} = mean(|F_y|^2)
     """
     # Ensure y_fy is 2D (B, N_fy) for per-sample processing
     if y_fy.ndim == 1:
@@ -271,19 +267,7 @@ def compute_Fy_loss(
     )
 
     Fy = compute_Fy_residual(S, S_y, S_yy, S_yyy, D2, D1, D0, D2_y, D1_y, D0_y)
-
-    if normalize:
-        denom = torch.sqrt(
-            torch.abs(D2)**2
-            + torch.abs(D2_y + D1)**2
-            + torch.abs(D1_y + D0)**2
-            + torch.abs(D0_y)**2
-        )
-        eps = 1e-30
-        Fy_norm = Fy / (denom + eps)
-        loss_fy = torch.mean(torch.abs(Fy_norm) ** 2)
-    else:
-        loss_fy = torch.mean(torch.abs(Fy) ** 2)
+    loss_fy = torch.mean(torch.abs(Fy) ** 2)
 
     if return_components:
         with torch.no_grad():
