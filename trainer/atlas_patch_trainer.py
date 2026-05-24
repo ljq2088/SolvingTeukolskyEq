@@ -1309,10 +1309,66 @@ class AtlasPatchTrainer:
         info["loss_coeff_reg"] = 0.0
         info["loss_integral"] = 0.0
         info["loss_infinity_robin"] = 0.0
+        info["loss_fy"] = 0.0
+        info["weight_fy"] = 0.0
+        info["fy_n_points"] = 0
+        info["fy_mean_abs"] = 0.0
+        info["fy_max_abs"] = 0.0
         info["causal_min_w"] = float(self._causal_w.min().item()) if (self.causal_enabled and self._causal_w is not None) else 1.0
         info["anchor_weight_eff"] = 0.0
         info["anchor_success_count"] = 0
         info["anchor_failed_count"] = 0
+
+        # ---- F_y derivative residual loss ----
+        fy_cfg = self.atlas_train_cfg.get("fy_residual", {})
+        if fy_cfg.get("enabled", False):
+            fy_weight = float(fy_cfg.get("weight", 1.0e-4))
+            fy_n_points = int(fy_cfg.get("n_points", 32))
+            fy_y_min = float(fy_cfg.get("y_min", -0.9999))
+            fy_y_max = float(fy_cfg.get("y_max", 0.9999))
+            fy_strategy = str(fy_cfg.get("strategy", "chebyshev_half"))
+            fy_log_components = bool(fy_cfg.get("log_components", False))
+
+            from physical_ansatz.residual_derivative_y import (
+                chebyshev_half_points,
+                compute_Fy_loss,
+            )
+
+            if fy_strategy == "chebyshev_half":
+                y_fy = chebyshev_half_points(
+                    fy_n_points, y_min=fy_y_min, y_max=fy_y_max,
+                    device=self.device, dtype=self.dtype,
+                )
+            else:
+                y_fy = chebyshev_half_points(
+                    fy_n_points, y_min=fy_y_min, y_max=fy_y_max,
+                    device=self.device, dtype=self.dtype,
+                )
+
+            loss_fy, fy_info = compute_Fy_loss(
+                model=self.model,
+                a_batch=a_batch,
+                omega_batch=omega_batch,
+                lambda_batch=lambda_batch,
+                y_fy=y_fy,
+                u_batch=u_batch,
+                v_batch=v_batch,
+                M=M_phys, s=s_phys, m=m_phys,
+                return_components=True,
+            )
+
+            if torch.isfinite(loss_fy):
+                total_loss = total_loss + fy_weight * loss_fy
+                info["loss_fy"] = float(loss_fy.detach().cpu().item())
+                info["weight_fy"] = fy_weight
+                info["fy_n_points"] = fy_n_points
+                info["fy_mean_abs"] = float(fy_info["fy_mean_abs"])
+                info["fy_max_abs"] = float(fy_info["fy_max_abs"])
+                if fy_log_components:
+                    info["fy_term3"] = float(fy_info["fy_term3_mean"])
+                    info["fy_term2"] = float(fy_info["fy_term2_mean"])
+                    info["fy_term1"] = float(fy_info["fy_term1_mean"])
+                    info["fy_term0"] = float(fy_info["fy_term0_mean"])
 
         # Integral consistency loss (uses pre-computed outputs + ODE coefficients)
         integral_weight = float(self.atlas_train_cfg.get("integral_consistency_weight", 0.0))
@@ -2328,6 +2384,7 @@ class AtlasPatchTrainer:
                 pbar.set_postfix({
                     "tot": f"{info['total_loss']:.2e}",
                     "pde": f"{info['loss_pde']:.2e}",
+                    "fy": f"{info.get('loss_fy', 0.0):.2e}",
                     "inf": f"{info.get('loss_infinity_robin', 0.0):.2e}",
                     "int": f"{info.get('loss_integral', 0.0):.2e}",
                     "anc": f"{info.get('loss_anchor', 0.0):.2e}",
