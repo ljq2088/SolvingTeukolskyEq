@@ -2338,7 +2338,6 @@ class AtlasPatchTrainer:
 
                 info = self.train_one_step()
                 info["step"] = int(step)
-                self._append_history(info)
 
                 # validation
                 if step % self.val_every == 0 or step == 1:
@@ -2364,6 +2363,8 @@ class AtlasPatchTrainer:
                             f"no val improvement for {self.es_bad_count} validations, stop at step={step}"
                         )
                         break
+
+                self._append_history(info)
 
                 # periodic visualization
                 if step % self.viz_every == 0 or step == 1:
