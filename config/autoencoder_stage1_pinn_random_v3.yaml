@@ -2,8 +2,9 @@ include:
   physics: config/teukolsky_radial.yaml
 
 # ============================================================
-# Autoencoder Stage 1: F + F_y raw residual (create_graph=True)
-# Patch 0: a∈[0.206,0.794], ω∈[0.0085,0.0777]
+# Autoencoder Stage 1: PDE residual only, random collocation
+# v3: SGDR with base-LR decay envelope after step 10000
+# Patch 0: a in [0.206,0.794], omega in [0.0085,0.0777]
 # ============================================================
 
 autoencoder:
@@ -28,7 +29,7 @@ sampling:
 
   collocation:
     interior:
-      strategy: chebyshev_half
+      strategy: sobol_random
       n_points: 256
       y_min: -0.9999
       y_max: 0.9999
@@ -48,7 +49,7 @@ sampling:
 
 training:
   optimizer:
-    lr: 1.0e-4
+    lr: 1.0e-3
 
   anchor:
     freq: 0
@@ -61,6 +62,10 @@ training:
     sgdr_T0: 3000
     sgdr_T_mult: 2
     sgdr_eta_min: 0.1
+    # Base-LR decay envelope (linear, applied on top of SGDR cosine)
+    sgdr_lr_decay_start: 10000
+    sgdr_lr_decay_end: 40000
+    sgdr_lr_decay_target: 0.1
 
   loss:
     weight_interior: 1.0
@@ -144,9 +149,12 @@ atlas_training:
   grad_clip: 0.5
   normalize_residual: false
 
-  lbfgs_steps: 0
+  resample_params_every: 1
+  resample_collocation_every: 1
 
-  infinity_robin_weight: 0.1
+  lbfgs_steps: 500
+
+  infinity_robin_weight: 0.0
 
   perturb_scale: 0.05
 
@@ -162,10 +170,10 @@ atlas_training:
     direction: "horizon_first"
     y_protect_above: -0.75
 
-  # ---- F_y derivative residual ----
+  # ---- F_y derivative residual: disabled ----
   fy_residual:
-    enabled: true
-    weight: 1.0
+    enabled: false
+    weight: 0.0
     n_points: 32
     strategy: chebyshev_half
     y_min: -0.9999
@@ -200,4 +208,4 @@ atlas_training:
 
   anchor_target_ratio: 1.0e-2
   train_seed: 1234
-  output_root: outputs/stage1_fy_normalized
+  output_root: outputs/stage1_pinn_random_v3

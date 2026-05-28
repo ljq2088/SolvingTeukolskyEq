@@ -79,25 +79,27 @@ def infinity_robin_residual(S_val, Sy_val, c_inf):
     return Sy_val - c_inf * S_val
 
 
-def infinity_robin_loss(S_val, Sy_val, c_inf, eps=1e-12):
-    """Compute relative normalized Robin loss.
+def infinity_robin_loss_absolute(S_val, Sy_val, c_inf):
+    """Compute target-normalized Robin loss.
 
-    L_inf = |S_y - c_inf*S|^2 / (|S_y|^2 + |c_inf*S|^2 + eps)
+    L = |S_y - c_inf*S|^2 / (|c_inf*S|^2 + eps)
+
+    Normalizes by the target magnitude |c_inf*S| only (NOT |S_y|).
+    This avoids the gradient explosion of the fully-normalized form
+    while keeping the loss dimensionless and bounded.
 
     Args:
         S_val: (B,) complex — S at y=-1
         Sy_val: (B,) complex — dS/dy at y=-1
         c_inf: (B,) complex — Robin slope
-        eps: float, small regularization
 
     Returns:
         (B,) float loss per batch element
     """
-    residual = infinity_robin_residual(S_val, Sy_val, c_inf)
+    residual = Sy_val - c_inf * S_val
     num = residual.real ** 2 + residual.imag ** 2
-    denom = (Sy_val.real ** 2 + Sy_val.imag ** 2
-             + (c_inf * S_val).real ** 2 + (c_inf * S_val).imag ** 2
-             + eps)
+    cS = c_inf * S_val
+    denom = cS.real ** 2 + cS.imag ** 2 + 1e-12
     return num / denom
 
 

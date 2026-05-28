@@ -187,6 +187,8 @@ class AtlasPatchTrainer:
         self.n_anchor_y = int(n_anchor_y if n_anchor_y is not None else atlas_train_cfg.get("n_anchor_y", 4))
         self.steps_default = int(atlas_train_cfg.get("steps", 2000))
         self.grad_clip = float(atlas_train_cfg.get("grad_clip", 1.0))
+        self.resample_params_every = int(atlas_train_cfg.get("resample_params_every", 1))
+        self.resample_collocation_every = int(atlas_train_cfg.get("resample_collocation_every", 1))
         self.normalize_residual = bool(
             atlas_train_cfg.get(
                 "normalize_residual",
@@ -450,6 +452,10 @@ class AtlasPatchTrainer:
             self.sgdr_eta_min = float(sched_cfg.get("sgdr_eta_min", 0.1))
             self.sgdr_T_cur = self.sgdr_T0
             self.sgdr_cycle_start = 0
+            # Base-LR decay envelope (applied on top of SGDR cosine)
+            self.sgdr_lr_decay_start = int(sched_cfg.get("sgdr_lr_decay_start", 10000))
+            self.sgdr_lr_decay_end = int(sched_cfg.get("sgdr_lr_decay_end", 40000))
+            self.sgdr_lr_decay_target = float(sched_cfg.get("sgdr_lr_decay_target", 0.1))
 
         # ---- Integral consistency weight annealing ----
         int_anneal_cfg = self.atlas_train_cfg.get("integral_annealing", {})
@@ -850,6 +856,18 @@ class AtlasPatchTrainer:
             f"[autoencoder] migrated weights from PINN_MLP checkpoint: {ckpt_path}"
         )
 
+        # Apply parameter perturbation for better escape from pretrain local minimum
+        perturb_scale = float(self.atlas_train_cfg.get("perturb_scale", 0.0))
+        if perturb_scale > 0:
+            with torch.no_grad():
+                for name, p in self.model.named_parameters():
+                    if p.requires_grad:
+                        noise = torch.randn_like(p) * perturb_scale * p.data.std()
+                        p.data.add_(noise)
+            self._vprint(
+                f"[autoencoder] applied weight perturbation, scale={perturb_scale}"
+            )
+
     def _save_config_snapshot(self):
         snapshot_path = self.run_dir / "config_snapshot.yaml"
         with open(snapshot_path, "w", encoding="utf-8") as f:
@@ -1171,14 +1189,17 @@ class AtlasPatchTrainer:
     # =========================================================
     # one step
     # =========================================================
-    def train_one_step(self):
+    def train_one_step(self, a_batch=None, omega_batch=None, u_batch=None, v_batch=None,
+                       y_interior=None):
         self.model.train()
         self.optimizer.zero_grad()
 
-        a_batch, omega_batch, u_batch, v_batch = self.sample_param_batch()
+        if a_batch is None:
+            a_batch, omega_batch, u_batch, v_batch = self.sample_param_batch()
         lambda_batch = self.resolve_aux_batch(a_batch, omega_batch)
 
-        y_interior = self.sample_y_interior()
+        if y_interior is None:
+            y_interior = self.sample_y_interior()
         y_boundary = torch.empty(0, device=self.device, dtype=self.dtype)
 
         # Compute model output and ODE coefficients once (shared by PDE + integral losses)
@@ -1355,10 +1376,14 @@ class AtlasPatchTrainer:
                 v_batch=v_batch,
                 M=M_phys, s=s_phys, m=m_phys,
                 return_components=True,
+                normalize=True,
             )
 
             if torch.isfinite(loss_fy):
-                total_loss = total_loss + fy_weight * loss_fy
+                weighted_fy = fy_weight * loss_fy
+                total_loss = total_loss + weighted_fy
+                self._grad_mon_loss_fy = loss_fy          # keep tensor ref
+                self._grad_mon_weighted_fy = weighted_fy
                 info["loss_fy"] = float(loss_fy.detach().cpu().item())
                 info["weight_fy"] = fy_weight
                 info["fy_n_points"] = fy_n_points
@@ -1409,7 +1434,7 @@ class AtlasPatchTrainer:
         inf_robin_weight = float(self.atlas_train_cfg.get("infinity_robin_weight", 0.0))
         if inf_robin_weight > 0:
             from physical_ansatz.infinity_robin import (
-                analytic_c_inf, infinity_robin_loss, compute_S_and_Sy_at_infinity,
+                analytic_c_inf, infinity_robin_loss_absolute, compute_S_and_Sy_at_infinity,
             )
             y_inf = torch.full((1,), -1.0, device=self.device, dtype=self.dtype)
             y_inf_batch = y_inf.unsqueeze(0).expand(a_batch.shape[0], 1)
@@ -1443,9 +1468,12 @@ class AtlasPatchTrainer:
             lambda_c = lambda_batch.to(dtype=cdtype) if not torch.is_complex(lambda_batch) else lambda_batch
 
             c_inf = analytic_c_inf(a_batch, omega_batch, lambda_c, m=m_phys, M=M_phys, s=s_phys)
-            loss_inf_robin = infinity_robin_loss(S_inf, Sy_inf, c_inf).mean()
+            loss_inf_robin = infinity_robin_loss_absolute(S_inf, Sy_inf, c_inf).mean()
             if torch.isfinite(loss_inf_robin):
-                total_loss = total_loss + inf_robin_weight * loss_inf_robin
+                weighted_inf = inf_robin_weight * loss_inf_robin
+                total_loss = total_loss + weighted_inf
+                self._grad_mon_loss_inf = loss_inf_robin
+                self._grad_mon_weighted_inf = weighted_inf
                 info["loss_infinity_robin"] = float(loss_inf_robin.detach().cpu().item())
 
         # Chebyshev coefficient regularization (spectral decay prior)
@@ -1505,6 +1533,35 @@ class AtlasPatchTrainer:
             else:
                 info["loss_f_anchor"] = float("nan")
 
+        # ---- Per-loss gradient monitoring (every 50 steps) ----
+        grad_log_freq = int(self.atlas_train_cfg.get("grad_log_freq", 50))
+        if self.global_step % grad_log_freq == 0:
+            def _get_param_grad_norm():
+                n = 0.0
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        n += p.grad.data.norm(2).item() ** 2
+                return n ** 0.5
+
+            # PDE gradient
+            self.optimizer.zero_grad()
+            loss_pde.backward(retain_graph=True)
+            info["grad_pde"] = _get_param_grad_norm()
+
+            # F_y gradient
+            if hasattr(self, '_grad_mon_weighted_fy'):
+                self.optimizer.zero_grad()
+                self._grad_mon_weighted_fy.backward(retain_graph=True)
+                info["grad_fy"] = _get_param_grad_norm()
+
+            # Infinity Robin gradient
+            if hasattr(self, '_grad_mon_weighted_inf'):
+                self.optimizer.zero_grad()
+                self._grad_mon_weighted_inf.backward(retain_graph=True)
+                info["grad_inf_robin"] = _get_param_grad_norm()
+
+            self.optimizer.zero_grad()
+
         total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
         self.optimizer.step()
@@ -1517,7 +1574,18 @@ class AtlasPatchTrainer:
                 self.sgdr_T_cur = self.sgdr_T_cur * self.sgdr_T_mult
                 steps_in_cycle = 0
             t_frac = steps_in_cycle / max(self.sgdr_T_cur, 1)
-            lr = self.lr * (self.sgdr_eta_min + 0.5 * (1.0 - self.sgdr_eta_min) * (1.0 + math.cos(math.pi * t_frac)))
+            cosine = self.sgdr_eta_min + 0.5 * (1.0 - self.sgdr_eta_min) * (1.0 + math.cos(math.pi * t_frac))
+            # Base-LR decay envelope (smooth warmup then linear decay)
+            if self.global_step >= self.sgdr_lr_decay_start:
+                decay_end = self.sgdr_lr_decay_end
+                if self.global_step >= decay_end:
+                    decay_factor = self.sgdr_lr_decay_target
+                else:
+                    progress = (self.global_step - self.sgdr_lr_decay_start) / max(decay_end - self.sgdr_lr_decay_start, 1)
+                    decay_factor = 1.0 - (1.0 - self.sgdr_lr_decay_target) * progress
+            else:
+                decay_factor = 1.0
+            lr = self.lr * decay_factor * cosine
             for pg in self.optimizer.param_groups:
                 pg['lr'] = lr
 
@@ -2329,14 +2397,31 @@ class AtlasPatchTrainer:
             if self.adaptive_enabled and self._adaptive_current_y is None:
                 self.resample_adaptive_grid()
 
+            # Cached batches for reduced resampling frequency
+            _cached_params = None  # (a, omega, u, v)
+            _cached_y = None
+
             for step in pbar:
                 self.global_step = step
+
+                # Resample parameter batch every N steps
+                if step % self.resample_params_every == 0 or _cached_params is None:
+                    _cached_params = self.sample_param_batch()
+                    _cached_y = self.sample_y_interior()
+
+                # Resample collocation points every N steps
+                if step % self.resample_collocation_every == 0 or _cached_y is None:
+                    _cached_y = self.sample_y_interior()
 
                 # Conservative adaptive collocation resampling
                 if self.adaptive_enabled and step % self.adaptive_resample_every == 0:
                     self.resample_adaptive_grid()
 
-                info = self.train_one_step()
+                info = self.train_one_step(
+                    a_batch=_cached_params[0], omega_batch=_cached_params[1],
+                    u_batch=_cached_params[2], v_batch=_cached_params[3],
+                    y_interior=_cached_y,
+                )
                 info["step"] = int(step)
 
                 # validation

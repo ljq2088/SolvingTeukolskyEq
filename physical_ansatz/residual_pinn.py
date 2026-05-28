@@ -177,6 +177,17 @@ def compute_pointwise_pde_residual(
                 + torch.abs(term0.detach()) ** 2
                 + torch.abs(rhs.detach()) ** 2
             )
+        elif normalize_mode == "max_term":
+            if output_type == "S":
+                scale = torch.maximum(
+                    torch.maximum(torch.abs(term2.detach()), torch.abs(term1.detach())),
+                    torch.abs(term0.detach()),
+                ) ** 2 + eps
+            else:
+                scale = torch.maximum(
+                    torch.maximum(torch.abs(term2.detach()), torch.abs(term1.detach())),
+                    torch.maximum(torch.abs(term0.detach()), torch.abs(rhs.detach())),
+                ) ** 2 + eps
         elif normalize_mode == "coeff":
             # Normalize by coefficient magnitudes — prevents vanishing
             # coefficients near y=1 from hiding PDE violations.
