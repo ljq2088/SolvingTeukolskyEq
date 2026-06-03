@@ -184,8 +184,113 @@ def cheb_D(N: int, a: float, b: float) -> Tuple[np.ndarray, np.ndarray]:
     return D, z
 
 
-def solve_basis_domain(mode: KerrMode, basis: str, N: int, z_a: float, z_b: float, bc_side: str):
-    D, z = cheb_D(N, z_a, z_b)
+def _cheb_xi_D(N: int) -> Tuple[np.ndarray, np.ndarray]:
+    xi = np.cos(np.pi * np.arange(N + 1) / N)
+    c = np.ones(N + 1)
+    c[0] = c[-1] = 2.0
+    D = np.zeros((N + 1, N + 1), dtype=float)
+    for i in range(N + 1):
+        for j in range(N + 1):
+            if i != j:
+                D[i, j] = (c[i] / c[j]) * ((-1) ** (i + j)) / (xi[i] - xi[j])
+    D[np.diag_indices(N + 1)] = -np.sum(D, axis=1)
+    return D, xi
+
+
+def cheb_D_sinh(N: int, a: float, b: float, kappa: float) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Chebyshev differentiation on a sinh-stretched interval.
+
+    This mirrors the low-frequency AnMR mapping used by ``GF_adaptive_match.m``:
+        t = (1 - xi) / 2
+        z = a + (b-a) sinh(kappa t) / sinh(kappa)
+
+    The derivative matrix is formed as D_z = diag(1 / dz_dxi) D_xi and D_z @ D_z
+    is used for second derivatives, as in the MATLAB prototype.
+    """
+    if kappa <= 1.0e-12:
+        return cheb_D(N, a, b)
+    Dxi, xi = _cheb_xi_D(N)
+    t = (1.0 - xi) / 2.0
+    sinh_k = math.sinh(kappa)
+    z = a + (b - a) * np.sinh(kappa * t) / sinh_k
+    dz_dxi = -(b - a) * kappa * np.cosh(kappa * t) / (2.0 * sinh_k)
+    D = (1.0 / dz_dxi)[:, None] * Dxi
+    return D, z
+
+
+def adaptive_match_z(mode: KerrMode) -> float:
+    """
+    Schwarzschild GF prototype uses r_match = 3M + omega^{-1/2}.
+    For Kerr we keep the same physical length scale and compactify with z=r_+/r.
+    """
+    omega = max(abs(float(mode.omega)), 1.0e-300)
+    r_match = 3.0 * mode.M + omega ** (-0.5)
+    r_match = max(r_match, mode.rp * (1.0 + 1.0e-8))
+    return float(np.clip(mode.rp / r_match, 1.0e-6, 0.85))
+
+
+def _domain_D(
+    mode: KerrMode,
+    N: int,
+    z_a: float,
+    z_b: float,
+    *,
+    grid_kind: str,
+    domain: str,
+) -> Tuple[np.ndarray, np.ndarray]:
+    if grid_kind == "linear":
+        return cheb_D(N, z_a, z_b)
+    if grid_kind != "anmr":
+        raise ValueError(f"Unknown grid_kind={grid_kind!r}")
+    kappa = abs(math.log(max(abs(mode.omega) * mode.rp, 1.0e-300)))
+    if domain == "inner":
+        kappa *= 0.5
+    return cheb_D_sinh(N, z_a, z_b, kappa)
+
+
+def _resolve_grid(mode: KerrMode, z_m: float | None, grid_kind: str) -> tuple[float, str]:
+    if grid_kind == "auto":
+        resolved_grid = "anmr" if abs(mode.omega) < 1.0e-1 else "linear"
+    else:
+        resolved_grid = grid_kind
+    if z_m is None:
+        resolved_z_m = adaptive_match_z(mode) if resolved_grid == "anmr" else 0.3
+    else:
+        resolved_z_m = float(z_m)
+    if not (0.0 < resolved_z_m < 1.0):
+        raise ValueError(f"z_m must be in (0,1), got {resolved_z_m}")
+    return resolved_z_m, resolved_grid
+
+
+def _solve_equilibrated(A: np.ndarray, b: np.ndarray, floor: float = 1.0e-300):
+    A = np.asarray(A, dtype=np.complex128)
+    b = np.asarray(b, dtype=np.complex128)
+    row_norms = np.linalg.norm(A, axis=1)
+    row_scale = np.where(row_norms > floor, row_norms, 1.0)
+    A_row = A / row_scale[:, None]
+    b_row = b / row_scale
+
+    col_norms = np.linalg.norm(A_row, axis=0)
+    col_scale = np.where(col_norms > floor, col_norms, 1.0)
+    A_scaled = A_row / col_scale[None, :]
+    y = np.linalg.solve(A_scaled, b_row)
+    x = y / col_scale
+    return x
+
+
+def solve_basis_domain(
+    mode: KerrMode,
+    basis: str,
+    N: int,
+    z_a: float,
+    z_b: float,
+    bc_side: str,
+    *,
+    grid_kind: str = "linear",
+    domain: str = "outer",
+):
+    D, z = _domain_D(mode, N, z_a, z_b, grid_kind=grid_kind, domain=domain)
     D2 = D @ D
 
     A = np.zeros((N + 1, N + 1), dtype=complex)
@@ -232,9 +337,52 @@ def solve_basis_domain(mode: KerrMode, basis: str, N: int, z_a: float, z_b: floa
     else:
         raise ValueError
 
-    u = np.linalg.solve(A, b)
+    u = _solve_equilibrated(A, b)
     uz = D @ u
     return {'z': z, 'u': u, 'uz': uz}
+
+
+def _finite_outer_basis_bc(mode: KerrMode, basis: str, z0: float) -> tuple[complex, complex]:
+    """Boundary data for the reduced outer basis at finite z0.
+
+    The outer basis is represented as ``R = A_basis * u``.  At the finite
+    outer boundary we impose the leading asymptotic normalization
+    ``u(z0)=1, u_z(z0)=0``.  This avoids placing the boundary directly at the
+    singular point z=0 and is useful for high-frequency scattering tests.
+    """
+    if basis not in {"down", "up"}:
+        raise ValueError("finite outer boundary only supports down/up")
+    return 1.0 + 0.0j, 0.0 + 0.0j
+
+
+def solve_basis_domain_finite_outer(
+    mode: KerrMode,
+    basis: str,
+    N: int,
+    z_a: float,
+    z_b: float,
+    *,
+    grid_kind: str = "linear",
+):
+    D, z = _domain_D(mode, N, z_a, z_b, grid_kind=grid_kind, domain="outer")
+    D2 = D @ D
+    A = np.zeros((N + 1, N + 1), dtype=complex)
+    b = np.zeros(N + 1, dtype=complex)
+
+    u0, uz0 = _finite_outer_basis_bc(mode, basis, z_a)
+    A[0, :] = 0.0
+    A[0, 0] = 1.0
+    b[0] = u0
+    A[1, :] = D[0, :]
+    b[1] = uz0
+
+    idx = np.arange(2, N + 1)
+    B2, B1, B0 = coeffs_numeric(z[idx], mode, basis)
+    A[idx, :] = B2[:, None] * D2[idx, :] + B1[:, None] * D[idx, :]
+    A[idx, idx] += B0
+    u = _solve_equilibrated(A, b)
+    uz = D @ u
+    return {"z": z, "u": u, "uz": uz}
     
 
 def basis_values_at_match(mode: KerrMode, basis: str, sol, side: str):
@@ -484,23 +632,25 @@ def compute_smatrix(
     mode: KerrMode,
     N_in: int = 80,
     N_out: int = 80,
-    z_m: float = 0.3,
+    z_m: float | None = 0.3,
     *,
     return_profile: bool = False,
+    grid_kind: str = "linear",
     omega_mp_cut: float = 1.0e-2,
     mp_dps_loww: int = 80,
 ):
+    z_m, resolved_grid = _resolve_grid(mode, z_m, grid_kind)
     # outer domain: [0, z_m]
-    sol_down = solve_basis_domain(mode, 'down', N_out, 0.0, z_m, 'left')
-    sol_up   = solve_basis_domain(mode, 'up',   N_out, 0.0, z_m, 'left')
+    sol_down = solve_basis_domain(mode, 'down', N_out, 0.0, z_m, 'left', grid_kind=resolved_grid, domain="outer")
+    sol_up   = solve_basis_domain(mode, 'up',   N_out, 0.0, z_m, 'left', grid_kind=resolved_grid, domain="outer")
 
     R_down_m, Rr_down_m = basis_values_at_match(mode, 'down', sol_down, 'right')
     R_up_m,   Rr_up_m   = basis_values_at_match(mode, 'up',   sol_up,   'right')
     Mmatch = np.array([[R_down_m, R_up_m], [Rr_down_m, Rr_up_m]], dtype=complex)
 
     # inner domain: [z_m, 1]
-    sol_in  = solve_basis_domain(mode, 'in',  N_in, z_m, 1.0, 'right')
-    sol_out = solve_basis_domain(mode, 'out', N_in, z_m, 1.0, 'right')
+    sol_in  = solve_basis_domain(mode, 'in',  N_in, z_m, 1.0, 'right', grid_kind=resolved_grid, domain="inner")
+    sol_out = solve_basis_domain(mode, 'out', N_in, z_m, 1.0, 'right', grid_kind=resolved_grid, domain="inner")
 
     R_in_m,  Rr_in_m  = basis_values_at_match(mode, 'in',  sol_in,  'left')
     R_out_m, Rr_out_m = basis_values_at_match(mode, 'out', sol_out, 'left')
@@ -535,6 +685,8 @@ def compute_smatrix(
         'ratio_inc_over_ref': ratio_inc_over_ref,
         'B_trans_over_B_inc': _safe_complex_ratio(b_trans, b_inc),
         'B_ref_over_B_inc': ratio_ref_over_inc,
+        'z_m': float(z_m),
+        'grid_kind': resolved_grid,
     }
 
     if not return_profile:
@@ -594,8 +746,15 @@ def compute_smatrix(
 
     return result
 
-def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z_m: float = 0.3,omega_mp_cut: float = 1.0e-2,
-    mp_dps_loww: int = 80,):
+def compute_smatrix_with_abel(
+    mode: KerrMode,
+    N_in: int = 80,
+    N_out: int = 80,
+    z_m: float | None = 0.3,
+    grid_kind: str = "linear",
+    omega_mp_cut: float = 1.0e-2,
+    mp_dps_loww: int = 80,
+):
     """
     Same transfer-matrix computation as compute_smatrix, but also returns
     Abel-invariant diagnostics suitable for Kerr Teukolsky with complex potential.
@@ -611,18 +770,18 @@ def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z
     * inner_abel checks the pair (R_in, R_out)
     * detS check validates the whole matching / amplitude extraction process
     """
-
+    z_m, resolved_grid = _resolve_grid(mode, z_m, grid_kind)
     # outer domain: [0, z_m]
-    sol_down = solve_basis_domain(mode, 'down', N_out, 0.0, z_m, 'left')
-    sol_up   = solve_basis_domain(mode, 'up',   N_out, 0.0, z_m, 'left')
+    sol_down = solve_basis_domain(mode, 'down', N_out, 0.0, z_m, 'left', grid_kind=resolved_grid, domain="outer")
+    sol_up   = solve_basis_domain(mode, 'up',   N_out, 0.0, z_m, 'left', grid_kind=resolved_grid, domain="outer")
 
     R_down_m, Rr_down_m = basis_values_at_match(mode, 'down', sol_down, 'right')
     R_up_m,   Rr_up_m   = basis_values_at_match(mode, 'up',   sol_up,   'right')
     Mmatch = np.array([[R_down_m, R_up_m], [Rr_down_m, Rr_up_m]], dtype=complex)
 
     # inner domain: [z_m, 1]
-    sol_in  = solve_basis_domain(mode, 'in',  N_in, z_m, 1.0, 'right')
-    sol_out = solve_basis_domain(mode, 'out', N_in, z_m, 1.0, 'right')
+    sol_in  = solve_basis_domain(mode, 'in',  N_in, z_m, 1.0, 'right', grid_kind=resolved_grid, domain="inner")
+    sol_out = solve_basis_domain(mode, 'out', N_in, z_m, 1.0, 'right', grid_kind=resolved_grid, domain="inner")
 
     R_in_m,  Rr_in_m  = basis_values_at_match(mode, 'in',  sol_in,  'left')
     R_out_m, Rr_out_m = basis_values_at_match(mode, 'out', sol_out, 'left')
@@ -711,6 +870,8 @@ def compute_smatrix_with_abel(mode: KerrMode, N_in: int = 80, N_out: int = 80, z
         'detS_residual': float(detS_residual),
 
         "use_mp_backend": bool(use_mp),
+        "z_m": float(z_m),
+        "grid_kind": resolved_grid,
         "omega_mp_cut": float(omega_mp_cut),
         "mp_dps_loww": int(mp_dps_loww if use_mp else 0),
         "solve_in_relres": float(diag_in["relres"]),
