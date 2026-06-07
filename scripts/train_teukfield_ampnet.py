@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from teukfield.models import TeukfieldAmpNet
+from teukfield.data.anchors import SpectralBoundaryAdapter
 from teukfield.training.trainer import train_dry_run
 
 
@@ -39,13 +40,15 @@ def main():
     parser.add_argument("--steps", type=int, default=1)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-dir", default="outputs/teukfield_ampnet/dry_run")
+    parser.add_argument("--stage", type=int, default=1)
+    parser.add_argument("--boundary-patch-dir", default=None)
     args = parser.parse_args()
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     model = build_model(cfg).to(args.device)
-    train_dry_run(model, cfg, args.steps, args.output_dir, args.device)
+    adapter = SpectralBoundaryAdapter(args.boundary_patch_dir) if args.boundary_patch_dir else None
+    train_dry_run(model, cfg, args.steps, args.output_dir, args.device, spectral_adapter=adapter, stage=args.stage)
 
 
 if __name__ == "__main__":
     main()
-

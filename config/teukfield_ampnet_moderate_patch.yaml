@@ -28,9 +28,11 @@ amplitude_head:
 sampling:
   param_batch: 4
   residual_y_points: 32
-  inner_points: 64
-  outer_points: 128
+  inner_points: 32
+  outer_points: 48
   anchor_points: 64
+boundary:
+  patch_dir: null
 loss_weights:
   stage1:
     inner: 1.0
@@ -53,4 +55,3 @@ validation:
   random_y_points: 32
   target_residual_median: 1.0e-5
   target_amp_median: 1.0e-4
-

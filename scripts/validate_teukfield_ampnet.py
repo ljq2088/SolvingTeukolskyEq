@@ -22,16 +22,16 @@ def main():
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-dir", default="outputs/teukfield_ampnet/validation")
+    parser.add_argument("--include-weak", action="store_true")
     args = parser.parse_args()
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     model = build_model(cfg).to(args.device)
     if args.checkpoint:
         model.load_state_dict(torch.load(args.checkpoint, map_location=args.device))
-    summary = validate_random(model, cfg, args.output_dir, args.device)
+    summary = validate_random(model, cfg, args.output_dir, args.device, include_weak=args.include_weak)
     print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":
     main()
-
