@@ -11,9 +11,9 @@ def complex_grad(value: torch.Tensor, x: torch.Tensor, create_graph: bool = True
     return torch.complex(real, imag)
 
 
-def strong_reduced_residual(model, y: torch.Tensor, a: torch.Tensor, logw: torch.Tensor):
+def strong_reduced_residual(model, y: torch.Tensor, a: torch.Tensor, logw: torch.Tensor, lambda_: torch.Tensor | None = None):
     y_leaf = y.detach().clone().requires_grad_(True)
-    out = model(y_leaf, a, logw)
+    out = model(y_leaf, a, logw, lambda_=lambda_)
     S = out["S"]
     Sy = complex_grad(S, y_leaf)
     Syy = complex_grad(Sy, y_leaf)
@@ -30,6 +30,7 @@ def weak_reduced_residual_placeholder(
     y: torch.Tensor,
     a: torch.Tensor,
     logw: torch.Tensor,
+    lambda_: torch.Tensor | None = None,
     n_tests: int = 4,
 ) -> tuple[torch.Tensor, dict[str, float]]:
     """First milestone weak-residual interface.
@@ -39,7 +40,7 @@ def weak_reduced_residual_placeholder(
     next iteration can replace the mean rule by Chebyshev/Gauss quadrature.
     """
     y_leaf = y.detach().clone().requires_grad_(True)
-    out = model(y_leaf, a, logw)
+    out = model(y_leaf, a, logw, lambda_=lambda_)
     S = out["S"]
     Sy = complex_grad(S, y_leaf)
     Syy = complex_grad(Sy, y_leaf)

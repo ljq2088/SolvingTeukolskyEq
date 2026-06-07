@@ -42,12 +42,22 @@ def main():
     parser.add_argument("--output-dir", default="outputs/teukfield_ampnet/dry_run")
     parser.add_argument("--stage", type=int, default=1)
     parser.add_argument("--boundary-patch-dir", default=None)
+    parser.add_argument("--boundary-cache-size", type=int, default=0)
     args = parser.parse_args()
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     model = build_model(cfg).to(args.device)
     adapter = SpectralBoundaryAdapter(args.boundary_patch_dir) if args.boundary_patch_dir else None
-    train_dry_run(model, cfg, args.steps, args.output_dir, args.device, spectral_adapter=adapter, stage=args.stage)
+    train_dry_run(
+        model,
+        cfg,
+        args.steps,
+        args.output_dir,
+        args.device,
+        spectral_adapter=adapter,
+        stage=args.stage,
+        boundary_cache_size=args.boundary_cache_size,
+    )
 
 
 if __name__ == "__main__":
