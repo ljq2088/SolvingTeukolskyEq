@@ -1,0 +1,56 @@
+project:
+  name: teukfield_ampnet
+  branch: research/teukfield-ampnet-20260607
+physics:
+  s: -2
+  l: 2
+  m: 2
+  M: 1.0
+patch:
+  a_center: 0.5
+  a_half_width: 0.06
+  logw_center: -1.5
+  logw_half_width: 0.125
+model:
+  dtype: float64
+  latent_dim: 64
+  fourier_bands: 6
+  n_windows: 8
+  window_overlap: 0.4
+  local_hidden_dim: 96
+  local_depth: 4
+  activation: sine
+  pirate_alpha_init: 1.0e-3
+amplitude_head:
+  type: cheb_kan_residual
+  hidden_dim: 64
+  depth: 3
+sampling:
+  param_batch: 4
+  residual_y_points: 32
+  inner_points: 64
+  outer_points: 128
+  anchor_points: 64
+loss_weights:
+  stage1:
+    inner: 1.0
+    outer: 1.0
+    R_anchor: 0.5
+    amp_anchor: 0.2
+    residual: 1.0e-3
+    weak: 0.0
+  stage2:
+    residual_ramp_to: 1.0
+    R_anchor_ramp_to: 0.1
+  stage3:
+    weak: 0.1
+    Abel: 0.05
+optimizer:
+  adamw_lr: 1.0e-4
+  fine_tune_lr: 3.0e-5
+validation:
+  random_param_points: 8
+  random_y_points: 32
+  target_residual_median: 1.0e-5
+  target_amp_median: 1.0e-4
+
