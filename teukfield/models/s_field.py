@@ -8,10 +8,10 @@ from teukfield.models.local_windows import LocalWindowSet
 
 
 class LocalSirenField(nn.Module):
-    def __init__(self, latent_dim: int, hidden_dim: int, depth: int, alpha_init: float):
+    def __init__(self, latent_dim: int, hidden_dim: int, depth: int, alpha_init: float, omega0: float):
         super().__init__()
-        self.input = SineLayer(1, hidden_dim)
-        self.blocks = nn.ModuleList([FiLMPirateBlock(hidden_dim, latent_dim, alpha_init) for _ in range(depth)])
+        self.input = SineLayer(1, hidden_dim, omega0=omega0)
+        self.blocks = nn.ModuleList([FiLMPirateBlock(hidden_dim, latent_dim, alpha_init, omega0=omega0) for _ in range(depth)])
         self.output = nn.Linear(hidden_dim, 2)
         nn.init.zeros_(self.output.weight)
         nn.init.zeros_(self.output.bias)
@@ -33,11 +33,12 @@ class SFieldNetwork(nn.Module):
         hidden_dim: int = 96,
         depth: int = 4,
         alpha_init: float = 1.0e-3,
+        omega0: float = 15.0,
     ):
         super().__init__()
         self.windows = LocalWindowSet(n_windows, overlap)
         self.locals = nn.ModuleList(
-            [LocalSirenField(latent_dim, hidden_dim, depth, alpha_init) for _ in range(n_windows)]
+            [LocalSirenField(latent_dim, hidden_dim, depth, alpha_init, omega0) for _ in range(n_windows)]
         )
 
     def forward(self, y: torch.Tensor, latent: torch.Tensor, slope_y: torch.Tensor) -> torch.Tensor:
@@ -51,4 +52,3 @@ class SFieldNetwork(nn.Module):
         N = torch.sum(weights.to(torch.complex128) * correction, dim=-1)
         slope = slope_y.reshape(-1, 1).to(torch.complex128)
         return 1.0 + slope * (y.to(torch.complex128) - 1.0) + ((1.0 - y).to(torch.complex128) ** 2) * N
-

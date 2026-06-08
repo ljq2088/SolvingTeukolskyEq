@@ -27,6 +27,7 @@ def build_model(cfg: dict) -> TeukfieldAmpNet:
         window_overlap=mcfg["window_overlap"],
         local_hidden_dim=mcfg["local_hidden_dim"],
         local_depth=mcfg["local_depth"],
+        siren_omega0=float(mcfg.get("siren_omega0", 15.0)),
         amp_hidden_dim=acfg["hidden_dim"],
         amp_depth=acfg["depth"],
         m=pcfg["m"],
@@ -43,10 +44,20 @@ def main():
     parser.add_argument("--stage", type=int, default=1)
     parser.add_argument("--boundary-patch-dir", default=None)
     parser.add_argument("--boundary-cache-size", type=int, default=0)
+    parser.add_argument("--pybhpt-R-anchor-cache-size", type=int, default=0)
+    parser.add_argument("--pybhpt-outer-amp-anchor", action="store_true")
+    parser.add_argument("--disable-ls-amp-anchor", action="store_true")
+    parser.add_argument("--pybhpt-timeout", type=float, default=60.0)
+    parser.add_argument("--checkpoint", default=None)
+    parser.add_argument("--lr", type=float, default=None)
+    parser.add_argument("--log-every", type=int, default=1)
+    parser.add_argument("--checkpoint-every", type=int, default=0)
     args = parser.parse_args()
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
     model = build_model(cfg).to(args.device)
+    if args.checkpoint:
+        model.load_state_dict(torch.load(args.checkpoint, map_location=args.device))
     adapter = SpectralBoundaryAdapter(args.boundary_patch_dir) if args.boundary_patch_dir else None
     train_dry_run(
         model,
@@ -57,6 +68,13 @@ def main():
         spectral_adapter=adapter,
         stage=args.stage,
         boundary_cache_size=args.boundary_cache_size,
+        pybhpt_R_anchor_cache_size=args.pybhpt_R_anchor_cache_size,
+        pybhpt_outer_amp_anchor=args.pybhpt_outer_amp_anchor,
+        disable_ls_amp_anchor=args.disable_ls_amp_anchor,
+        pybhpt_timeout=args.pybhpt_timeout,
+        lr=args.lr,
+        log_every=args.log_every,
+        checkpoint_every=args.checkpoint_every,
     )
 
 

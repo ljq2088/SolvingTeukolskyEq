@@ -34,6 +34,7 @@ class TeukfieldAmpNet(nn.Module):
         window_overlap: float = 0.4,
         local_hidden_dim: int = 96,
         local_depth: int = 4,
+        siren_omega0: float = 15.0,
         amp_hidden_dim: int = 64,
         amp_depth: int = 3,
         m: int = 2,
@@ -43,7 +44,7 @@ class TeukfieldAmpNet(nn.Module):
         self.m = m
         self.s = s
         self.encoder = PhysicsFeatureEncoder(10, latent_dim, fourier_bands)
-        self.s_field = SFieldNetwork(latent_dim, n_windows, window_overlap, local_hidden_dim, local_depth)
+        self.s_field = SFieldNetwork(latent_dim, n_windows, window_overlap, local_hidden_dim, local_depth, omega0=siren_omega0)
         self.amp_head = AmplitudeHead(latent_dim, amp_hidden_dim, amp_depth)
 
     def forward(self, y: torch.Tensor, a: torch.Tensor, logw: torch.Tensor, lambda_: torch.Tensor | None = None):
@@ -57,4 +58,3 @@ class TeukfieldAmpNet(nn.Module):
         _, _, Ph2 = leaver_P_h2(y if y.ndim > 1 else y.unsqueeze(0).expand(a.numel(), -1), a, omega, m=self.m, s=self.s)
         amp = self.amp_head(latent)
         return {"S": S, "R": Ph2 * S, "Ph2": Ph2, "lambda": lambda_, **amp}
-

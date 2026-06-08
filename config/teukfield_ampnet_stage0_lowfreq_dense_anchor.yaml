@@ -14,29 +14,33 @@ patch:
 model:
   dtype: float64
   latent_dim: 64
-  fourier_bands: 6
+  fourier_bands: 4
   n_windows: 8
   window_overlap: 0.4
   local_hidden_dim: 96
   local_depth: 4
   activation: sine
-  pirate_alpha_init: 1.0e-3
+  pirate_alpha_init: 0.001
+  siren_omega0: 4.0
 amplitude_head:
   type: cheb_kan_residual
   hidden_dim: 64
   depth: 3
 sampling:
-  param_batch: 4
-  residual_y_points: 32
+  param_batch: 8
+  residual_y_points: 192
   inner_points: 32
   outer_points: 48
-  anchor_points: 64
+  anchor_points: 224
   inner_z_min: 0.75
   inner_z_max: 0.98
   outer_z_min: 0.005
   outer_z_max: 0.05
   R_anchor_z_min: 0.01
-  R_anchor_z_max: 0.90
+  R_anchor_z_max: 0.9
+  pybhpt_anchor_points: 224
+  pybhpt_R_anchor_z_min: 0.01
+  pybhpt_R_anchor_z_max: 0.9
 boundary:
   patch_dir: null
 loss_weights:
@@ -45,7 +49,7 @@ loss_weights:
     outer: 1.0
     R_anchor: 0.5
     amp_anchor: 0.2
-    residual: 1.0e-3
+    residual: 0.001
     weak: 0.0
   stage2:
     residual_ramp_to: 1.0
@@ -54,10 +58,10 @@ loss_weights:
     weak: 0.1
     Abel: 0.05
 optimizer:
-  adamw_lr: 1.0e-4
-  fine_tune_lr: 3.0e-5
+  adamw_lr: 0.0001
+  fine_tune_lr: 3.0e-05
 validation:
-  random_param_points: 8
-  random_y_points: 32
-  target_residual_median: 1.0e-5
-  target_amp_median: 1.0e-4
+  random_param_points: 16
+  random_y_points: 128
+  target_residual_median: 1.0e-05
+  target_amp_median: 0.0001
